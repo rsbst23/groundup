@@ -140,6 +140,14 @@ Events → Core only
 10. OperationResult with static factory methods
 11. ServiceCollectionExtensions pattern: AddGroundUp{Module}()
 
+## Git Workflow
+
+- Never commit directly to main. Always work from a feature branch.
+- Branch naming: `phase-{number}/{short-description}` (e.g., `phase-1/solution-structure`, `phase-3/base-repository`)
+- Commit frequently after each sub-step that compiles and works. Small commits with clear messages.
+- Merge to main only when the phase is verified and complete.
+- Push branches with `-u` flag to set up remote tracking.
+
 ## Jira Project
 
 - Project key: GU
