@@ -1,0 +1,45 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+[Oo]ut/
+
+## NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+nupkgs/
+
+## Visual Studio / Rider
+.vs/
+*.rsuser
+*.DotSettings.user
+.idea/
+
+## OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+## Kiro - keep steering and settings but exclude secrets
+.kiro/settings/mcp.json
+
+## Docker
+pgdata/
+
+## User-specific
+*.env
+*.env.local
