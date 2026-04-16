@@ -140,6 +140,18 @@ Events → Core only
 10. OperationResult with static factory methods
 11. ServiceCollectionExtensions pattern: AddGroundUp{Module}()
 
+## Phase Workflow
+
+For each new build phase:
+1. Pull the Jira stories under the phase epic
+2. Review and refine the backlog together — compare against BUILD_PHASES.md, identify gaps, update Jira as needed
+3. Only after the backlog is reviewed and agreed upon, create a Kiro spec from the refined stories
+4. Execute the spec tasks iteratively — build, test, verify at each step
+5. Update Jira status as tasks complete
+6. Merge to main when the phase is verified and complete
+
+Never skip the backlog review step. Never create a spec without first discussing the stories with the user.
+
 ## Git Workflow
 
 - Never commit directly to main. Always work from a feature branch.
