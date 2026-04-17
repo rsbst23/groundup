@@ -31,7 +31,7 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - Commit: "chore: add NuGet deps to Events, add Events ref to test project"
     - _Requirements: 11.1_
 
-- [-] 2. Define event interfaces and base types
+- [x] 2. Define event interfaces and base types
   - [x] 2.1 Implement IEvent interface
     - Create `src/GroundUp.Events/IEvent.cs`
     - Interface with properties: `Guid EventId`, `DateTime OccurredAt`, `Guid? TenantId`, `Guid? UserId`
@@ -64,13 +64,13 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - Each in its own file, file-scoped namespace `GroundUp.Events`, XML documentation
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 12.2, 12.4_
 
-  - [-] 2.6 Build and commit
+  - [x] 2.6 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(events): add IEvent, IEventBus, IEventHandler, BaseEvent, entity lifecycle events"
     - _Requirements: 11.1, 12.1, 12.3, 12.5_
 
-- [ ] 3. Implement InProcessEventBus and DI registration
-  - [ ] 3.1 Implement InProcessEventBus
+- [-] 3. Implement InProcessEventBus and DI registration
+  - [x] 3.1 Implement InProcessEventBus
     - Create `src/GroundUp.Events/InProcessEventBus.cs`
     - Sealed class implementing `IEventBus`, constructor-injected `IServiceProvider` and `ILogger<InProcessEventBus>`
     - `PublishAsync` resolves all `IEventHandler<T>` from DI via `GetServices<IEventHandler<T>>()`
@@ -80,7 +80,7 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - File-scoped namespace `GroundUp.Events`, XML documentation on class and all public members
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 12.3, 12.4_
 
-  - [ ] 3.2 Implement EventsServiceCollectionExtensions
+  - [x] 3.2 Implement EventsServiceCollectionExtensions
     - Create `src/GroundUp.Events/EventsServiceCollectionExtensions.cs`
     - Static class with `AddGroundUpEvents` extension method on `IServiceCollection`
     - Registers `InProcessEventBus` as singleton for `IEventBus`
@@ -88,7 +88,7 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - File-scoped namespace `GroundUp.Events`, XML documentation on class and method
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 12.3_
 
-  - [ ] 3.3 Build and commit
+  - [-] 3.3 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(events): add InProcessEventBus and AddGroundUpEvents DI registration"
     - _Requirements: 11.1_
