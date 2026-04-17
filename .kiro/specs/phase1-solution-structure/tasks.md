@@ -8,7 +8,7 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
 
 ## Tasks
 
-- [-] 1. Create solution file and all project scaffolds
+- [x] 1. Create solution file and all project scaffolds
   - [x] 1.1 Create the feature branch and solution file
     - Create and checkout branch `phase-1/solution-structure`
     - Create `groundup.sln` in the repository root using `dotnet new sln`
@@ -97,44 +97,44 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Add project to solution in `tests` solution folder
     - _Requirements: 10.3, 10.4, 1.2_
 
-  - [-] 1.12 Verify full solution builds
+  - [x] 1.12 Verify full solution builds
     - Run `dotnet build groundup.sln` and confirm zero errors, zero warnings treated as errors
     - Commit: "feat: scaffold solution with all 10 projects and dependencies"
     - _Requirements: 1.3_
 
-- [ ] 2. Implement Core entity types and interfaces
-  - [ ] 2.1 Implement BaseEntity
+- [-] 2. Implement Core entity types and interfaces
+  - [x] 2.1 Implement BaseEntity
     - Create `src/GroundUp.Core/Entities/BaseEntity.cs`
     - Abstract class with `Guid Id` property, file-scoped namespace `GroundUp.Core.Entities`
     - XML documentation comment on class and property
     - Sealed is NOT applied (designed for inheritance)
     - _Requirements: 12.1, 12.2, 12.3, 23.1_
 
-  - [ ] 2.2 Implement IAuditable
+  - [x] 2.2 Implement IAuditable
     - Create `src/GroundUp.Core/Entities/IAuditable.cs`
     - Interface with `DateTime CreatedAt`, `string? CreatedBy`, `DateTime? UpdatedAt`, `string? UpdatedBy`
     - XML documentation comment describing opt-in nature
     - _Requirements: 13.1, 13.2, 23.1, 23.3_
 
-  - [ ] 2.3 Implement ISoftDeletable
+  - [x] 2.3 Implement ISoftDeletable
     - Create `src/GroundUp.Core/Entities/ISoftDeletable.cs`
     - Interface with `bool IsDeleted`, `DateTime? DeletedAt`, `string? DeletedBy`
     - XML documentation comment describing opt-in nature
     - _Requirements: 14.1, 14.2, 23.1, 23.3_
 
-  - [ ] 2.4 Implement ITenantEntity
+  - [x] 2.4 Implement ITenantEntity
     - Create `src/GroundUp.Core/Entities/ITenantEntity.cs`
     - Interface with `Guid TenantId` property
     - XML documentation comment
     - _Requirements: 15.1, 15.2, 23.1, 23.3_
 
-  - [ ] 2.5 Implement ICurrentUser and ITenantContext
+  - [x] 2.5 Implement ICurrentUser and ITenantContext
     - Create `src/GroundUp.Core/Abstractions/ICurrentUser.cs` with `Guid UserId`, `string? Email`, `string? DisplayName`
     - Create `src/GroundUp.Core/Abstractions/ITenantContext.cs` with `Guid TenantId`
     - XML documentation comments on both interfaces
     - _Requirements: 16.1, 16.2, 17.1, 17.2, 23.1, 23.3_
 
-  - [ ] 2.6 Build and commit entity types
+  - [-] 2.6 Build and commit entity types
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add BaseEntity, IAuditable, ISoftDeletable, ITenantEntity, ICurrentUser, ITenantContext"
     - _Requirements: 1.3_
