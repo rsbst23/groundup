@@ -69,7 +69,7 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - Commit: "feat(events): add IEvent, IEventBus, IEventHandler, BaseEvent, entity lifecycle events"
     - _Requirements: 11.1, 12.1, 12.3, 12.5_
 
-- [-] 3. Implement InProcessEventBus and DI registration
+- [x] 3. Implement InProcessEventBus and DI registration
   - [x] 3.1 Implement InProcessEventBus
     - Create `src/GroundUp.Events/InProcessEventBus.cs`
     - Sealed class implementing `IEventBus`, constructor-injected `IServiceProvider` and `ILogger<InProcessEventBus>`
@@ -88,18 +88,18 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - File-scoped namespace `GroundUp.Events`, XML documentation on class and method
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 12.3_
 
-  - [-] 3.3 Build and commit
+  - [x] 3.3 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(events): add InProcessEventBus and AddGroundUpEvents DI registration"
     - _Requirements: 11.1_
 
-- [ ] 4. Checkpoint — Verify Events project compiles and structure is correct
+- [x] 4. Checkpoint — Verify Events project compiles and structure is correct
   - Run `dotnet build groundup.sln` — zero errors
   - Verify all 9 files exist in `src/GroundUp.Events/` (IEvent, IEventBus, IEventHandler, BaseEvent, EntityCreatedEvent, EntityUpdatedEvent, EntityDeletedEvent, InProcessEventBus, EventsServiceCollectionExtensions)
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Add non-generic OperationResult to Core
-  - [ ] 5.1 Implement non-generic OperationResult
+- [-] 5. Add non-generic OperationResult to Core
+  - [x] 5.1 Implement non-generic OperationResult
     - Create `src/GroundUp.Core/Results/OperationResult.NonGeneric.cs`
     - Sealed class `OperationResult` (non-generic) in namespace `GroundUp.Core.Results`
     - Properties: `bool Success`, `string Message`, `List<string>? Errors`, `int StatusCode`, `string? ErrorCode` — all with `init` setters
@@ -108,12 +108,12 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - XML documentation on class and all public members
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6_
 
-  - [ ] 5.2 Build and commit
+  - [x] 5.2 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add non-generic OperationResult for void operations"
     - _Requirements: 11.1_
 
-  - [ ]* 5.3 Write property test — Ok factory preserves inputs (Property 4)
+  - [-]* 5.3 Write property test — Ok factory preserves inputs (Property 4)
     - **Property 4: Non-generic OperationResult Ok factory preserves inputs**
     - For any message string and status code integer, `OperationResult.Ok(message, statusCode)` produces `Success == true`, `Message` equals input message, `StatusCode` equals input status code
     - Test class: `tests/GroundUp.Tests.Unit/Core/OperationResultNonGenericPropertyTests.cs`
