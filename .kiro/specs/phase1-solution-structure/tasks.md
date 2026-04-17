@@ -204,7 +204,7 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
   - Run `dotnet test` on the unit test project to verify any property tests written so far pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 6. Implement pagination and filtering types
+- [x] 6. Implement pagination and filtering types
   - [x] 6.1 Implement PaginationParams
     - Create `src/GroundUp.Core/Models/PaginationParams.cs`
     - Record with `PageNumber` (defaults to 1, clamped to >= 1), `PageSize` (default 10, capped at `DefaultMaxPageSize` = 100, clamped to >= 1), `string? SortBy`
@@ -237,15 +237,15 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Test class: `tests/GroundUp.Tests.Unit/Core/PaginationParamsPropertyTests.cs`
     - **Validates: Requirements 20.2, 20.3**
 
-  - [-]* 6.6 Write property test — PaginatedData computes TotalPages correctly
+  - [x]* 6.6 Write property test — PaginatedData computes TotalPages correctly
     - **Property 6: PaginatedData computes TotalPages correctly**
     - For any positive PageSize and non-negative TotalRecords, `TotalPages == ⌈TotalRecords / PageSize⌉`; when PageSize is 0, `TotalPages == 0`
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - Test class: `tests/GroundUp.Tests.Unit/Core/PaginatedDataPropertyTests.cs`
     - **Validates: Requirements 20.5**
 
-- [ ] 7. Create ARCHITECTURE.md documentation
-  - [ ] 7.1 Write ARCHITECTURE.md
+- [-] 7. Create ARCHITECTURE.md documentation
+  - [-] 7.1 Write ARCHITECTURE.md
     - Create `ARCHITECTURE.md` in the repository root
     - Document: purpose and responsibility of each project, dependency graph and layering rules, key design decisions (framework not application, SDK-first, multi-tenancy at repository layer), how consuming applications use the framework
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
