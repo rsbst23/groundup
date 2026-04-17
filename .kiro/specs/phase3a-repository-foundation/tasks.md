@@ -8,7 +8,7 @@ All code is C# targeting .NET 8. The implementation language matches the design 
 
 ## Tasks
 
-- [-] 1. Create feature branch and set up project dependencies
+- [x] 1. Create feature branch and set up project dependencies
   - Create and checkout branch `phase-3a/repository-foundation` from `main`
   - Add `Microsoft.EntityFrameworkCore` (Version 8.*) NuGet package to `GroundUp.Repositories.csproj`
   - Add `Riok.Mapperly` (Version 4.*) NuGet package to `GroundUp.Repositories.csproj`
@@ -18,21 +18,21 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Commit: "Add EF Core and Mapperly NuGet dependencies to Repositories project"
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 2. Define IBaseRepository, IUnitOfWork, and IDataSeeder interfaces
-  - [ ] 2.1 Create `IBaseRepository<TDto>` interface in `src/GroundUp.Data.Abstractions/IBaseRepository.cs`
+- [-] 2. Define IBaseRepository, IUnitOfWork, and IDataSeeder interfaces
+  - [x] 2.1 Create `IBaseRepository<TDto>` interface in `src/GroundUp.Data.Abstractions/IBaseRepository.cs`
     - Define in `GroundUp.Data.Abstractions` namespace with file-scoped namespace
     - Generic constraint: `where TDto : class`
     - Methods: `GetAllAsync(FilterParams, CancellationToken)`, `GetByIdAsync(Guid, CancellationToken)`, `AddAsync(TDto, CancellationToken)`, `UpdateAsync(Guid, TDto, CancellationToken)`, `DeleteAsync(Guid, CancellationToken)`
     - Return types: `Task<OperationResult<PaginatedData<TDto>>>`, `Task<OperationResult<TDto>>`, `Task<OperationResult>`
     - Add XML documentation comments on the interface and all methods
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8_
-  - [ ] 2.2 Create `IUnitOfWork` interface in `src/GroundUp.Data.Abstractions/IUnitOfWork.cs`
+  - [x] 2.2 Create `IUnitOfWork` interface in `src/GroundUp.Data.Abstractions/IUnitOfWork.cs`
     - Define in `GroundUp.Data.Abstractions` namespace with file-scoped namespace
     - Method: `ExecuteInTransactionAsync(Func<CancellationToken, Task>, CancellationToken)`
     - Return type: `Task<OperationResult>` (non-generic)
     - Add XML documentation comments on the interface and method
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
-  - [ ] 2.3 Create `IDataSeeder` interface in `src/GroundUp.Data.Abstractions/IDataSeeder.cs`
+  - [x] 2.3 Create `IDataSeeder` interface in `src/GroundUp.Data.Abstractions/IDataSeeder.cs`
     - Define in `GroundUp.Data.Abstractions` namespace with file-scoped namespace
     - Property: `int Order { get; }` (read-only, lower values execute first)
     - Method: `SeedAsync(CancellationToken)`
