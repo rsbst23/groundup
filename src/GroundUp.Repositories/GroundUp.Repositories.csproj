@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.*" />
+    <PackageReference Include="Riok.Mapperly" Version="4.*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
     <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
