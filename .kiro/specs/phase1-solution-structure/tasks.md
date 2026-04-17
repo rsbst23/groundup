@@ -179,7 +179,7 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - **Validates: Requirements 18.4, 18.5, 18.6, 18.7**
 
-- [-] 4. Implement exception hierarchy
+- [x] 4. Implement exception hierarchy
   - [x] 4.1 Implement GroundUpException and NotFoundException
     - Create `src/GroundUp.Core/Exceptions/GroundUpException.cs` — extends `Exception`, accepts message and optional inner exception
     - Create `src/GroundUp.Core/Exceptions/NotFoundException.cs` — sealed, extends `GroundUpException`, accepts message
@@ -192,52 +192,52 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Commit: "feat(core): add GroundUpException and NotFoundException"
     - _Requirements: 1.3_
 
-  - [-]* 4.3 Write property test — Exception constructors preserve message
+  - [x]* 4.3 Write property test — Exception constructors preserve message
     - **Property 4: Exception constructors preserve message**
     - For any non-null string, `GroundUpException(message).Message` and `NotFoundException(message).Message` return the same string
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - Test class: `tests/GroundUp.Tests.Unit/Core/ExceptionPropertyTests.cs`
     - **Validates: Requirements 19.3**
 
-- [ ] 5. Checkpoint — Verify core types compile and tests pass
+- [x] 5. Checkpoint — Verify core types compile and tests pass
   - Ensure `dotnet build groundup.sln` succeeds with zero errors
   - Run `dotnet test` on the unit test project to verify any property tests written so far pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Implement pagination and filtering types
-  - [ ] 6.1 Implement PaginationParams
+- [-] 6. Implement pagination and filtering types
+  - [x] 6.1 Implement PaginationParams
     - Create `src/GroundUp.Core/Models/PaginationParams.cs`
     - Record with `PageNumber` (defaults to 1, clamped to >= 1), `PageSize` (default 10, capped at `DefaultMaxPageSize` = 100, clamped to >= 1), `string? SortBy`
     - XML documentation comments
     - File-scoped namespace `GroundUp.Core.Models`
     - _Requirements: 20.1, 20.2, 20.3, 23.1, 23.4_
 
-  - [ ] 6.2 Implement PaginatedData&lt;T&gt;
+  - [x] 6.2 Implement PaginatedData&lt;T&gt;
     - Create `src/GroundUp.Core/Models/PaginatedData.cs`
     - Sealed record with `List<T> Items`, `int PageNumber`, `int PageSize`, `int TotalRecords`, computed `int TotalPages` (ceiling division, 0 when PageSize is 0)
     - XML documentation comments
     - _Requirements: 20.4, 20.5, 23.1, 23.4, 23.5_
 
-  - [ ] 6.3 Implement FilterParams
+  - [x] 6.3 Implement FilterParams
     - Create `src/GroundUp.Core/Models/FilterParams.cs`
     - Sealed record extending `PaginationParams`
     - Properties: `Dictionary<string, string> Filters`, `ContainsFilters`, `MinFilters`, `MaxFilters`, `Dictionary<string, List<string>> MultiValueFilters`, `string? SearchTerm`
     - All dictionaries initialized to `new()`
     - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 23.1, 23.4, 23.5_
 
-  - [ ] 6.4 Build and commit
+  - [x] 6.4 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add PaginationParams, PaginatedData<T>, FilterParams"
     - _Requirements: 1.3_
 
-  - [ ]* 6.5 Write property test — PaginationParams clamps values to valid ranges
+  - [x]* 6.5 Write property test — PaginationParams clamps values to valid ranges
     - **Property 5: PaginationParams clamps values to valid ranges**
     - For any integer PageNumber and PageSize, resulting `PageNumber >= 1` and `1 <= PageSize <= 100`
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - Test class: `tests/GroundUp.Tests.Unit/Core/PaginationParamsPropertyTests.cs`
     - **Validates: Requirements 20.2, 20.3**
 
-  - [ ]* 6.6 Write property test — PaginatedData computes TotalPages correctly
+  - [-]* 6.6 Write property test — PaginatedData computes TotalPages correctly
     - **Property 6: PaginatedData computes TotalPages correctly**
     - For any positive PageSize and non-negative TotalRecords, `TotalPages == ⌈TotalRecords / PageSize⌉`; when PageSize is 0, `TotalPages == 0`
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
