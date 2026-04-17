@@ -102,7 +102,7 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Commit: "feat: scaffold solution with all 10 projects and dependencies"
     - _Requirements: 1.3_
 
-- [-] 2. Implement Core entity types and interfaces
+- [x] 2. Implement Core entity types and interfaces
   - [x] 2.1 Implement BaseEntity
     - Create `src/GroundUp.Core/Entities/BaseEntity.cs`
     - Abstract class with `Guid Id` property, file-scoped namespace `GroundUp.Core.Entities`
@@ -134,13 +134,13 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - XML documentation comments on both interfaces
     - _Requirements: 16.1, 16.2, 17.1, 17.2, 23.1, 23.3_
 
-  - [-] 2.6 Build and commit entity types
+  - [x] 2.6 Build and commit entity types
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add BaseEntity, IAuditable, ISoftDeletable, ITenantEntity, ICurrentUser, ITenantContext"
     - _Requirements: 1.3_
 
-- [ ] 3. Implement OperationResult and ErrorCodes
-  - [ ] 3.1 Implement OperationResult&lt;T&gt;
+- [-] 3. Implement OperationResult and ErrorCodes
+  - [x] 3.1 Implement OperationResult&lt;T&gt;
     - Create `src/GroundUp.Core/Results/OperationResult.cs`
     - Sealed class with properties: `T? Data`, `bool Success`, `string Message`, `List<string>? Errors`, `int StatusCode`, `string? ErrorCode`
     - Static factory methods: `Ok`, `Fail`, `NotFound` (404), `BadRequest` (400), `Unauthorized` (401), `Forbidden` (403)
@@ -148,32 +148,32 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - File-scoped namespace `GroundUp.Core.Results`
     - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8, 23.1, 23.5_
 
-  - [ ] 3.2 Implement ErrorCodes
+  - [x] 3.2 Implement ErrorCodes
     - Create `src/GroundUp.Core/ErrorCodes.cs`
     - Static class with string constants: `NotFound`, `ValidationFailed`, `Unauthorized`, `Forbidden`, `Conflict`, `InternalError`
     - XML documentation on class and each constant
     - File-scoped namespace `GroundUp.Core`
     - _Requirements: 22.1, 22.2, 23.1, 23.5_
 
-  - [ ] 3.3 Build and commit
+  - [x] 3.3 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add OperationResult<T> and ErrorCodes"
     - _Requirements: 1.3_
 
-  - [ ]* 3.4 Write property test — Ok factory preserves data and marks success
+  - [x]* 3.4 Write property test — Ok factory preserves data and marks success
     - **Property 1: Ok factory preserves data and marks success**
     - For any value of type T, `OperationResult<T>.Ok(data, message, statusCode)` produces `Success == true`, `Data` equals input data, `Message` equals input message, `StatusCode` equals input status code
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - Test class: `tests/GroundUp.Tests.Unit/Core/OperationResultPropertyTests.cs`
     - **Validates: Requirements 18.2**
 
-  - [ ]* 3.5 Write property test — Fail factory preserves error details and marks failure
+  - [x]* 3.5 Write property test — Fail factory preserves error details and marks failure
     - **Property 2: Fail factory preserves error details and marks failure**
     - For any message, status code, optional error code, and optional error list, `OperationResult<T>.Fail(...)` produces `Success == false` with all inputs preserved
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - **Validates: Requirements 18.3**
 
-  - [ ]* 3.6 Write property test — Failure shorthand factories produce correct status codes
+  - [-]* 3.6 Write property test — Failure shorthand factories produce correct status codes
     - **Property 3: Failure shorthand factories produce correct status codes**
     - `NotFound` → 404, `BadRequest` → 400, `Unauthorized` → 401, `Forbidden` → 403; all have `Success == false`
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
