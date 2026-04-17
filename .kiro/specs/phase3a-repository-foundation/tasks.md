@@ -18,7 +18,7 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Commit: "Add EF Core and Mapperly NuGet dependencies to Repositories project"
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [-] 2. Define IBaseRepository, IUnitOfWork, and IDataSeeder interfaces
+- [x] 2. Define IBaseRepository, IUnitOfWork, and IDataSeeder interfaces
   - [x] 2.1 Create `IBaseRepository<TDto>` interface in `src/GroundUp.Data.Abstractions/IBaseRepository.cs`
     - Define in `GroundUp.Data.Abstractions` namespace with file-scoped namespace
     - Generic constraint: `where TDto : class`
@@ -42,13 +42,13 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Commit: "Add IBaseRepository, IUnitOfWork, and IDataSeeder interfaces"
   - _Requirements: 19.1, 19.2, 19.3, 19.6_
 
-- [ ] 3. Checkpoint — Verify interfaces compile and review
+- [x] 3. Checkpoint — Verify interfaces compile and review
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Ensure all three interfaces exist in `src/GroundUp.Data.Abstractions/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Implement ExpressionHelper — all predicate and sorting methods
-  - [ ] 4.1 Create `ExpressionHelper` static class in `src/GroundUp.Repositories/ExpressionHelper.cs`
+- [-] 4. Implement ExpressionHelper — all predicate and sorting methods
+  - [x] 4.1 Create `ExpressionHelper` static class in `src/GroundUp.Repositories/ExpressionHelper.cs`
     - Define in `GroundUp.Repositories` namespace with file-scoped namespace
     - Use `public static class ExpressionHelper` (static modifier)
     - Implement `BuildPredicate<T>(string propertyName, string value)` — case-insensitive string comparison for string properties, parse-and-compare for Guid/int/DateTime/bool/enum, always-true predicate for invalid property names
