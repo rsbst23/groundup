@@ -9,6 +9,8 @@ public class TestDbContext : DbContext
 {
     public DbSet<TestEntity> TestEntities => Set<TestEntity>();
     public DbSet<SoftDeletableTestEntity> SoftDeletableTestEntities => Set<SoftDeletableTestEntity>();
+    public DbSet<TenantTestEntity> TenantTestEntities => Set<TenantTestEntity>();
+    public DbSet<SoftDeletableTenantTestEntity> SoftDeletableTenantTestEntities => Set<SoftDeletableTenantTestEntity>();
 
     public TestDbContext(DbContextOptions<TestDbContext> options) : base(options) { }
 
@@ -21,6 +23,18 @@ public class TestDbContext : DbContext
         });
 
         modelBuilder.Entity<SoftDeletableTestEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<TenantTestEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<SoftDeletableTenantTestEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
