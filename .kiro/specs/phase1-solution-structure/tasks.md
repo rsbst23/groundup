@@ -139,7 +139,7 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Commit: "feat(core): add BaseEntity, IAuditable, ISoftDeletable, ITenantEntity, ICurrentUser, ITenantContext"
     - _Requirements: 1.3_
 
-- [-] 3. Implement OperationResult and ErrorCodes
+- [x] 3. Implement OperationResult and ErrorCodes
   - [x] 3.1 Implement OperationResult&lt;T&gt;
     - Create `src/GroundUp.Core/Results/OperationResult.cs`
     - Sealed class with properties: `T? Data`, `bool Success`, `string Message`, `List<string>? Errors`, `int StatusCode`, `string? ErrorCode`
@@ -173,26 +173,26 @@ Git workflow: work on branch `phase-1/solution-structure`, commit after each sub
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - **Validates: Requirements 18.3**
 
-  - [-]* 3.6 Write property test — Failure shorthand factories produce correct status codes
+  - [x]* 3.6 Write property test — Failure shorthand factories produce correct status codes
     - **Property 3: Failure shorthand factories produce correct status codes**
     - `NotFound` → 404, `BadRequest` → 400, `Unauthorized` → 401, `Forbidden` → 403; all have `Success == false`
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
     - **Validates: Requirements 18.4, 18.5, 18.6, 18.7**
 
-- [ ] 4. Implement exception hierarchy
-  - [ ] 4.1 Implement GroundUpException and NotFoundException
+- [-] 4. Implement exception hierarchy
+  - [x] 4.1 Implement GroundUpException and NotFoundException
     - Create `src/GroundUp.Core/Exceptions/GroundUpException.cs` — extends `Exception`, accepts message and optional inner exception
     - Create `src/GroundUp.Core/Exceptions/NotFoundException.cs` — sealed, extends `GroundUpException`, accepts message
     - XML documentation comments describing purpose and HTTP status code mapping
     - File-scoped namespaces
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 23.1, 23.5_
 
-  - [ ] 4.2 Build and commit
+  - [x] 4.2 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(core): add GroundUpException and NotFoundException"
     - _Requirements: 1.3_
 
-  - [ ]* 4.3 Write property test — Exception constructors preserve message
+  - [-]* 4.3 Write property test — Exception constructors preserve message
     - **Property 4: Exception constructors preserve message**
     - For any non-null string, `GroundUpException(message).Message` and `NotFoundException(message).Message` return the same string
     - Use FsCheck.Xunit `[Property]` attribute with minimum 100 iterations
