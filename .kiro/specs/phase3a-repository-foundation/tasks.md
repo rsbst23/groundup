@@ -61,8 +61,8 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Implement ExpressionHelper with all predicate and sorting methods"
 
-- [-] 5. Implement BaseRepository — constructor, GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync
-  - [-] 5.1 Create `BaseRepository<TEntity, TDto>` abstract class in `src/GroundUp.Repositories/BaseRepository.cs`
+- [x] 5. Implement BaseRepository — constructor, GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync
+  - [x] 5.1 Create `BaseRepository<TEntity, TDto>` abstract class in `src/GroundUp.Repositories/BaseRepository.cs`
     - Define in `GroundUp.Repositories` namespace with file-scoped namespace
     - Generic constraints: `where TEntity : BaseEntity` and `where TDto : class`
     - Implement `IBaseRepository<TDto>`
@@ -79,18 +79,18 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Implement BaseRepository with full CRUD, filtering, paging, and soft delete"
 
-- [ ] 6. Checkpoint — Verify ExpressionHelper and BaseRepository compile
+- [x] 6. Checkpoint — Verify ExpressionHelper and BaseRepository compile
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Ensure `ExpressionHelper.cs` and `BaseRepository.cs` exist in `src/GroundUp.Repositories/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Set up test infrastructure and add test project dependencies
-  - [ ] 7.1 Update `GroundUp.Tests.Unit.csproj` with new dependencies
+- [-] 7. Set up test infrastructure and add test project dependencies
+  - [x] 7.1 Update `GroundUp.Tests.Unit.csproj` with new dependencies
     - Add project reference to `GroundUp.Repositories`
     - Add project reference to `GroundUp.Data.Abstractions`
     - Add NuGet reference to `Microsoft.EntityFrameworkCore.InMemory` (Version 8.*)
     - _Requirements: 16.8, 17.6, 17.7_
-  - [ ] 7.2 Create test helper classes in `tests/GroundUp.Tests.Unit/Repositories/TestHelpers/`
+  - [-] 7.2 Create test helper classes in `tests/GroundUp.Tests.Unit/Repositories/TestHelpers/`
     - Create `TestEntity` — extends `BaseEntity` with `string Name` property
     - Create `SoftDeletableTestEntity` — extends `BaseEntity`, implements `ISoftDeletable`, with `string Name` property
     - Create `TestDto` — a simple class with `Guid Id` and `string Name`
