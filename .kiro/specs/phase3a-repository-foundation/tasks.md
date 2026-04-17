@@ -47,7 +47,7 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Ensure all three interfaces exist in `src/GroundUp.Data.Abstractions/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 4. Implement ExpressionHelper — all predicate and sorting methods
+- [x] 4. Implement ExpressionHelper — all predicate and sorting methods
   - [x] 4.1 Create `ExpressionHelper` static class in `src/GroundUp.Repositories/ExpressionHelper.cs`
     - Define in `GroundUp.Repositories` namespace with file-scoped namespace
     - Use `public static class ExpressionHelper` (static modifier)
@@ -61,8 +61,8 @@ All code is C# targeting .NET 8. The implementation language matches the design 
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Implement ExpressionHelper with all predicate and sorting methods"
 
-- [ ] 5. Implement BaseRepository — constructor, GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync
-  - [ ] 5.1 Create `BaseRepository<TEntity, TDto>` abstract class in `src/GroundUp.Repositories/BaseRepository.cs`
+- [-] 5. Implement BaseRepository — constructor, GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync
+  - [-] 5.1 Create `BaseRepository<TEntity, TDto>` abstract class in `src/GroundUp.Repositories/BaseRepository.cs`
     - Define in `GroundUp.Repositories` namespace with file-scoped namespace
     - Generic constraints: `where TEntity : BaseEntity` and `where TDto : class`
     - Implement `IBaseRepository<TDto>`
