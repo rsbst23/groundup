@@ -2,7 +2,8 @@ namespace GroundUp.Core.Models;
 
 /// <summary>
 /// Extends <see cref="PaginationParams"/> with filtering capabilities:
-/// exact match, contains, min/max range, multi-value (IN clause), and free-text search.
+/// exact match, contains, starts-with, ends-with, min/max range,
+/// multi-value (IN clause), and free-text search.
 /// </summary>
 public sealed record FilterParams : PaginationParams
 {
@@ -15,6 +16,16 @@ public sealed record FilterParams : PaginationParams
     /// Substring-match filters. Key = property name, Value = substring to search for.
     /// </summary>
     public Dictionary<string, string> ContainsFilters { get; init; } = new();
+
+    /// <summary>
+    /// Prefix-match filters. Key = property name, Value = prefix the property must start with.
+    /// </summary>
+    public Dictionary<string, string> StartsWithFilters { get; init; } = new();
+
+    /// <summary>
+    /// Suffix-match filters. Key = property name, Value = suffix the property must end with.
+    /// </summary>
+    public Dictionary<string, string> EndsWithFilters { get; init; } = new();
 
     /// <summary>
     /// Minimum range filters. Key = property name, Value = minimum value (inclusive).
@@ -32,7 +43,8 @@ public sealed record FilterParams : PaginationParams
     public Dictionary<string, List<string>> MultiValueFilters { get; init; } = new();
 
     /// <summary>
-    /// Free-text search term applied across searchable fields.
+    /// Free-text search term applied across all string properties on the entity.
+    /// Uses case-insensitive substring matching (contains).
     /// </summary>
     public string? SearchTerm { get; init; }
 }
