@@ -8,7 +8,7 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
 
 ## Tasks
 
-- [-] 1. Create feature branch and update project files
+- [x] 1. Create feature branch and update project files
   - [x] 1.1 Create and checkout the feature branch
     - Create and checkout branch `phase-2/event-bus` from `main`
     - _Requirements: 11.1_
@@ -26,45 +26,45 @@ Git workflow: work on branch `phase-2/event-bus`, commit frequently after each s
     - Add `<PackageReference>` for `Microsoft.Extensions.DependencyInjection` (8.*) to the test project (needed to build a real ServiceProvider in DI registration tests)
     - _Requirements: 10.4_
 
-  - [-] 1.4 Build and commit
+  - [x] 1.4 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "chore: add NuGet deps to Events, add Events ref to test project"
     - _Requirements: 11.1_
 
-- [ ] 2. Define event interfaces and base types
-  - [ ] 2.1 Implement IEvent interface
+- [-] 2. Define event interfaces and base types
+  - [x] 2.1 Implement IEvent interface
     - Create `src/GroundUp.Events/IEvent.cs`
     - Interface with properties: `Guid EventId`, `DateTime OccurredAt`, `Guid? TenantId`, `Guid? UserId`
     - File-scoped namespace `GroundUp.Events`, XML documentation on interface and all properties
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 2.2 Implement IEventBus interface
+  - [x] 2.2 Implement IEventBus interface
     - Create `src/GroundUp.Events/IEventBus.cs`
     - Interface with method: `Task PublishAsync<T>(T @event, CancellationToken cancellationToken = default) where T : IEvent`
     - File-scoped namespace `GroundUp.Events`, XML documentation on interface and method
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 2.3 Implement IEventHandler&lt;T&gt; interface
+  - [x] 2.3 Implement IEventHandler&lt;T&gt; interface
     - Create `src/GroundUp.Events/IEventHandler.cs`
     - Generic interface with constraint `where T : IEvent` and method: `Task HandleAsync(T @event, CancellationToken cancellationToken = default)`
     - File-scoped namespace `GroundUp.Events`, XML documentation on interface and method
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 2.4 Implement BaseEvent abstract record
+  - [x] 2.4 Implement BaseEvent abstract record
     - Create `src/GroundUp.Events/BaseEvent.cs`
     - Abstract record implementing `IEvent` with `init` properties
     - `EventId` defaults to `Guid.NewGuid()`, `OccurredAt` defaults to `DateTime.UtcNow`, `TenantId` and `UserId` default to `null`
     - File-scoped namespace `GroundUp.Events`, XML documentation on record and all properties
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 12.1, 12.2_
 
-  - [ ] 2.5 Implement entity lifecycle events
+  - [x] 2.5 Implement entity lifecycle events
     - Create `src/GroundUp.Events/EntityCreatedEvent.cs` — record extending BaseEvent with `required T Entity` property
     - Create `src/GroundUp.Events/EntityUpdatedEvent.cs` — record extending BaseEvent with `required T Entity` property
     - Create `src/GroundUp.Events/EntityDeletedEvent.cs` — record extending BaseEvent with `required Guid EntityId` property
     - Each in its own file, file-scoped namespace `GroundUp.Events`, XML documentation
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 12.2, 12.4_
 
-  - [ ] 2.6 Build and commit
+  - [-] 2.6 Build and commit
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "feat(events): add IEvent, IEventBus, IEventHandler, BaseEvent, entity lifecycle events"
     - _Requirements: 11.1, 12.1, 12.3, 12.5_
