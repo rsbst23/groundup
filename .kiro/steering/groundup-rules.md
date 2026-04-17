@@ -10,15 +10,32 @@ This is a modular, enterprise-grade foundational framework for .NET 8+ distribut
 - Multi-tenancy is foundational. Tenant isolation is enforced at the repository level automatically.
 - Every module is independently optional. The core API module works completely without authentication or any other module.
 
+## Project Naming Convention
+
+Only the API layer project uses `.Api` in its name (`GroundUp.Api`). All other projects use `GroundUp.*` without `.Api`, because they work equally well in SDK-only scenarios where no API layer is present.
+
+| Project | Purpose |
+|---|---|
+| GroundUp.Core | Foundational types: entities, DTOs, interfaces, enums, OperationResult |
+| GroundUp.Events | Event abstractions and in-process event bus |
+| GroundUp.Data.Abstractions | Repository and data access interfaces |
+| GroundUp.Repositories | Base repository implementations |
+| GroundUp.Data.Postgres | Postgres-specific EF Core setup |
+| GroundUp.Services | Base service layer with validation and event publishing |
+| GroundUp.Api | Base controllers, middleware, API infrastructure (the ONLY .Api project) |
+| GroundUp.Sample | Sample consuming web application |
+| GroundUp.Tests.Unit | Unit tests (xUnit + NSubstitute) |
+| GroundUp.Tests.Integration | Integration tests (xUnit + Testcontainers) |
+
 ## Project Dependency Rules
 
 ```
-API → Services → Repositories → Data.Abstractions ← Data.Postgres
+GroundUp.Api → Services → Repositories → Data.Abstractions ← Data.Postgres
 All layers → Core (DTOs, entities, interfaces, enums)
 Events → Core only
 ```
 
-- API projects ONLY depend on their Services project and Core
+- GroundUp.Api ONLY depends on Services and Core
 - Services depend on Data.Abstractions (interfaces) and Core
 - Services MAY depend on other modules' service INTERFACES for cross-module orchestration
 - Repositories depend on Data.Abstractions and Core
@@ -35,7 +52,7 @@ Events → Core only
 - No direct repository access — services only
 - Route pattern: [Route("api/[controller]")]
 
-### Services (GroundUp.Api.Services)
+### Services (GroundUp.Services)
 - This is the business logic AND security boundary
 - All public methods return OperationResult<T>
 - Validation via FluentValidation before calling repositories
@@ -44,14 +61,14 @@ Events → Core only
 - Never access HttpContext directly — use ICurrentUser and ITenantContext
 - Must work identically whether called from a controller (API) or directly (SDK)
 
-### Repositories (GroundUp.Api.Repositories)
+### Repositories (GroundUp.Repositories)
 - All public methods return OperationResult<T> — never throw for business logic
 - Use queryShaper hooks for customization in derived repositories
 - Always use AsNoTracking() for read-only queries
 - Tenant filtering is automatic in BaseTenantRepository
 - Mapperly mappers for entity ↔ DTO conversion
 
-### Data (GroundUp.Api.Data.Postgres)
+### Data (GroundUp.Data.Postgres)
 - Entity configurations use Fluent API (IEntityTypeConfiguration<T>), never data annotations for schema
 - SaveChanges interceptor handles IAuditable fields and ISoftDeletable interception
 - Global query filters for ISoftDeletable entities
