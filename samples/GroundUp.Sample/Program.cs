@@ -10,7 +10,6 @@ using GroundUp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Connection string from configuration or default for local dev
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=localhost;Port=5432;Database=groundup;Username=groundup;Password=groundup_dev";
 
@@ -20,9 +19,19 @@ builder.Services.AddGroundUpEvents();
 builder.Services.AddGroundUpServices(typeof(Program).Assembly);
 builder.Services.AddGroundUpApi();
 
-// Register sample app services
+// TodoItem — simple pattern (single DTO, base classes handle everything)
 builder.Services.AddScoped<IBaseRepository<TodoItemDto>, TodoItemRepository>();
 builder.Services.AddScoped<BaseService<TodoItemDto>, TodoItemService>();
+
+// Customer — simple pattern (single DTO, base classes handle everything)
+builder.Services.AddScoped<IBaseRepository<CustomerDto>, CustomerRepository>();
+builder.Services.AddScoped<BaseService<CustomerDto>, CustomerService>();
+
+// Order — complex pattern (multiple DTOs, custom service/repository methods)
+builder.Services.AddScoped<OrderRepository>();
+builder.Services.AddScoped<IBaseRepository<OrderListDto>, OrderRepository>();
+builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<BaseService<OrderListDto>, OrderService>();
 
 // ASP.NET Core services
 builder.Services.AddControllers();

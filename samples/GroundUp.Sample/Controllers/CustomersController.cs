@@ -8,31 +8,31 @@ using Microsoft.AspNetCore.Mvc;
 namespace GroundUp.Sample.Controllers;
 
 /// <summary>
-/// Simple CRUD controller — demonstrates the "just works" pattern.
-/// One-line overrides add HTTP attributes to expose base class methods.
+/// Simple CRUD controller — base classes handle everything.
+/// Demonstrates the "just works" pattern for simple entities.
 /// </summary>
-public class TodoItemsController : BaseController<TodoItemDto>
+public class CustomersController : BaseController<CustomerDto>
 {
-    public TodoItemsController(BaseService<TodoItemDto> service) : base(service) { }
+    public CustomersController(BaseService<CustomerDto> service) : base(service) { }
 
     [HttpGet]
-    public override Task<ActionResult<OperationResult<PaginatedData<TodoItemDto>>>> GetAll(
+    public override Task<ActionResult<OperationResult<PaginatedData<CustomerDto>>>> GetAll(
         [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
         => base.GetAll(filterParams, cancellationToken);
 
     [HttpGet("{id}")]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> GetById(
+    public override Task<ActionResult<OperationResult<CustomerDto>>> GetById(
         Guid id, CancellationToken cancellationToken = default)
         => base.GetById(id, cancellationToken);
 
     [HttpPost]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> Create(
-        [FromBody] TodoItemDto dto, CancellationToken cancellationToken = default)
+    public override Task<ActionResult<OperationResult<CustomerDto>>> Create(
+        [FromBody] CustomerDto dto, CancellationToken cancellationToken = default)
         => base.Create(dto, cancellationToken);
 
     [HttpPut("{id}")]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> Update(
-        Guid id, [FromBody] TodoItemDto dto, CancellationToken cancellationToken = default)
+    public override Task<ActionResult<OperationResult<CustomerDto>>> Update(
+        Guid id, [FromBody] CustomerDto dto, CancellationToken cancellationToken = default)
         => base.Update(id, dto, cancellationToken);
 
     [HttpDelete("{id}")]
