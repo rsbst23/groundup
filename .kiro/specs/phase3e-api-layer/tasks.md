@@ -1,0 +1,347 @@
+# Implementation Plan: Phase 3E — API Layer & Middleware
+
+## Overview
+
+Build `BaseController<TDto>`, `ExceptionHandlingMiddleware`, `CorrelationIdMiddleware`, `ApiServiceCollectionExtensions.AddGroundUpApi()`, and `GroundUpApplicationBuilderExtensions.UseGroundUpMiddleware()` in GroundUp.Api — the thin HTTP adapter layer on top of the service layer. Implementation follows: feature branch → csproj update (FrameworkReference) → production code (middleware first, then controller, then extensions) → test infrastructure (FrameworkReference + project ref + test helpers) → property-based tests (3 FsCheck properties) → unit tests (~30 tests across 4 classes) → final verification. Each task is a small compilable increment with a commit.
+
+All code is C# targeting .NET 8, matching the design document.
+
+## Tasks
+
+- [ ] 1. Create feature branch and update GroundUp.Api csproj
+  - [ ] 1.1 Create and checkout branch `phase-3e/api-layer` from `main`
+    - Run `dotnet build groundup.sln` to verify clean starting point
+    - _Requirements: 21.1_
+  - [ ] 1.2 Add FrameworkReference to `src/GroundUp.Api/GroundUp.Api.csproj`
+    - Add `<FrameworkReference Include="Microsoft.AspNetCore.App" />` in a new `<ItemGroup>`
+    - Retain existing project references to GroundUp.Core and GroundUp.Services
+    - Do NOT change the Sdk to `Microsoft.NET.Sdk.Web` — it must remain `Microsoft.NET.Sdk`
+    - Do NOT add references to GroundUp.Repositories, GroundUp.Data.Abstractions, GroundUp.Data.Postgres, or any provider-specific packages
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add FrameworkReference to Microsoft.AspNetCore.App in GroundUp.Api"
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+
+- [ ] 2. Implement CorrelationIdMiddleware
+  - [ ] 2.1 Create `CorrelationIdMiddleware` in `src/GroundUp.Api/Middleware/CorrelationIdMiddleware.cs`
+    - Define in `GroundUp.Api.Middleware` namespace with file-scoped namespace
+    - Sealed class — not designed for inheritance
+    - Define `public const string HeaderName = "X-Correlation-Id"` to avoid magic strings
+    - Constructor: accept `RequestDelegate next` — store in private readonly field
+    - Implement `InvokeAsync(HttpContext context)`:
+      - Read `X-Correlation-Id` from request headers; if present and non-empty use that value, otherwise generate `Guid.NewGuid().ToString()`
+      - Store correlation ID in `context.Items["CorrelationId"]`
+      - Register `context.Response.OnStarting` callback to add `X-Correlation-Id` to response headers
+      - Call `await _next(context)`
+    - Add XML documentation comments on the class, constructor, HeaderName constant, and InvokeAsync method
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add CorrelationIdMiddleware with header propagation"
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 22.1, 22.3, 22.6, 22.9_
+
+- [ ] 3. Implement ExceptionHandlingMiddleware
+  - [ ] 3.1 Create `ExceptionHandlingMiddleware` in `src/GroundUp.Api/Middleware/ExceptionHandlingMiddleware.cs`
+    - Define in `GroundUp.Api.Middleware` namespace with file-scoped namespace
+    - Sealed class — not designed for inheritance
+    - Constructor: accept `RequestDelegate next` and `ILogger<ExceptionHandlingMiddleware> logger` — store in private readonly fields
+    - Implement `InvokeAsync(HttpContext context)`:
+      - Wrap `await _next(context)` in try/catch
+      - On exception: log full exception via `_logger.LogError(ex, "Unhandled exception occurred")`, then call private `HandleExceptionAsync`
+    - Implement private static `HandleExceptionAsync(HttpContext context, Exception exception)`:
+      - Use switch expression with pattern matching on exception type (order matters — NotFoundException before GroundUpException):
+        - `NotFoundException` → HTTP 404, message from exception, errorCode `ErrorCodes.NotFound`
+        - `GroundUpException` → HTTP 500, message from exception, errorCode `ErrorCodes.InternalError`
+        - Any other `Exception` → HTTP 500, message `"An unexpected error occurred"`, errorCode `ErrorCodes.InternalError`
+      - Read correlation ID from `context.Items["CorrelationId"]` (may be null)
+      - Create anonymous response object `{ message, errorCode, correlationId }`
+      - Set `context.Response.StatusCode` and `context.Response.ContentType = "application/json"`
+      - Write response via `context.Response.WriteAsJsonAsync(response)` (uses default camelCase serialization)
+    - Add XML documentation comments on the class, constructor, and InvokeAsync method
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add ExceptionHandlingMiddleware with typed exception mapping"
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 14.1, 14.2, 14.3, 14.4, 22.1, 22.3, 22.5, 22.9_
+
+- [ ] 4. Implement BaseController
+  - [ ] 4.1 Create `BaseController<TDto>` in `src/GroundUp.Api/Controllers/BaseController.cs`
+    - Define in `GroundUp.Api.Controllers` namespace with file-scoped namespace
+    - Abstract class with generic constraint `where TDto : class` — do NOT use sealed modifier
+    - Decorate with `[ApiController]` and `[Route("api/[controller]")]`
+    - Do NOT decorate with `[Authorize]` or any authorization attribute
+    - Constructor: accept `BaseService<TDto> service` — expose as `protected BaseService<TDto> Service { get; }`
+    - Implement `GetAll` — `[HttpGet]`, public virtual async, accept `[FromQuery] FilterParams filterParams` and `CancellationToken`, return `Task<ActionResult<OperationResult<PaginatedData<TDto>>>>`
+      - Delegate to `Service.GetAllAsync(filterParams, cancellationToken)`
+      - On success with non-null Data: add pagination headers (X-Total-Count, X-Page-Number, X-Page-Size, X-Total-Pages) from PaginatedData metadata
+      - On failure: no pagination headers
+      - Return via `ToActionResult(result)`
+    - Implement `GetById` — `[HttpGet("{id}")]`, public virtual async, accept `Guid id` and `CancellationToken`, return `Task<ActionResult<OperationResult<TDto>>>`
+      - Delegate to `Service.GetByIdAsync(id, cancellationToken)`
+      - Return via `ToActionResult(result)`
+    - Implement `Create` — `[HttpPost]`, public virtual async, accept `[FromBody] TDto dto` and `CancellationToken`, return `Task<ActionResult<OperationResult<TDto>>>`
+      - Delegate to `Service.AddAsync(dto, cancellationToken)`
+      - On success with StatusCode 201: return `CreatedAtAction(nameof(GetById), new { id = ... }, result)` — extract id from result.Data if available
+      - Otherwise: return via `ToActionResult(result)`
+    - Implement `Update` — `[HttpPut("{id}")]`, public virtual async, accept `Guid id`, `[FromBody] TDto dto`, and `CancellationToken`, return `Task<ActionResult<OperationResult<TDto>>>`
+      - Delegate to `Service.UpdateAsync(id, dto, cancellationToken)`
+      - Return via `ToActionResult(result)`
+    - Implement `Delete` — `[HttpDelete("{id}")]`, public virtual async, accept `Guid id` and `CancellationToken`, return `Task<ActionResult<OperationResult>>`
+      - Delegate to `Service.DeleteAsync(id, cancellationToken)`
+      - Return via `ToActionResult(result)` (non-generic overload)
+    - Implement private `ToActionResult<T>(OperationResult<T> result)` — switch expression:
+      - 200 → `Ok(result)`, 201 → `StatusCode(201, result)`, 400 → `BadRequest(result)`, 401 → `Unauthorized()`, 403 → `StatusCode(403, result)`, 404 → `NotFound(result)`, default → `new ObjectResult(result) { StatusCode = result.StatusCode }`
+    - Implement private `ToActionResult(OperationResult result)` — same mapping as generic overload
+    - Add XML documentation comments on the class, constructor, all public/protected members
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add BaseController with CRUD endpoints and ToActionResult mapping"
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 13.1, 13.2, 13.3, 13.4, 13.5, 22.1, 22.3, 22.4, 22.9_
+
+- [ ] 5. Implement DI and middleware extension methods
+  - [ ] 5.1 Create `ApiServiceCollectionExtensions` in `src/GroundUp.Api/ApiServiceCollectionExtensions.cs`
+    - Define in `GroundUp.Api` namespace with file-scoped namespace
+    - Static class
+    - Static extension method `AddGroundUpApi(this IServiceCollection services)` returning `IServiceCollection`
+    - Currently a placeholder — return `services` for method chaining
+    - Add XML documentation comments on the class and the method
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 22.1, 22.7, 22.9_
+  - [ ] 5.2 Create `GroundUpApplicationBuilderExtensions` in `src/GroundUp.Api/GroundUpApplicationBuilderExtensions.cs`
+    - Define in `GroundUp.Api` namespace with file-scoped namespace
+    - Static class
+    - Static extension method `UseGroundUpMiddleware(this IApplicationBuilder app)` returning `IApplicationBuilder`
+    - Register `CorrelationIdMiddleware` first, then `ExceptionHandlingMiddleware` — ordering ensures correlation ID is available when exceptions are caught
+    - Return `app` for method chaining
+    - Add XML documentation comments on the class and the method
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 22.1, 22.8, 22.9_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add AddGroundUpApi and UseGroundUpMiddleware extension methods"
+
+- [ ] 6. Checkpoint — Verify all production code compiles
+  - Ensure `dotnet build groundup.sln` passes with zero errors
+  - Verify all 5 new production files exist: `BaseController.cs`, `ExceptionHandlingMiddleware.cs`, `CorrelationIdMiddleware.cs`, `ApiServiceCollectionExtensions.cs`, `GroundUpApplicationBuilderExtensions.cs`
+  - Ensure all existing tests still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Set up test infrastructure for Phase 3E
+  - [x] 7.1 Update `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+    - Add `<FrameworkReference Include="Microsoft.AspNetCore.App" />` so ASP.NET Core types (DefaultHttpContext, ControllerBase, ActionResult) are available in tests
+    - Add `<ProjectReference Include="..\..\src\GroundUp.Api\GroundUp.Api.csproj" />`
+    - Run `dotnet build groundup.sln` to verify compilation
+    - _Requirements: 21.1_
+  - [x] 7.2 Create `ControllerTestDto` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/ControllerTestDto.cs`
+    - `public record ControllerTestDto(Guid Id, string Name)` — minimal DTO for testing BaseController
+    - File-scoped namespace `GroundUp.Tests.Unit.Api.TestHelpers`
+    - _Requirements: 15.8, 16.1_
+  - [x] 7.3 Create `TestController` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/TestController.cs`
+    - Concrete `BaseController<ControllerTestDto>` that calls the base constructor
+    - Constructor: accept `BaseService<ControllerTestDto> service`
+    - Exists only to make the abstract class instantiable for testing
+    - File-scoped namespace `GroundUp.Tests.Unit.Api.TestHelpers`
+    - _Requirements: 15.8, 16.1_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add test infrastructure for Phase 3E — FrameworkReference, project ref, test helpers"
+
+- [x] 8. Write property-based tests for ToActionResult mapping
+  - [ ]* 8.1 Write property test for generic OperationResult-to-ActionResult status code preservation
+    - Create `tests/GroundUp.Tests.Unit/Api/BaseControllerPropertyTests.cs`
+    - **Property 1: Generic OperationResult-to-ActionResult status code preservation**
+    - For any status code in range 200–599, create an `OperationResult<ControllerTestDto>` with that StatusCode, call `GetById` on TestController with a mocked BaseService returning that result, extract the HTTP status code from the ActionResult, and assert it matches the input StatusCode
+    - Use `[Property(MaxTest = 100)]` attribute
+    - Use NSubstitute mock for `BaseService<ControllerTestDto>`
+    - Set `ControllerContext` with `DefaultHttpContext` on the TestController
+    - **Validates: Requirements 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 19.1**
+  - [ ]* 8.2 Write property test for non-generic OperationResult-to-ActionResult status code preservation
+    - **Property 2: Non-generic OperationResult-to-ActionResult status code preservation**
+    - For any status code in range 200–599, create an `OperationResult` with that StatusCode, call `Delete` on TestController with a mocked BaseService returning that result, extract the HTTP status code from the ActionResult, and assert it matches the input StatusCode
+    - Use `[Property(MaxTest = 100)]` attribute
+    - **Validates: Requirements 8.9, 19.2**
+  - Run `dotnet test` to verify all property tests pass
+  - Commit: "Add BaseController property-based tests for ToActionResult mapping (2 properties)"
+  - _Requirements: 19.1, 19.2, 19.3_
+
+- [x] 9. Write property-based test for CorrelationIdMiddleware
+  - [ ]* 9.1 Write property test for correlation ID header propagation
+    - Create `tests/GroundUp.Tests.Unit/Api/CorrelationIdMiddlewareTests.cs`
+    - **Property 3: Correlation ID header propagation**
+    - For any non-empty string value provided as the `X-Correlation-Id` request header, create a `DefaultHttpContext` with that header, invoke the middleware, and assert:
+      - `HttpContext.Items["CorrelationId"]` equals the input string
+      - Response header `X-Correlation-Id` equals the input string
+    - Use `[Property(MaxTest = 100)]` attribute
+    - Use `CorrelationIdMiddleware.HeaderName` constant for header name
+    - **Validates: Requirements 10.3, 10.5, 10.6, 20.1**
+  - Run `dotnet test` to verify property test passes
+  - Commit: "Add CorrelationIdMiddleware property-based test for header propagation"
+  - _Requirements: 20.1_
+
+- [x] 10. Write unit tests for CorrelationIdMiddleware
+  - [ ]* 10.1 Add unit tests to `tests/GroundUp.Tests.Unit/Api/CorrelationIdMiddlewareTests.cs`
+    - Write test: `InvokeAsync_RequestHasCorrelationIdHeader_UsesProvidedValue`
+      - Create `DefaultHttpContext` with `X-Correlation-Id` header set to a known value
+      - Invoke middleware, assert `HttpContext.Items["CorrelationId"]` equals the provided value
+      - _Requirements: 18.1_
+    - Write test: `InvokeAsync_RequestMissingCorrelationIdHeader_GeneratesNewGuid`
+      - Create `DefaultHttpContext` without the header
+      - Invoke middleware, assert `HttpContext.Items["CorrelationId"]` is a valid GUID string
+      - _Requirements: 18.2_
+    - Write test: `InvokeAsync_StoresCorrelationIdInHttpContextItems`
+      - Invoke middleware, assert `HttpContext.Items["CorrelationId"]` is not null and not empty
+      - _Requirements: 18.3_
+    - Write test: `InvokeAsync_AddsCorrelationIdToResponseHeaders`
+      - Invoke middleware, assert response headers contain `X-Correlation-Id` with the same value as `HttpContext.Items["CorrelationId"]`
+      - _Requirements: 18.4_
+    - Write test: `InvokeAsync_CallsNextDelegate`
+      - Track whether the next delegate was called using a boolean flag
+      - Invoke middleware, assert the flag is true
+      - _Requirements: 18.5_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add CorrelationIdMiddleware unit tests (5 tests)"
+  - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5_
+
+- [x] 11. Checkpoint — Verify middleware tests pass
+  - Ensure `dotnet test` passes with zero failures
+  - Ensure all CorrelationIdMiddleware tests are green (1 property + 5 unit)
+  - Ensure all existing tests still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 12. Write unit tests for ExceptionHandlingMiddleware
+  - [ ]* 12.1 Create `tests/GroundUp.Tests.Unit/Api/ExceptionHandlingMiddlewareTests.cs`
+    - Write test: `InvokeAsync_NotFoundExceptionThrown_ReturnsHttp404WithNotFoundErrorCode`
+      - Configure next delegate to throw `NotFoundException("Entity not found")`
+      - Set `HttpContext.Items["CorrelationId"]` to a known value
+      - Invoke middleware, assert response status code is 404, deserialize JSON body, assert `errorCode` is `"NOT_FOUND"` and `message` is `"Entity not found"`
+      - _Requirements: 17.1_
+    - Write test: `InvokeAsync_GroundUpExceptionThrown_ReturnsHttp500WithInternalErrorCode`
+      - Configure next delegate to throw `GroundUpException("Infrastructure failure")`
+      - Invoke middleware, assert response status code is 500, assert `errorCode` is `"INTERNAL_ERROR"` and `message` is `"Infrastructure failure"`
+      - _Requirements: 17.2_
+    - Write test: `InvokeAsync_GenericExceptionThrown_ReturnsHttp500WithGenericMessage`
+      - Configure next delegate to throw `InvalidOperationException("secret internal details")`
+      - Invoke middleware, assert response status code is 500, assert `message` is `"An unexpected error occurred"` and `errorCode` is `"INTERNAL_ERROR"`
+      - _Requirements: 17.3_
+    - Write test: `InvokeAsync_GenericExceptionThrown_DoesNotExposeRawExceptionMessage`
+      - Configure next delegate to throw `InvalidOperationException("secret internal details")`
+      - Invoke middleware, deserialize JSON body, assert `message` does NOT contain `"secret internal details"`
+      - _Requirements: 17.4_
+    - Write test: `InvokeAsync_ExceptionThrown_ResponseContainsCorrelationId`
+      - Set `HttpContext.Items["CorrelationId"]` to a known GUID string
+      - Configure next delegate to throw any exception
+      - Invoke middleware, deserialize JSON body, assert `correlationId` matches the known value
+      - _Requirements: 17.5_
+    - Write test: `InvokeAsync_ExceptionThrown_ResponseContentTypeIsApplicationJson`
+      - Configure next delegate to throw any exception
+      - Invoke middleware, assert `context.Response.ContentType` contains `"application/json"`
+      - _Requirements: 17.6_
+    - Write test: `InvokeAsync_NoExceptionThrown_CallsNextDelegate`
+      - Configure next delegate to complete successfully, track with boolean flag
+      - Invoke middleware, assert the flag is true
+      - _Requirements: 17.7_
+  - Use NSubstitute mock for `ILogger<ExceptionHandlingMiddleware>`
+  - Use `DefaultHttpContext` with a `MemoryStream` as `Response.Body` for reading the JSON response
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add ExceptionHandlingMiddleware unit tests (7 tests)"
+  - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7_
+
+- [x] 13. Write unit tests for BaseController OperationResult-to-ActionResult mapping
+  - [ ]* 13.1 Create `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs` and write ToActionResult mapping tests
+    - Write test: `ToActionResult_StatusCode200_ReturnsOkObjectResult`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 200
+      - Call `GetById`, assert result is `OkObjectResult`
+      - _Requirements: 15.1_
+    - Write test: `ToActionResult_StatusCode201_Returns201StatusCode`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 201
+      - Call `GetById`, assert result has status code 201
+      - _Requirements: 15.2_
+    - Write test: `ToActionResult_StatusCode400_ReturnsBadRequestObjectResult`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 400
+      - Call `GetById`, assert result is `BadRequestObjectResult`
+      - _Requirements: 15.3_
+    - Write test: `ToActionResult_StatusCode401_ReturnsUnauthorizedResult`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 401
+      - Call `GetById`, assert result is `UnauthorizedResult`
+      - _Requirements: 15.4_
+    - Write test: `ToActionResult_StatusCode403_Returns403StatusCode`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 403
+      - Call `GetById`, assert result has status code 403
+      - _Requirements: 15.5_
+    - Write test: `ToActionResult_StatusCode404_ReturnsNotFoundObjectResult`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 404
+      - Call `GetById`, assert result is `NotFoundObjectResult`
+      - _Requirements: 15.6_
+    - Write test: `ToActionResult_UnmappedStatusCode409_ReturnsObjectResultWithCorrectStatusCode`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 409
+      - Call `GetById`, assert result is `ObjectResult` with `StatusCode == 409`
+      - _Requirements: 15.7_
+  - Use NSubstitute mock for `BaseService<ControllerTestDto>`
+  - Set `ControllerContext` with `DefaultHttpContext` on the TestController
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseController ToActionResult mapping unit tests (7 tests)"
+  - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8_
+
+- [x] 14. Write unit tests for BaseController CRUD endpoints
+  - [ ]* 14.1 Add CRUD endpoint tests to `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs`
+    - Write test: `GetAll_ServiceReturnsSuccess_ReturnsOkWithPaginationHeaders`
+      - Configure mocked service to return successful `OperationResult<PaginatedData<ControllerTestDto>>` with known pagination values
+      - Call `GetAll`, assert result is Ok, assert response headers contain X-Total-Count, X-Page-Number, X-Page-Size, X-Total-Pages with correct values
+      - _Requirements: 16.1_
+    - Write test: `GetAll_ServiceReturnsFailed_DoesNotAddPaginationHeaders`
+      - Configure mocked service to return failed `OperationResult<PaginatedData<ControllerTestDto>>`
+      - Call `GetAll`, assert response headers do NOT contain pagination headers
+      - _Requirements: 16.2_
+    - Write test: `GetById_ServiceReturnsSuccess_ReturnsOk`
+      - Configure mocked service to return successful `OperationResult<ControllerTestDto>`
+      - Call `GetById`, assert result is `OkObjectResult`
+      - _Requirements: 16.3_
+    - Write test: `GetById_ServiceReturns404_ReturnsNotFound`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 404
+      - Call `GetById`, assert result is `NotFoundObjectResult`
+      - _Requirements: 16.4_
+    - Write test: `Create_ServiceReturns201_ReturnsCreatedAtAction`
+      - Configure mocked service to return successful `OperationResult<ControllerTestDto>` with StatusCode 201
+      - Call `Create`, assert result is `CreatedAtActionResult`
+      - _Requirements: 16.5_
+    - Write test: `Create_ServiceReturns400_ReturnsBadRequest`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 400
+      - Call `Create`, assert result is `BadRequestObjectResult`
+      - _Requirements: 16.6_
+    - Write test: `Update_ServiceReturnsSuccess_ReturnsOk`
+      - Configure mocked service to return successful `OperationResult<ControllerTestDto>`
+      - Call `Update`, assert result is `OkObjectResult`
+      - _Requirements: 16.7_
+    - Write test: `Update_ServiceReturns404_ReturnsNotFound`
+      - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 404
+      - Call `Update`, assert result is `NotFoundObjectResult`
+      - _Requirements: 16.8_
+    - Write test: `Delete_ServiceReturnsSuccess_ReturnsOk`
+      - Configure mocked service to return successful `OperationResult`
+      - Call `Delete`, assert result is `OkObjectResult`
+      - _Requirements: 16.9_
+    - Write test: `Delete_ServiceReturns404_ReturnsNotFound`
+      - Configure mocked service to return `OperationResult` with StatusCode 404
+      - Call `Delete`, assert result is `NotFoundObjectResult`
+      - _Requirements: 16.10_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseController CRUD endpoint unit tests (10 tests)"
+  - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6, 16.7, 16.8, 16.9, 16.10_
+
+- [x] 15. Checkpoint — Verify all tests pass
+  - Ensure `dotnet test` passes with zero failures
+  - Ensure all Phase 3E tests are green (3 property + ~29 unit)
+  - Ensure all existing tests from previous phases still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 16. Final verification — Full solution build and test
+  - Run `dotnet build groundup.sln` and verify zero errors
+  - Run `dotnet test` and verify all tests pass (existing tests + 3 property tests + ~29 unit tests)
+  - Verify file-scoped namespaces, nullable reference types, XML documentation, sealed/abstract modifiers, one-class-per-file across all new files
+  - Ensure all tests pass, ask the user if questions arise.
+  - Commit: "Phase 3E complete — all tests green"
+  - _Requirements: 21.1, 21.2, 22.1, 22.2, 22.3, 22.4, 22.5, 22.6, 22.7, 22.8, 22.9_
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation after each major component
+- Property tests (tasks 8.1, 8.2, 9.1) validate the 3 correctness properties from the design document using FsCheck.Xunit
+- Unit tests (~29 total): BaseControllerTests (17 — 7 ToActionResult mapping + 10 CRUD endpoints), ExceptionHandlingMiddlewareTests (7), CorrelationIdMiddlewareTests (5), BaseControllerPropertyTests (2 property), CorrelationIdMiddlewareTests (1 property)
+- All controller tests use NSubstitute mock for `BaseService<ControllerTestDto>` — BaseService is abstract so NSubstitute can substitute it
+- Middleware tests use `DefaultHttpContext` (real ASP.NET Core implementation, not a mock) for fully functional HttpContext with Request, Response, Items, and Headers
+- ExceptionHandlingMiddleware tests use a `MemoryStream` as `Response.Body` to read the JSON response
+- Test project needs `FrameworkReference` to `Microsoft.AspNetCore.App` and project reference to `GroundUp.Api`
+- Middleware is implemented before BaseController because CorrelationIdMiddleware's `HeaderName` constant is referenced by ExceptionHandlingMiddleware tests
+- Git workflow: feature branch `phase-3e/api-layer`, commit after each compilable step, small commits with clear messages
