@@ -157,6 +157,16 @@ Events → Core only
 10. OperationResult with static factory methods
 11. ServiceCollectionExtensions pattern: AddGroundUp{Module}()
 
+## Code Review Before Commit
+
+Before committing any production code or test code, perform a self-review:
+- Check for potential bugs, edge cases, or null reference issues
+- Verify error handling is consistent (OperationResult for business logic, let unexpected exceptions propagate)
+- Confirm naming conventions are followed (file-scoped namespaces, XML docs, sealed/abstract where appropriate)
+- Look for missing test coverage or scenarios not accounted for
+- Identify any improvements to the implementation — better patterns, cleaner code, or missed optimizations
+- If issues are found, fix them before committing. If trade-offs exist, note them to the user.
+
 ## Phase Workflow
 
 For each new build phase:
