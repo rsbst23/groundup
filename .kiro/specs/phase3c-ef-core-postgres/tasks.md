@@ -9,10 +9,10 @@ All code is C# targeting .NET 8, matching the design document. No property-based
 ## Tasks
 
 - [-] 1. Create feature branch and add NuGet packages
-  - [-] 1.1 Create and checkout branch `phase-3c/ef-core-postgres` from `main`
+  - [x] 1.1 Create and checkout branch `phase-3c/ef-core-postgres` from `main`
     - Run `dotnet build groundup.sln` to verify clean starting point
     - _Requirements: 14.1_
-  - [ ] 1.2 Add NuGet package references to `src/GroundUp.Data.Postgres/GroundUp.Data.Postgres.csproj`
+  - [x] 1.2 Add NuGet package references to `src/GroundUp.Data.Postgres/GroundUp.Data.Postgres.csproj`
     - Add `UUIDNext` package reference
     - Add `Microsoft.Extensions.Hosting.Abstractions` Version `8.*` package reference
     - Retain existing `Microsoft.EntityFrameworkCore` and `Npgsql.EntityFrameworkCore.PostgreSQL` references
@@ -22,7 +22,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
 - [ ] 2. Implement UuidV7ValueGenerator
-  - [ ] 2.1 Create `UuidV7ValueGenerator` in `src/GroundUp.Data.Postgres/UuidV7ValueGenerator.cs`
+  - [x] 2.1 Create `UuidV7ValueGenerator` in `src/GroundUp.Data.Postgres/UuidV7ValueGenerator.cs`
     - Define in `GroundUp.Data.Postgres` namespace with file-scoped namespace
     - Sealed class extending `Microsoft.EntityFrameworkCore.ChangeTracking.ValueGenerator<Guid>`
     - Override `GeneratesTemporaryValues` to return `false`
@@ -33,7 +33,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - _Requirements: 4.1, 4.2, 15.1, 15.2, 15.5, 15.6, 15.7_
 
 - [ ] 3. Implement GroundUpDbContext
-  - [ ] 3.1 Create `GroundUpDbContext` in `src/GroundUp.Data.Postgres/GroundUpDbContext.cs`
+  - [x] 3.1 Create `GroundUpDbContext` in `src/GroundUp.Data.Postgres/GroundUpDbContext.cs`
     - Define in `GroundUp.Data.Postgres` namespace with file-scoped namespace
     - Abstract class extending `Microsoft.EntityFrameworkCore.DbContext`
     - Constructor: accept `DbContextOptions options` (not `DbContextOptions<GroundUpDbContext>`) and pass to base
@@ -50,14 +50,14 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - Commit: "Add abstract GroundUpDbContext with UUID v7 generation and soft delete query filters"
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 4.1, 4.3, 4.4, 5.1, 5.2, 15.1, 15.2, 15.4, 15.6, 15.7_
 
-- [ ] 4. Checkpoint — Verify DbContext and value generator compile
+- [x] 4. Checkpoint — Verify DbContext and value generator compile
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Ensure `GroundUpDbContext.cs` and `UuidV7ValueGenerator.cs` exist in `src/GroundUp.Data.Postgres/`
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. Implement interceptors
-  - [ ] 5.1 Create `AuditableInterceptor` in `src/GroundUp.Data.Postgres/Interceptors/AuditableInterceptor.cs`
+  - [x] 5.1 Create `AuditableInterceptor` in `src/GroundUp.Data.Postgres/Interceptors/AuditableInterceptor.cs`
     - Define in `GroundUp.Data.Postgres.Interceptors` namespace with file-scoped namespace
     - Sealed class extending `Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor`
     - Constructor: accept `IServiceProvider serviceProvider`, store in private readonly field
@@ -74,7 +74,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "Add AuditableInterceptor for automatic audit field population"
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 15.1, 15.2, 15.5, 15.6, 15.7_
-  - [ ] 5.2 Create `SoftDeleteInterceptor` in `src/GroundUp.Data.Postgres/Interceptors/SoftDeleteInterceptor.cs`
+  - [x] 5.2 Create `SoftDeleteInterceptor` in `src/GroundUp.Data.Postgres/Interceptors/SoftDeleteInterceptor.cs`
     - Define in `GroundUp.Data.Postgres.Interceptors` namespace with file-scoped namespace
     - Sealed class extending `SaveChangesInterceptor`
     - Constructor: accept `IServiceProvider serviceProvider`, store in private readonly field
@@ -91,7 +91,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 15.1, 15.2, 15.5, 15.6, 15.7_
 
 - [ ] 6. Implement PostgresErrorHelper
-  - [ ] 6.1 Create `PostgresErrorHelper` in `src/GroundUp.Data.Postgres/PostgresErrorHelper.cs`
+  - [x] 6.1 Create `PostgresErrorHelper` in `src/GroundUp.Data.Postgres/PostgresErrorHelper.cs`
     - Define in `GroundUp.Data.Postgres` namespace with file-scoped namespace
     - Static sealed class (use `public static class`)
     - Static method `IsUniqueConstraintViolation(DbUpdateException? exception)` returning `bool`:
@@ -103,7 +103,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 15.1, 15.2, 15.5, 15.6, 15.7_
 
 - [ ] 7. Implement DataSeederRunner
-  - [ ] 7.1 Create `DataSeederRunner` in `src/GroundUp.Data.Postgres/DataSeederRunner.cs`
+  - [x] 7.1 Create `DataSeederRunner` in `src/GroundUp.Data.Postgres/DataSeederRunner.cs`
     - Define in `GroundUp.Data.Postgres` namespace with file-scoped namespace
     - Sealed class implementing `Microsoft.Extensions.Hosting.IHostedService`
     - Constructor: accept `IServiceProvider serviceProvider` and `ILogger<DataSeederRunner> logger`, store in private readonly fields
@@ -120,7 +120,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 15.1, 15.2, 15.5, 15.6, 15.7_
 
 - [ ] 8. Implement AddGroundUpPostgres extension method
-  - [ ] 8.1 Create `PostgresServiceCollectionExtensions` in `src/GroundUp.Data.Postgres/PostgresServiceCollectionExtensions.cs`
+  - [x] 8.1 Create `PostgresServiceCollectionExtensions` in `src/GroundUp.Data.Postgres/PostgresServiceCollectionExtensions.cs`
     - Define in `GroundUp.Data.Postgres` namespace with file-scoped namespace
     - Static class
     - Static extension method `AddGroundUpPostgres<TContext>(this IServiceCollection services, string connectionString)` where `TContext : GroundUpDbContext`:
@@ -134,7 +134,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
     - Commit: "Add AddGroundUpPostgres extension method for DI registration"
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 15.1, 15.2, 15.5, 15.6, 15.7_
 
-- [ ] 9. Checkpoint — Verify all production code compiles
+- [x] 9. Checkpoint — Verify all production code compiles
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Verify all 7 source files exist in `src/GroundUp.Data.Postgres/`:
     - `GroundUpDbContext.cs`, `UuidV7ValueGenerator.cs`, `PostgresErrorHelper.cs`, `DataSeederRunner.cs`, `PostgresServiceCollectionExtensions.cs`
@@ -142,28 +142,28 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. Add test project references
-  - [ ] 10.1 Update `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+- [x] 10. Add test project references
+  - [x] 10.1 Update `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
     - Add project reference to `..\..\src\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj`
     - Add package reference to `Npgsql` (for constructing `PostgresException` in tests)
     - Run `dotnet build groundup.sln` to verify compilation
     - Commit: "Add Data.Postgres project ref and Npgsql package ref to test project"
     - _Requirements: 14.1_
 
-- [ ] 11. Create test helpers for Phase 3C
-  - [ ] 11.1 Create `AuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/AuditableTestEntity.cs`
+- [x] 11. Create test helpers for Phase 3C
+  - [x] 11.1 Create `AuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/AuditableTestEntity.cs`
     - Extend `BaseEntity`, implement `IAuditable`
     - Properties: `string Name`, `DateTime CreatedAt`, `string? CreatedBy`, `DateTime? UpdatedAt`, `string? UpdatedBy`
     - _Requirements: 10.5_
-  - [ ] 11.2 Create `SoftDeletableAuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/SoftDeletableAuditableTestEntity.cs`
+  - [x] 11.2 Create `SoftDeletableAuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/SoftDeletableAuditableTestEntity.cs`
     - Extend `BaseEntity`, implement `IAuditable` and `ISoftDeletable`
     - Properties: `string Name`, all IAuditable properties, all ISoftDeletable properties
     - _Requirements: 10.5, 11.4_
-  - [ ] 11.3 Create `NonAuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/NonAuditableTestEntity.cs`
+  - [x] 11.3 Create `NonAuditableTestEntity` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/NonAuditableTestEntity.cs`
     - Extend `BaseEntity` only (does NOT implement IAuditable or ISoftDeletable)
     - Properties: `string Name`
     - _Requirements: 10.3_
-  - [ ] 11.4 Create `TestGroundUpDbContext` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/TestGroundUpDbContext.cs`
+  - [x] 11.4 Create `TestGroundUpDbContext` in `tests/GroundUp.Tests.Unit/Data/Postgres/TestHelpers/TestGroundUpDbContext.cs`
     - Extend `GroundUpDbContext` (not plain `DbContext`)
     - Constructor: accept `DbContextOptions<TestGroundUpDbContext> options`, pass to base
     - DbSet properties for `AuditableTestEntity`, `SoftDeletableAuditableTestEntity`, `NonAuditableTestEntity`
@@ -179,8 +179,8 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Write unit tests for AuditableInterceptor
-  - [ ]* 13.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/AuditableInterceptorTests.cs`
+- [x] 13. Write unit tests for AuditableInterceptor
+  - [x]* 13.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/AuditableInterceptorTests.cs`
     - Write test: `SavingChangesAsync_AddedAuditableEntity_SetsCreatedAtAndCreatedBy`
       - Create `TestGroundUpDbContext` with InMemory provider, add `AuditableTestEntity` in Added state
       - Mock `IServiceProvider` to return scope with `ICurrentUser` (NSubstitute)
@@ -200,8 +200,8 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Run `dotnet test` to verify all tests pass
   - Commit: "Add AuditableInterceptor unit tests (4 tests)"
 
-- [ ] 14. Write unit tests for SoftDeleteInterceptor
-  - [ ]* 14.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/SoftDeleteInterceptorTests.cs`
+- [x] 14. Write unit tests for SoftDeleteInterceptor
+  - [x]* 14.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/SoftDeleteInterceptorTests.cs`
     - Write test: `SavingChangesAsync_DeletedSoftDeletableEntity_ConvertsToModifiedAndSetsFields`
       - Add `SoftDeletableAuditableTestEntity`, save, then mark as Deleted, invoke interceptor
       - Assert state changed to Modified, `IsDeleted` is true, `DeletedAt` is within 1 second of `DateTime.UtcNow`
@@ -219,8 +219,8 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Run `dotnet test` to verify all tests pass
   - Commit: "Add SoftDeleteInterceptor unit tests (4 tests)"
 
-- [ ] 15. Write unit tests for PostgresErrorHelper
-  - [ ]* 15.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/PostgresErrorHelperTests.cs`
+- [x] 15. Write unit tests for PostgresErrorHelper
+  - [x]* 15.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/PostgresErrorHelperTests.cs`
     - Write test: `IsUniqueConstraintViolation_PostgresException23505_ReturnsTrue`
       - Construct `PostgresException` with SqlState "23505" (via Npgsql package — use reflection or internal constructor)
       - Wrap in `DbUpdateException`, call `IsUniqueConstraintViolation`, assert true
@@ -235,8 +235,8 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Run `dotnet test` to verify all tests pass
   - Commit: "Add PostgresErrorHelper unit tests (4 tests)"
 
-- [ ] 16. Write unit tests for DataSeederRunner
-  - [ ]* 16.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/DataSeederRunnerTests.cs`
+- [x] 16. Write unit tests for DataSeederRunner
+  - [x]* 16.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/DataSeederRunnerTests.cs`
     - Write test: `StartAsync_MultipleSeeders_ExecutesInOrderAscending`
       - Create mock `IDataSeeder` implementations with Order values 3, 1, 2
       - Register in DI, create `DataSeederRunner`, call `StartAsync`
@@ -254,8 +254,8 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Run `dotnet test` to verify all tests pass
   - Commit: "Add DataSeederRunner unit tests (4 tests)"
 
-- [ ] 17. Write unit tests for GroundUpDbContext
-  - [ ]* 17.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/GroundUpDbContextTests.cs`
+- [x] 17. Write unit tests for GroundUpDbContext
+  - [x]* 17.1 Create `tests/GroundUp.Tests.Unit/Data/Postgres/GroundUpDbContextTests.cs`
     - Write test: `OnModelCreating_BaseEntity_ConfiguresUuidV7ValueGenerator`
       - Create `TestGroundUpDbContext`, inspect model for `AuditableTestEntity.Id` property
       - Assert value generator type is `UuidV7ValueGenerator`
@@ -274,7 +274,7 @@ All code is C# targeting .NET 8, matching the design document. No property-based
   - Run `dotnet test` to verify all tests pass
   - Commit: "Add GroundUpDbContext unit tests (5 tests)"
 
-- [ ] 18. Final checkpoint — Full solution build and test verification
+- [-] 18. Final checkpoint — Full solution build and test verification
   - Run `dotnet build groundup.sln` and verify zero errors
   - Run `dotnet test` and verify all tests pass (existing tests + 21 new Phase 3C tests)
   - Verify file-scoped namespaces, nullable reference types, XML documentation, sealed modifiers, one-class-per-file across all new files
