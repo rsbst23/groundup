@@ -1,0 +1,278 @@
+# Implementation Plan: Phase 3D — Service Layer
+
+## Overview
+
+Build `BaseService<TDto>` and `ServicesServiceCollectionExtensions` in GroundUp.Services — the business logic orchestration layer wrapping repositories with a Validate → Persist → Publish pipeline. Implementation follows: feature branch → NuGet package → production code (BaseService, DI extension) → test helpers → property-based tests (2 FsCheck properties) → unit tests (31 tests across 3 classes) → final verification. Each task is a small compilable increment with a commit.
+
+All code is C# targeting .NET 8, matching the design document.
+
+## Tasks
+
+- [-] 1. Create feature branch and add NuGet package
+  - [ ] 1.1 Create and checkout branch `phase-3d/service-layer` from `main`
+    - Run `dotnet build groundup.sln` to verify clean starting point
+    - _Requirements: 17.1_
+  - [ ] 1.2 Add NuGet package reference to `src/GroundUp.Services/GroundUp.Services.csproj`
+    - Add `Microsoft.Extensions.DependencyInjection.Abstractions` Version `8.*` package reference
+    - Retain existing `FluentValidation` package reference
+    - Retain existing project references to Core, Data.Abstractions, and Events
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add DependencyInjection.Abstractions NuGet package to Services"
+    - _Requirements: 10.1, 10.2, 10.3, 10.4_
+
+- [ ] 2. Implement BaseService class
+  - [ ] 2.1 Create `BaseService<TDto>` in `src/GroundUp.Services/BaseService.cs`
+    - Define in `GroundUp.Services` namespace with file-scoped namespace
+    - Abstract class with generic constraint `where TDto : class`
+    - Do NOT use the `sealed` modifier — designed for inheritance by derived services
+    - Constructor: accept `IBaseRepository<TDto> repository`, `IEventBus eventBus`, `IValidator<TDto>? validator = null` — store in protected properties / private field
+    - Expose `IBaseRepository<TDto>` as `protected IBaseRepository<TDto> Repository { get; }`
+    - Expose `IEventBus` as `protected IEventBus EventBus { get; }`
+    - Store `IValidator<TDto>?` in `private readonly IValidator<TDto>? _validator` field
+    - Implement `GetAllAsync(FilterParams, CancellationToken)` — public virtual, delegate directly to `Repository.GetAllAsync`
+    - Implement `GetByIdAsync(Guid, CancellationToken)` — public virtual, delegate directly to `Repository.GetByIdAsync`
+    - Implement `AddAsync(TDto, CancellationToken)` — public virtual, validate if validator present → on failure return `OperationResult<TDto>.BadRequest("Validation failed", errors)` → on success call `Repository.AddAsync` → if repo succeeds publish `EntityCreatedEvent<TDto>` via `EventBus.PublishAsync` in try/catch → return result
+    - Implement `UpdateAsync(Guid, TDto, CancellationToken)` — public virtual, validate if validator present → on failure return BadRequest → on success call `Repository.UpdateAsync` → if repo succeeds publish `EntityUpdatedEvent<TDto>` in try/catch → return result
+    - Implement `DeleteAsync(Guid, CancellationToken)` — public virtual, call `Repository.DeleteAsync` → if repo succeeds publish `EntityDeletedEvent<TDto>` with `EntityId = id` in try/catch → return result
+    - All event publishing try/catch blocks use bare `catch (Exception)` — fire-and-forget, swallow all exceptions
+    - Add XML documentation comments on the class, constructor, and all public and protected members
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add BaseService with validate-persist-publish pipeline"
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
+
+- [ ] 3. Implement ServicesServiceCollectionExtensions
+  - [ ] 3.1 Create `ServicesServiceCollectionExtensions` in `src/GroundUp.Services/ServicesServiceCollectionExtensions.cs`
+    - Define in `GroundUp.Services` namespace with file-scoped namespace
+    - Static class
+    - Static extension method `AddGroundUpServices(this IServiceCollection services, Assembly assembly)` returning `IServiceCollection`
+    - Call `services.AddValidatorsFromAssembly(assembly, ServiceLifetime.Scoped)` — uses FluentValidation's built-in assembly scanning
+    - Return `services` for method chaining
+    - Add XML documentation comments on the class and the method
+    - Run `dotnet build groundup.sln` to verify compilation
+    - Commit: "Add AddGroundUpServices DI extension for validator registration"
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 18.1, 18.5, 18.6_
+
+- [ ] 4. Checkpoint — Verify all production code compiles
+  - Ensure `dotnet build groundup.sln` passes with zero errors
+  - Verify `BaseService.cs` and `ServicesServiceCollectionExtensions.cs` exist in `src/GroundUp.Services/`
+  - Ensure all existing tests still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 5. Add test project reference and create test helpers
+  - [ ] 5.1 Add project reference to `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+    - Add `<ProjectReference Include="..\..\src\GroundUp.Services\GroundUp.Services.csproj" />`
+    - Run `dotnet build groundup.sln` to verify compilation
+    - _Requirements: 17.1_
+  - [ ] 5.2 Create `ServiceTestDto` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDto.cs`
+    - `public record ServiceTestDto(Guid Id, string Name)` — minimal DTO for testing BaseService
+    - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
+    - _Requirements: 11.9, 12.8_
+  - [ ] 5.3 Create `TestService` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/TestService.cs`
+    - Concrete `BaseService<ServiceTestDto>` that calls the base constructor
+    - Constructor: accept `IBaseRepository<ServiceTestDto> repository`, `IEventBus eventBus`, `IValidator<ServiceTestDto>? validator = null`
+    - Exists only to make the abstract class instantiable for testing
+    - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
+    - _Requirements: 11.9, 12.8_
+  - [ ] 5.4 Create `ServiceTestDtoValidator` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDtoValidator.cs`
+    - Extend `AbstractValidator<ServiceTestDto>`
+    - Constructor: add rule `RuleFor(x => x.Name).NotEmpty()` — simple rule for DI registration tests
+    - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
+    - _Requirements: 15.1_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add Services project ref and test helpers for Phase 3D"
+
+- [ ] 6. Checkpoint — Verify test helpers compile
+  - Ensure `dotnet build groundup.sln` passes with zero errors
+  - Ensure all 3 test helper files exist in `tests/GroundUp.Tests.Unit/Services/TestHelpers/`
+  - Ensure all existing tests still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 7. Write property-based tests for validation error mapping
+  - [ ]* 7.1 Write property test for AddAsync validation error mapping
+    - Create `tests/GroundUp.Tests.Unit/Services/BaseServicePropertyTests.cs`
+    - **Property 1: AddAsync validation error mapping is lossless and order-preserving**
+    - For any non-empty list of validation error messages, configure NSubstitute `IValidator<ServiceTestDto>` mock to return a `ValidationResult` with `ValidationFailure` objects carrying those messages
+    - Call `AddAsync`, assert returned `OperationResult` has `Success == false`, `StatusCode == 400`, `Message == "Validation failed"`, and `Errors` contains exactly the same messages in the same order
+    - Use `[Property(MaxTest = 100)]` attribute
+    - Use NSubstitute mocks for `IBaseRepository<ServiceTestDto>`, `IEventBus`, and `IValidator<ServiceTestDto>`
+    - **Validates: Requirements 4.3, 7.1, 7.2, 7.3, 7.4, 16.1**
+  - [ ]* 7.2 Write property test for UpdateAsync validation error mapping
+    - **Property 2: UpdateAsync validation error mapping is lossless and order-preserving**
+    - Same setup as Property 1 but calls `UpdateAsync` instead
+    - Assert same invariants on the returned `OperationResult`
+    - **Validates: Requirements 5.3, 7.1, 7.2, 7.3, 7.4, 16.2**
+  - Run `dotnet test` to verify all property tests pass
+  - Commit: "Add BaseService property-based tests for validation error mapping (2 properties)"
+  - _Requirements: 16.1, 16.2, 16.3_
+
+- [ ] 8. Write unit tests for BaseService AddAsync
+  - [ ]* 8.1 Create `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs` and write AddAsync tests
+    - Write test: `AddAsync_ValidationPassesAndRepoSucceeds_ReturnsOkWithDto`
+      - Configure validator to return valid result, repo to return `OperationResult<ServiceTestDto>.Ok(dto)`
+      - Assert result is successful with correct DTO
+      - _Requirements: 11.1_
+    - Write test: `AddAsync_RepoSucceeds_PublishesEntityCreatedEvent`
+      - Configure validator valid, repo success
+      - Assert `EventBus.PublishAsync` called with `EntityCreatedEvent<ServiceTestDto>` containing the result DTO
+      - _Requirements: 11.2_
+    - Write test: `AddAsync_ValidationFails_ReturnsBadRequestWithErrors`
+      - Configure validator to return failures with specific error messages
+      - Assert result has `Success == false`, `StatusCode == 400`, errors match
+      - _Requirements: 11.3_
+    - Write test: `AddAsync_ValidationFails_DoesNotCallRepository`
+      - Configure validator to fail
+      - Assert `Repository.AddAsync` was NOT called
+      - _Requirements: 11.4_
+    - Write test: `AddAsync_ValidationFails_DoesNotPublishEvent`
+      - Configure validator to fail
+      - Assert `EventBus.PublishAsync` was NOT called
+      - _Requirements: 11.5_
+    - Write test: `AddAsync_NoValidator_SkipsValidationAndCallsRepo`
+      - Create `TestService` with `validator: null`, configure repo success
+      - Assert repo was called and result is successful
+      - _Requirements: 11.6_
+    - Write test: `AddAsync_RepoFails_DoesNotPublishEvent`
+      - Configure validator valid, repo to return a failed `OperationResult`
+      - Assert `EventBus.PublishAsync` was NOT called
+      - _Requirements: 11.7_
+    - Write test: `AddAsync_EventBusThrows_ReturnsSuccessfulResult`
+      - Configure validator valid, repo success, `EventBus.PublishAsync` to throw `InvalidOperationException`
+      - Assert result is still successful
+      - _Requirements: 11.8_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseService AddAsync unit tests (8 tests)"
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9_
+
+- [ ] 9. Write unit tests for BaseService UpdateAsync
+  - [ ]* 9.1 Add UpdateAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+    - Write test: `UpdateAsync_ValidationPassesAndRepoSucceeds_ReturnsOkWithDto`
+      - Configure validator valid, repo to return `OperationResult<ServiceTestDto>.Ok(dto)`
+      - Assert result is successful with correct DTO
+      - _Requirements: 12.1_
+    - Write test: `UpdateAsync_RepoSucceeds_PublishesEntityUpdatedEvent`
+      - Configure validator valid, repo success
+      - Assert `EventBus.PublishAsync` called with `EntityUpdatedEvent<ServiceTestDto>` containing the result DTO
+      - _Requirements: 12.2_
+    - Write test: `UpdateAsync_ValidationFails_ReturnsBadRequestWithErrors`
+      - Configure validator to return failures
+      - Assert result has `Success == false`, `StatusCode == 400`, errors match
+      - _Requirements: 12.3_
+    - Write test: `UpdateAsync_ValidationFails_DoesNotCallRepository`
+      - Configure validator to fail
+      - Assert `Repository.UpdateAsync` was NOT called
+      - _Requirements: 12.4_
+    - Write test: `UpdateAsync_ValidationFails_DoesNotPublishEvent`
+      - Configure validator to fail
+      - Assert `EventBus.PublishAsync` was NOT called
+      - _Requirements: 12.5_
+    - Write test: `UpdateAsync_NoValidator_SkipsValidationAndCallsRepo`
+      - Create `TestService` with `validator: null`, configure repo success
+      - Assert repo was called and result is successful
+      - _Requirements: 12.6_
+    - Write test: `UpdateAsync_RepoFails_DoesNotPublishEvent`
+      - Configure validator valid, repo to return a failed `OperationResult`
+      - Assert `EventBus.PublishAsync` was NOT called
+      - _Requirements: 12.7_
+    - Write test: `UpdateAsync_EventBusThrows_ReturnsSuccessfulResult`
+      - Configure validator valid, repo success, `EventBus.PublishAsync` to throw `InvalidOperationException`
+      - Assert result is still successful
+      - _Requirements: 12.8_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseService UpdateAsync unit tests (8 tests)"
+  - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
+
+- [ ] 10. Write unit tests for BaseService DeleteAsync
+  - [ ]* 10.1 Add DeleteAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+    - Write test: `DeleteAsync_RepoSucceeds_ReturnsOk`
+      - Configure repo to return `OperationResult.Ok()`
+      - Assert result is successful
+      - _Requirements: 13.1_
+    - Write test: `DeleteAsync_RepoSucceeds_PublishesEntityDeletedEventWithCorrectId`
+      - Configure repo success
+      - Assert `EventBus.PublishAsync` called with `EntityDeletedEvent<ServiceTestDto>` where `EntityId` matches the Guid passed to DeleteAsync
+      - _Requirements: 13.2_
+    - Write test: `DeleteAsync_RepoFails_DoesNotPublishEvent`
+      - Configure repo to return a failed `OperationResult`
+      - Assert `EventBus.PublishAsync` was NOT called
+      - _Requirements: 13.3_
+    - Write test: `DeleteAsync_RepoReturnsNotFound_ReturnsNotFound`
+      - Configure repo to return `OperationResult.NotFound()`
+      - Assert result has `Success == false` and appropriate NotFound status
+      - _Requirements: 13.4_
+    - Write test: `DeleteAsync_EventBusThrows_ReturnsSuccessfulResult`
+      - Configure repo success, `EventBus.PublishAsync` to throw `InvalidOperationException`
+      - Assert result is still successful
+      - _Requirements: 13.5_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseService DeleteAsync unit tests (5 tests)"
+  - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
+
+- [ ] 11. Write unit tests for BaseService read operations
+  - [ ]* 11.1 Add read operation tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+    - Write test: `GetAllAsync_ReturnsRepositoryResultUnchanged`
+      - Configure repo to return a specific `OperationResult<PaginatedData<ServiceTestDto>>`
+      - Assert returned result is the exact same object reference
+      - _Requirements: 14.1_
+    - Write test: `GetAllAsync_DoesNotInvokeValidator`
+      - Call `GetAllAsync`, assert validator mock received no calls
+      - _Requirements: 14.2_
+    - Write test: `GetAllAsync_DoesNotInvokeEventBus`
+      - Call `GetAllAsync`, assert event bus mock received no calls
+      - _Requirements: 14.3_
+    - Write test: `GetByIdAsync_ReturnsRepositoryResultUnchanged`
+      - Configure repo to return a specific `OperationResult<ServiceTestDto>`
+      - Assert returned result is the exact same object reference
+      - _Requirements: 14.4_
+    - Write test: `GetByIdAsync_DoesNotInvokeValidator`
+      - Call `GetByIdAsync`, assert validator mock received no calls
+      - _Requirements: 14.5_
+    - Write test: `GetByIdAsync_DoesNotInvokeEventBus`
+      - Call `GetByIdAsync`, assert event bus mock received no calls
+      - _Requirements: 14.6_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add BaseService read operation unit tests (6 tests)"
+  - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6_
+
+- [ ] 12. Checkpoint — Verify all BaseService tests pass
+  - Ensure `dotnet test` passes with zero failures
+  - Ensure all 29 BaseService tests are green (2 property + 8 AddAsync + 8 UpdateAsync + 5 DeleteAsync + 6 reads)
+  - Ensure all existing tests still pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 13. Write unit tests for AddGroundUpServices extension method
+  - [ ]* 13.1 Create `tests/GroundUp.Tests.Unit/Services/ServicesServiceCollectionExtensionsTests.cs`
+    - Write test: `AddGroundUpServices_RegistersValidatorsFromAssembly`
+      - Create `ServiceCollection`, call `AddGroundUpServices` with the test assembly containing `ServiceTestDtoValidator`
+      - Build `ServiceProvider`, resolve `IValidator<ServiceTestDto>`, assert it is not null and is of type `ServiceTestDtoValidator`
+      - _Requirements: 15.1_
+    - Write test: `AddGroundUpServices_ReturnsServiceCollectionForChaining`
+      - Call `AddGroundUpServices`, assert returned object is the same `IServiceCollection` instance
+      - _Requirements: 15.2_
+    - Write test: `AddGroundUpServices_NoValidatorsInAssembly_CompletesWithoutError`
+      - Call `AddGroundUpServices` with an assembly that has no validators (e.g., `typeof(object).Assembly`)
+      - Assert no exception thrown and no `IValidator` services registered
+      - _Requirements: 15.3_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add ServicesServiceCollectionExtensions unit tests (3 tests)"
+  - _Requirements: 15.1, 15.2, 15.3_
+
+- [ ] 14. Final checkpoint — Full solution build and test verification
+  - Run `dotnet build groundup.sln` and verify zero errors
+  - Run `dotnet test` and verify all tests pass (existing tests + 2 property tests + 31 unit tests)
+  - Verify file-scoped namespaces, nullable reference types, XML documentation, one-class-per-file across all new files
+  - Ensure all tests pass, ask the user if questions arise.
+  - Commit: "Phase 3D complete — all tests green"
+  - _Requirements: 17.1, 17.2, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation after each major component
+- Property tests (tasks 7.1–7.2) validate the 2 correctness properties from the design document using FsCheck.Xunit
+- Unit tests (31 total): BaseServiceTests (27 — AddAsync 8, UpdateAsync 8, DeleteAsync 5, reads 6), ServicesServiceCollectionExtensionsTests (3), BaseServicePropertyTests (2 property)
+- All tests use NSubstitute mocks — no database involved since BaseService interacts with IBaseRepository<TDto> interface
+- IValidator<ServiceTestDto> is mocked via NSubstitute for most tests; the real ServiceTestDtoValidator is only used in DI registration tests
+- Event publishing try/catch uses bare `catch (Exception)` — intentional fire-and-forget design
+- Git workflow: commit after each compilable step, small commits with clear messages
+- Test project needs explicit project reference to GroundUp.Services (not available via transitive references)
