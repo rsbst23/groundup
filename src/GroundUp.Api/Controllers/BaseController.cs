@@ -7,11 +7,14 @@ namespace GroundUp.Api.Controllers;
 
 /// <summary>
 /// Abstract base controller wrapping <see cref="BaseService{TDto}"/> with standard
-/// CRUD endpoints. Controllers are thin HTTP adapters — zero business logic,
+/// CRUD methods. Controllers are thin HTTP adapters — zero business logic,
 /// zero security checks. All operations delegate to the service layer.
 /// <para>
-/// All public methods are virtual so derived controllers can override specific
-/// endpoints while inheriting the default pipeline for others.
+/// HTTP method attributes are intentionally omitted from the base class.
+/// Derived controllers add <c>[HttpGet]</c>, <c>[HttpPost]</c>, etc. on the
+/// methods they want to expose. For simple entities, one-line overrides are
+/// sufficient. For complex entities, controllers can skip base methods entirely
+/// and define custom endpoints with different DTO types.
 /// </para>
 /// </summary>
 /// <typeparam name="TDto">The DTO type exposed to API consumers. Must be a reference type.</typeparam>
@@ -37,10 +40,12 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
     /// <summary>
     /// Retrieves a paginated, filtered, and sorted list of DTOs.
     /// Adds pagination metadata to response headers on success.
+    /// <para>
+    /// Derived controllers must apply <c>[HttpGet]</c> to expose this endpoint.
+    /// </para>
     /// </summary>
     /// <param name="filterParams">Filtering, sorting, and pagination parameters from query string.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpGet]
     public virtual async Task<ActionResult<OperationResult<PaginatedData<TDto>>>> GetAll(
         [FromQuery] FilterParams filterParams,
         CancellationToken cancellationToken = default)
@@ -60,10 +65,12 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
 
     /// <summary>
     /// Retrieves a single DTO by its unique identifier.
+    /// <para>
+    /// Derived controllers must apply <c>[HttpGet("{id}")]</c> to expose this endpoint.
+    /// </para>
     /// </summary>
     /// <param name="id">The unique identifier of the entity.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpGet("{id}")]
     public virtual async Task<ActionResult<OperationResult<TDto>>> GetById(
         Guid id,
         CancellationToken cancellationToken = default)
@@ -75,10 +82,12 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
     /// <summary>
     /// Creates a new resource from the provided DTO.
     /// Returns 201 Created with a Location header on success.
+    /// <para>
+    /// Derived controllers must apply <c>[HttpPost]</c> to expose this endpoint.
+    /// </para>
     /// </summary>
     /// <param name="dto">The DTO containing the data to create.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpPost]
     public virtual async Task<ActionResult<OperationResult<TDto>>> Create(
         [FromBody] TDto dto,
         CancellationToken cancellationToken = default)
@@ -93,11 +102,13 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
 
     /// <summary>
     /// Updates an existing resource by its unique identifier.
+    /// <para>
+    /// Derived controllers must apply <c>[HttpPut("{id}")]</c> to expose this endpoint.
+    /// </para>
     /// </summary>
     /// <param name="id">The unique identifier of the entity to update.</param>
     /// <param name="dto">The DTO containing the updated values.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpPut("{id}")]
     public virtual async Task<ActionResult<OperationResult<TDto>>> Update(
         Guid id,
         [FromBody] TDto dto,
@@ -109,10 +120,12 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
 
     /// <summary>
     /// Deletes a resource by its unique identifier.
+    /// <para>
+    /// Derived controllers must apply <c>[HttpDelete("{id}")]</c> to expose this endpoint.
+    /// </para>
     /// </summary>
     /// <param name="id">The unique identifier of the entity to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpDelete("{id}")]
     public virtual async Task<ActionResult<OperationResult>> Delete(
         Guid id,
         CancellationToken cancellationToken = default)
