@@ -57,10 +57,15 @@ public abstract class BaseService<TDto> where TDto : class
         _validator = validator;
     }
 
+    #region Read Operations (Pass-Through)
+
     /// <summary>
     /// Retrieves a paginated, filtered, and sorted list of DTOs.
     /// Pure pass-through — no validation, no events.
     /// </summary>
+    /// <param name="filterParams">Filtering, sorting, and pagination parameters.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A paginated result containing the matching DTOs.</returns>
     public virtual Task<OperationResult<PaginatedData<TDto>>> GetAllAsync(
         FilterParams filterParams,
         CancellationToken cancellationToken = default)
@@ -70,47 +75,38 @@ public abstract class BaseService<TDto> where TDto : class
     /// Retrieves a single DTO by its unique identifier.
     /// Pure pass-through — no validation, no events.
     /// </summary>
+    /// <param name="id">The unique identifier of the entity.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching DTO or a NotFound result.</returns>
     public virtual Task<OperationResult<TDto>> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)
         => Repository.GetByIdAsync(id, cancellationToken);
+
+    #endregion
+
+    #region Mutating Operations (Validate → Persist → Publish)
 
     /// <summary>
     /// Validates the DTO, persists it via the repository, and publishes an
     /// <see cref="EntityCreatedEvent{T}"/> on success. Validation is skipped
     /// if no validator was provided.
     /// </summary>
+    /// <param name="dto">The DTO containing the data to create.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created DTO with a 201 status code on success, or BadRequest on validation failure.</returns>
     public virtual async Task<OperationResult<TDto>> AddAsync(
         TDto dto,
         CancellationToken cancellationToken = default)
     {
-        if (_validator is not null)
-        {
-            var validationResult = await _validator.ValidateAsync(dto, cancellationToken);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors
-                    .Select(e => e.ErrorMessage)
-                    .ToList();
-                return OperationResult<TDto>.BadRequest("Validation failed", errors);
-            }
-        }
+        var validationError = await ValidateAsync(dto, cancellationToken);
+        if (validationError is not null)
+            return validationError;
 
         var result = await Repository.AddAsync(dto, cancellationToken);
 
         if (result.Success)
-        {
-            try
-            {
-                await EventBus.PublishAsync(
-                    new EntityCreatedEvent<TDto> { Entity = result.Data! },
-                    cancellationToken);
-            }
-            catch (Exception)
-            {
-                // Fire-and-forget: event publishing failures do not affect the operation result
-            }
-        }
+            await PublishEventSafelyAsync(new EntityCreatedEvent<TDto> { Entity = result.Data! }, cancellationToken);
 
         return result;
     }
@@ -120,38 +116,23 @@ public abstract class BaseService<TDto> where TDto : class
     /// <see cref="EntityUpdatedEvent{T}"/> on success. Validation is skipped
     /// if no validator was provided.
     /// </summary>
+    /// <param name="id">The unique identifier of the entity to update.</param>
+    /// <param name="dto">The DTO containing the updated values.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The updated DTO on success, NotFound if entity doesn't exist, or BadRequest on validation failure.</returns>
     public virtual async Task<OperationResult<TDto>> UpdateAsync(
         Guid id,
         TDto dto,
         CancellationToken cancellationToken = default)
     {
-        if (_validator is not null)
-        {
-            var validationResult = await _validator.ValidateAsync(dto, cancellationToken);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors
-                    .Select(e => e.ErrorMessage)
-                    .ToList();
-                return OperationResult<TDto>.BadRequest("Validation failed", errors);
-            }
-        }
+        var validationError = await ValidateAsync(dto, cancellationToken);
+        if (validationError is not null)
+            return validationError;
 
         var result = await Repository.UpdateAsync(id, dto, cancellationToken);
 
         if (result.Success)
-        {
-            try
-            {
-                await EventBus.PublishAsync(
-                    new EntityUpdatedEvent<TDto> { Entity = result.Data! },
-                    cancellationToken);
-            }
-            catch (Exception)
-            {
-                // Fire-and-forget: event publishing failures do not affect the operation result
-            }
-        }
+            await PublishEventSafelyAsync(new EntityUpdatedEvent<TDto> { Entity = result.Data! }, cancellationToken);
 
         return result;
     }
@@ -160,6 +141,9 @@ public abstract class BaseService<TDto> where TDto : class
     /// Deletes the entity via the repository and publishes an
     /// <see cref="EntityDeletedEvent{T}"/> on success. No validation is performed.
     /// </summary>
+    /// <param name="id">The unique identifier of the entity to delete.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A success or NotFound result.</returns>
     public virtual async Task<OperationResult> DeleteAsync(
         Guid id,
         CancellationToken cancellationToken = default)
@@ -167,19 +151,52 @@ public abstract class BaseService<TDto> where TDto : class
         var result = await Repository.DeleteAsync(id, cancellationToken);
 
         if (result.Success)
-        {
-            try
-            {
-                await EventBus.PublishAsync(
-                    new EntityDeletedEvent<TDto> { EntityId = id },
-                    cancellationToken);
-            }
-            catch (Exception)
-            {
-                // Fire-and-forget: event publishing failures do not affect the operation result
-            }
-        }
+            await PublishEventSafelyAsync(new EntityDeletedEvent<TDto> { EntityId = id }, cancellationToken);
 
         return result;
     }
+
+    #endregion
+
+    #region Private Helpers
+
+    /// <summary>
+    /// Validates the DTO using the registered validator (if any).
+    /// Returns null if validation passes or no validator is registered.
+    /// Returns a BadRequest OperationResult if validation fails.
+    /// </summary>
+    private async Task<OperationResult<TDto>?> ValidateAsync(TDto dto, CancellationToken cancellationToken)
+    {
+        if (_validator is null)
+            return null;
+
+        var validationResult = await _validator.ValidateAsync(dto, cancellationToken);
+        if (validationResult.IsValid)
+            return null;
+
+        var errors = validationResult.Errors
+            .Select(e => e.ErrorMessage)
+            .ToList();
+
+        return OperationResult<TDto>.BadRequest("Validation failed", errors);
+    }
+
+    /// <summary>
+    /// Publishes an event via the event bus, catching and swallowing any exceptions.
+    /// Event publishing is fire-and-forget — failures never affect the operation result.
+    /// </summary>
+    private async Task PublishEventSafelyAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
+        where TEvent : IEvent
+    {
+        try
+        {
+            await EventBus.PublishAsync(@event, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Fire-and-forget: event publishing failures do not affect the operation result
+        }
+    }
+
+    #endregion
 }

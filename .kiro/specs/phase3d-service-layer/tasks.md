@@ -8,11 +8,11 @@ All code is C# targeting .NET 8, matching the design document.
 
 ## Tasks
 
-- [-] 1. Create feature branch and add NuGet package
-  - [ ] 1.1 Create and checkout branch `phase-3d/service-layer` from `main`
+- [x] 1. Create feature branch and add NuGet package
+  - [x] 1.1 Create and checkout branch `phase-3d/service-layer` from `main`
     - Run `dotnet build groundup.sln` to verify clean starting point
     - _Requirements: 17.1_
-  - [ ] 1.2 Add NuGet package reference to `src/GroundUp.Services/GroundUp.Services.csproj`
+  - [x] 1.2 Add NuGet package reference to `src/GroundUp.Services/GroundUp.Services.csproj`
     - Add `Microsoft.Extensions.DependencyInjection.Abstractions` Version `8.*` package reference
     - Retain existing `FluentValidation` package reference
     - Retain existing project references to Core, Data.Abstractions, and Events
@@ -20,8 +20,8 @@ All code is C# targeting .NET 8, matching the design document.
     - Commit: "Add DependencyInjection.Abstractions NuGet package to Services"
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 2. Implement BaseService class
-  - [ ] 2.1 Create `BaseService<TDto>` in `src/GroundUp.Services/BaseService.cs`
+- [x] 2. Implement BaseService class
+  - [x] 2.1 Create `BaseService<TDto>` in `src/GroundUp.Services/BaseService.cs`
     - Define in `GroundUp.Services` namespace with file-scoped namespace
     - Abstract class with generic constraint `where TDto : class`
     - Do NOT use the `sealed` modifier — designed for inheritance by derived services
@@ -40,8 +40,8 @@ All code is C# targeting .NET 8, matching the design document.
     - Commit: "Add BaseService with validate-persist-publish pipeline"
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
 
-- [ ] 3. Implement ServicesServiceCollectionExtensions
-  - [ ] 3.1 Create `ServicesServiceCollectionExtensions` in `src/GroundUp.Services/ServicesServiceCollectionExtensions.cs`
+- [x] 3. Implement ServicesServiceCollectionExtensions
+  - [x] 3.1 Create `ServicesServiceCollectionExtensions` in `src/GroundUp.Services/ServicesServiceCollectionExtensions.cs`
     - Define in `GroundUp.Services` namespace with file-scoped namespace
     - Static class
     - Static extension method `AddGroundUpServices(this IServiceCollection services, Assembly assembly)` returning `IServiceCollection`
@@ -52,28 +52,28 @@ All code is C# targeting .NET 8, matching the design document.
     - Commit: "Add AddGroundUpServices DI extension for validator registration"
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 18.1, 18.5, 18.6_
 
-- [ ] 4. Checkpoint — Verify all production code compiles
+- [x] 4. Checkpoint — Verify all production code compiles
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Verify `BaseService.cs` and `ServicesServiceCollectionExtensions.cs` exist in `src/GroundUp.Services/`
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Add test project reference and create test helpers
-  - [ ] 5.1 Add project reference to `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+- [x] 5. Add test project reference and create test helpers
+  - [x] 5.1 Add project reference to `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
     - Add `<ProjectReference Include="..\..\src\GroundUp.Services\GroundUp.Services.csproj" />`
     - Run `dotnet build groundup.sln` to verify compilation
     - _Requirements: 17.1_
-  - [ ] 5.2 Create `ServiceTestDto` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDto.cs`
+  - [x] 5.2 Create `ServiceTestDto` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDto.cs`
     - `public record ServiceTestDto(Guid Id, string Name)` — minimal DTO for testing BaseService
     - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
     - _Requirements: 11.9, 12.8_
-  - [ ] 5.3 Create `TestService` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/TestService.cs`
+  - [x] 5.3 Create `TestService` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/TestService.cs`
     - Concrete `BaseService<ServiceTestDto>` that calls the base constructor
     - Constructor: accept `IBaseRepository<ServiceTestDto> repository`, `IEventBus eventBus`, `IValidator<ServiceTestDto>? validator = null`
     - Exists only to make the abstract class instantiable for testing
     - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
     - _Requirements: 11.9, 12.8_
-  - [ ] 5.4 Create `ServiceTestDtoValidator` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDtoValidator.cs`
+  - [x] 5.4 Create `ServiceTestDtoValidator` in `tests/GroundUp.Tests.Unit/Services/TestHelpers/ServiceTestDtoValidator.cs`
     - Extend `AbstractValidator<ServiceTestDto>`
     - Constructor: add rule `RuleFor(x => x.Name).NotEmpty()` — simple rule for DI registration tests
     - File-scoped namespace `GroundUp.Tests.Unit.Services.TestHelpers`
@@ -81,14 +81,14 @@ All code is C# targeting .NET 8, matching the design document.
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Add Services project ref and test helpers for Phase 3D"
 
-- [ ] 6. Checkpoint — Verify test helpers compile
+- [x] 6. Checkpoint — Verify test helpers compile
   - Ensure `dotnet build groundup.sln` passes with zero errors
   - Ensure all 3 test helper files exist in `tests/GroundUp.Tests.Unit/Services/TestHelpers/`
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Write property-based tests for validation error mapping
-  - [ ]* 7.1 Write property test for AddAsync validation error mapping
+- [x] 7. Write property-based tests for validation error mapping
+  - [x]* 7.1 Write property test for AddAsync validation error mapping
     - Create `tests/GroundUp.Tests.Unit/Services/BaseServicePropertyTests.cs`
     - **Property 1: AddAsync validation error mapping is lossless and order-preserving**
     - For any non-empty list of validation error messages, configure NSubstitute `IValidator<ServiceTestDto>` mock to return a `ValidationResult` with `ValidationFailure` objects carrying those messages
@@ -96,7 +96,7 @@ All code is C# targeting .NET 8, matching the design document.
     - Use `[Property(MaxTest = 100)]` attribute
     - Use NSubstitute mocks for `IBaseRepository<ServiceTestDto>`, `IEventBus`, and `IValidator<ServiceTestDto>`
     - **Validates: Requirements 4.3, 7.1, 7.2, 7.3, 7.4, 16.1**
-  - [ ]* 7.2 Write property test for UpdateAsync validation error mapping
+  - [x]* 7.2 Write property test for UpdateAsync validation error mapping
     - **Property 2: UpdateAsync validation error mapping is lossless and order-preserving**
     - Same setup as Property 1 but calls `UpdateAsync` instead
     - Assert same invariants on the returned `OperationResult`
@@ -105,8 +105,8 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseService property-based tests for validation error mapping (2 properties)"
   - _Requirements: 16.1, 16.2, 16.3_
 
-- [ ] 8. Write unit tests for BaseService AddAsync
-  - [ ]* 8.1 Create `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs` and write AddAsync tests
+- [x] 8. Write unit tests for BaseService AddAsync
+  - [x]* 8.1 Create `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs` and write AddAsync tests
     - Write test: `AddAsync_ValidationPassesAndRepoSucceeds_ReturnsOkWithDto`
       - Configure validator to return valid result, repo to return `OperationResult<ServiceTestDto>.Ok(dto)`
       - Assert result is successful with correct DTO
@@ -143,8 +143,8 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseService AddAsync unit tests (8 tests)"
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9_
 
-- [ ] 9. Write unit tests for BaseService UpdateAsync
-  - [ ]* 9.1 Add UpdateAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+- [x] 9. Write unit tests for BaseService UpdateAsync
+  - [x]* 9.1 Add UpdateAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
     - Write test: `UpdateAsync_ValidationPassesAndRepoSucceeds_ReturnsOkWithDto`
       - Configure validator valid, repo to return `OperationResult<ServiceTestDto>.Ok(dto)`
       - Assert result is successful with correct DTO
@@ -181,8 +181,8 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseService UpdateAsync unit tests (8 tests)"
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
 
-- [ ] 10. Write unit tests for BaseService DeleteAsync
-  - [ ]* 10.1 Add DeleteAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+- [x] 10. Write unit tests for BaseService DeleteAsync
+  - [x]* 10.1 Add DeleteAsync tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
     - Write test: `DeleteAsync_RepoSucceeds_ReturnsOk`
       - Configure repo to return `OperationResult.Ok()`
       - Assert result is successful
@@ -207,8 +207,8 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseService DeleteAsync unit tests (5 tests)"
   - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
 
-- [ ] 11. Write unit tests for BaseService read operations
-  - [ ]* 11.1 Add read operation tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
+- [x] 11. Write unit tests for BaseService read operations
+  - [x]* 11.1 Add read operation tests to `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs`
     - Write test: `GetAllAsync_ReturnsRepositoryResultUnchanged`
       - Configure repo to return a specific `OperationResult<PaginatedData<ServiceTestDto>>`
       - Assert returned result is the exact same object reference
@@ -233,14 +233,14 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseService read operation unit tests (6 tests)"
   - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6_
 
-- [ ] 12. Checkpoint — Verify all BaseService tests pass
+- [x] 12. Checkpoint — Verify all BaseService tests pass
   - Ensure `dotnet test` passes with zero failures
   - Ensure all 29 BaseService tests are green (2 property + 8 AddAsync + 8 UpdateAsync + 5 DeleteAsync + 6 reads)
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Write unit tests for AddGroundUpServices extension method
-  - [ ]* 13.1 Create `tests/GroundUp.Tests.Unit/Services/ServicesServiceCollectionExtensionsTests.cs`
+- [x] 13. Write unit tests for AddGroundUpServices extension method
+  - [x]* 13.1 Create `tests/GroundUp.Tests.Unit/Services/ServicesServiceCollectionExtensionsTests.cs`
     - Write test: `AddGroundUpServices_RegistersValidatorsFromAssembly`
       - Create `ServiceCollection`, call `AddGroundUpServices` with the test assembly containing `ServiceTestDtoValidator`
       - Build `ServiceProvider`, resolve `IValidator<ServiceTestDto>`, assert it is not null and is of type `ServiceTestDtoValidator`
@@ -256,7 +256,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add ServicesServiceCollectionExtensions unit tests (3 tests)"
   - _Requirements: 15.1, 15.2, 15.3_
 
-- [ ] 14. Final checkpoint — Full solution build and test verification
+- [x] 14. Final checkpoint — Full solution build and test verification
   - Run `dotnet build groundup.sln` and verify zero errors
   - Run `dotnet test` and verify all tests pass (existing tests + 2 property tests + 31 unit tests)
   - Verify file-scoped namespaces, nullable reference types, XML documentation, one-class-per-file across all new files
