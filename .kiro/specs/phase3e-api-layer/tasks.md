@@ -117,17 +117,17 @@ All code is C# targeting .NET 8, matching the design document.
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Set up test infrastructure for Phase 3E
-  - [ ] 7.1 Update `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+- [x] 7. Set up test infrastructure for Phase 3E
+  - [x] 7.1 Update `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
     - Add `<FrameworkReference Include="Microsoft.AspNetCore.App" />` so ASP.NET Core types (DefaultHttpContext, ControllerBase, ActionResult) are available in tests
     - Add `<ProjectReference Include="..\..\src\GroundUp.Api\GroundUp.Api.csproj" />`
     - Run `dotnet build groundup.sln` to verify compilation
     - _Requirements: 21.1_
-  - [ ] 7.2 Create `ControllerTestDto` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/ControllerTestDto.cs`
+  - [x] 7.2 Create `ControllerTestDto` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/ControllerTestDto.cs`
     - `public record ControllerTestDto(Guid Id, string Name)` — minimal DTO for testing BaseController
     - File-scoped namespace `GroundUp.Tests.Unit.Api.TestHelpers`
     - _Requirements: 15.8, 16.1_
-  - [ ] 7.3 Create `TestController` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/TestController.cs`
+  - [x] 7.3 Create `TestController` in `tests/GroundUp.Tests.Unit/Api/TestHelpers/TestController.cs`
     - Concrete `BaseController<ControllerTestDto>` that calls the base constructor
     - Constructor: accept `BaseService<ControllerTestDto> service`
     - Exists only to make the abstract class instantiable for testing
@@ -136,7 +136,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Add test infrastructure for Phase 3E — FrameworkReference, project ref, test helpers"
 
-- [ ] 8. Write property-based tests for ToActionResult mapping
+- [x] 8. Write property-based tests for ToActionResult mapping
   - [ ]* 8.1 Write property test for generic OperationResult-to-ActionResult status code preservation
     - Create `tests/GroundUp.Tests.Unit/Api/BaseControllerPropertyTests.cs`
     - **Property 1: Generic OperationResult-to-ActionResult status code preservation**
@@ -154,7 +154,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseController property-based tests for ToActionResult mapping (2 properties)"
   - _Requirements: 19.1, 19.2, 19.3_
 
-- [ ] 9. Write property-based test for CorrelationIdMiddleware
+- [x] 9. Write property-based test for CorrelationIdMiddleware
   - [ ]* 9.1 Write property test for correlation ID header propagation
     - Create `tests/GroundUp.Tests.Unit/Api/CorrelationIdMiddlewareTests.cs`
     - **Property 3: Correlation ID header propagation**
@@ -168,7 +168,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add CorrelationIdMiddleware property-based test for header propagation"
   - _Requirements: 20.1_
 
-- [ ] 10. Write unit tests for CorrelationIdMiddleware
+- [x] 10. Write unit tests for CorrelationIdMiddleware
   - [ ]* 10.1 Add unit tests to `tests/GroundUp.Tests.Unit/Api/CorrelationIdMiddlewareTests.cs`
     - Write test: `InvokeAsync_RequestHasCorrelationIdHeader_UsesProvidedValue`
       - Create `DefaultHttpContext` with `X-Correlation-Id` header set to a known value
@@ -192,13 +192,13 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add CorrelationIdMiddleware unit tests (5 tests)"
   - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5_
 
-- [ ] 11. Checkpoint — Verify middleware tests pass
+- [x] 11. Checkpoint — Verify middleware tests pass
   - Ensure `dotnet test` passes with zero failures
   - Ensure all CorrelationIdMiddleware tests are green (1 property + 5 unit)
   - Ensure all existing tests still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Write unit tests for ExceptionHandlingMiddleware
+- [x] 12. Write unit tests for ExceptionHandlingMiddleware
   - [ ]* 12.1 Create `tests/GroundUp.Tests.Unit/Api/ExceptionHandlingMiddlewareTests.cs`
     - Write test: `InvokeAsync_NotFoundExceptionThrown_ReturnsHttp404WithNotFoundErrorCode`
       - Configure next delegate to throw `NotFoundException("Entity not found")`
@@ -236,7 +236,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add ExceptionHandlingMiddleware unit tests (7 tests)"
   - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7_
 
-- [ ] 13. Write unit tests for BaseController OperationResult-to-ActionResult mapping
+- [x] 13. Write unit tests for BaseController OperationResult-to-ActionResult mapping
   - [ ]* 13.1 Create `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs` and write ToActionResult mapping tests
     - Write test: `ToActionResult_StatusCode200_ReturnsOkObjectResult`
       - Configure mocked service to return `OperationResult<ControllerTestDto>` with StatusCode 200
@@ -272,7 +272,7 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseController ToActionResult mapping unit tests (7 tests)"
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8_
 
-- [ ] 14. Write unit tests for BaseController CRUD endpoints
+- [x] 14. Write unit tests for BaseController CRUD endpoints
   - [ ]* 14.1 Add CRUD endpoint tests to `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs`
     - Write test: `GetAll_ServiceReturnsSuccess_ReturnsOkWithPaginationHeaders`
       - Configure mocked service to return successful `OperationResult<PaginatedData<ControllerTestDto>>` with known pagination values
@@ -318,13 +318,13 @@ All code is C# targeting .NET 8, matching the design document.
   - Commit: "Add BaseController CRUD endpoint unit tests (10 tests)"
   - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6, 16.7, 16.8, 16.9, 16.10_
 
-- [ ] 15. Checkpoint — Verify all tests pass
+- [x] 15. Checkpoint — Verify all tests pass
   - Ensure `dotnet test` passes with zero failures
   - Ensure all Phase 3E tests are green (3 property + ~29 unit)
   - Ensure all existing tests from previous phases still pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 16. Final verification — Full solution build and test
+- [x] 16. Final verification — Full solution build and test
   - Run `dotnet build groundup.sln` and verify zero errors
   - Run `dotnet test` and verify all tests pass (existing tests + 3 property tests + ~29 unit tests)
   - Verify file-scoped namespaces, nullable reference types, XML documentation, sealed/abstract modifiers, one-class-per-file across all new files
