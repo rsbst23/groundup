@@ -184,8 +184,9 @@ public abstract class BaseService<TDto> where TDto : class
     /// <summary>
     /// Publishes an event via the event bus, catching and swallowing any exceptions.
     /// Event publishing is fire-and-forget — failures never affect the operation result.
+    /// Protected so derived services can publish custom events using the same safe pattern.
     /// </summary>
-    private async Task PublishEventSafelyAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
+    protected async Task PublishEventSafelyAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
         where TEvent : IEvent
     {
         try

@@ -121,12 +121,13 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
         return ToActionResult(result);
     }
 
-    #region Private Helpers
+    #region Protected Helpers
 
     /// <summary>
     /// Maps a generic OperationResult to the appropriate ActionResult based on StatusCode.
+    /// Protected so derived controllers can use it for custom endpoints.
     /// </summary>
-    private ActionResult ToActionResult<T>(OperationResult<T> result)
+    protected ActionResult ToActionResult<T>(OperationResult<T> result)
     {
         return result.StatusCode switch
         {
@@ -142,8 +143,9 @@ public abstract class BaseController<TDto> : ControllerBase where TDto : class
 
     /// <summary>
     /// Maps a non-generic OperationResult to the appropriate ActionResult based on StatusCode.
+    /// Protected so derived controllers can use it for custom endpoints.
     /// </summary>
-    private ActionResult ToActionResult(OperationResult result)
+    protected ActionResult ToActionResult(OperationResult result)
     {
         return result.StatusCode switch
         {
