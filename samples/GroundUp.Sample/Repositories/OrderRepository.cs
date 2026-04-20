@@ -88,6 +88,13 @@ public class OrderRepository : BaseRepository<Order, OrderListDto>
 
             entity.Status = dto.Status;
             entity.Total = dto.Total;
+            entity.ItemCount = dto.ItemCount;
+            entity.IsUrgent = dto.IsUrgent;
+            entity.Priority = Enum.TryParse<GroundUp.Sample.Entities.OrderPriority>(dto.Priority, true, out var p) ? p : entity.Priority;
+            entity.ShippingWeight = dto.ShippingWeight;
+            entity.TrackingNumber = dto.TrackingNumber;
+            entity.ShipDate = dto.ShipDate;
+            entity.DiscountPercent = dto.DiscountPercent;
             await Context.SaveChangesAsync(cancellationToken);
 
             // Reload with Customer included for the response
