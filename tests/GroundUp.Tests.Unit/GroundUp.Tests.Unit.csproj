@@ -17,6 +17,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Npgsql" Version="8.*" />
     <PackageReference Include="NSubstitute" Version="5.*" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
@@ -25,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Events\GroundUp.Events.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Repositories\GroundUp.Repositories.csproj" />
   </ItemGroup>
