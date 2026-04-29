@@ -9,6 +9,7 @@ public class SampleDbContext : GroundUpDbContext
     public DbSet<TodoItem> TodoItems => Set<TodoItem>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<Project> Projects => Set<Project>();
 
     public SampleDbContext(DbContextOptions<SampleDbContext> options) : base(options) { }
 
@@ -41,6 +42,14 @@ public class SampleDbContext : GroundUpDbContext
                 .WithMany(c => c.Orders)
                 .HasForeignKey(e => e.CustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Project>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.HasIndex(e => e.TenantId);
         });
     }
 }

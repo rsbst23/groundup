@@ -33,6 +33,10 @@ builder.Services.AddScoped<IBaseRepository<OrderListDto>, OrderRepository>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<BaseService<OrderListDto>, OrderService>();
 
+// Project — tenant-scoped pattern (BaseTenantRepository handles isolation)
+builder.Services.AddScoped<IBaseRepository<ProjectDto>, ProjectRepository>();
+builder.Services.AddScoped<BaseService<ProjectDto>, ProjectService>();
+
 // ASP.NET Core services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
