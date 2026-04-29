@@ -1,0 +1,281 @@
+# Implementation Plan: Phase 6A — Settings Module: Core Entities and Data Layer
+
+## Overview
+
+Establish the foundational data model for the data-driven cascading multi-tenant settings infrastructure. This phase delivers 6 entities, 1 enum, 1 interface, 1 constants class, 5 DTO records, 6 EF Core Fluent API configurations, and a DbContext modification for auto-discovery. All code is C# targeting .NET 8.
+
+Implementation follows dependency order: feature branch → enum + interface + constants (no dependencies) → entities in FK dependency order (SettingLevel, SettingGroup → SettingDefinition → SettingOption, SettingValue, SettingDefinitionLevel) → DTOs → EF configurations → DbContext modification → unit tests → build verification.
+
+## Tasks
+
+- [x] 1. Create feature branch and verify clean starting point
+  - [x] 1.1 Create and checkout branch `phase-6a/settings-entities` from `main`
+    - Run `git checkout main && git pull`
+    - Run `git checkout -b phase-6a/settings-entities`
+    - Run `dotnet build groundup.sln` to verify clean starting point
+    - Run `dotnet test` to verify all existing tests pass
+    - _Requirements: 18.1_
+
+- [x] 2. Create SettingDataType enum, ISettingEncryptionProvider interface, and SettingDependencyOperator constants
+  - [x] 2.1 Create `SettingDataType` enum in `src/GroundUp.Core/Enums/SettingDataType.cs`
+    - Create the `Enums` directory under `src/GroundUp.Core/`
+    - File-scoped namespace `GroundUp.Core.Enums`
+    - Define members: `String = 0`, `Int = 1`, `Long = 2`, `Decimal = 3`, `Bool = 4`, `DateTime = 5`, `Date = 6`, `Json = 7`
+    - XML doc comments on the enum type and each member describing the CLR type it maps to
+    - _Requirements: 7.1, 7.2, 7.3_
+  - [x] 2.2 Create `ISettingEncryptionProvider` interface in `src/GroundUp.Core/Abstractions/ISettingEncryptionProvider.cs`
+    - File-scoped namespace `GroundUp.Core.Abstractions`
+    - Declare `string Encrypt(string plaintext)` and `string Decrypt(string ciphertext)` methods
+    - XML doc comments on the interface and each method describing the contract
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [x] 2.3 Create `SettingDependencyOperator` static class in `src/GroundUp.Core/Constants/SettingDependencyOperator.cs`
+    - Create the `Constants` directory under `src/GroundUp.Core/`
+    - File-scoped namespace `GroundUp.Core.Constants`
+    - Static class with `public const string` constants: `Equals = "Equals"`, `NotEquals = "NotEquals"`, `Contains = "Contains"`, `In = "In"`
+    - XML doc comments on the class and each constant describing comparison semantics
+    - _Requirements: 9.1, 9.2, 9.3_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add SettingDataType enum, ISettingEncryptionProvider interface, and SettingDependencyOperator constants"
+
+- [x] 3. Create SettingLevel and SettingGroup entities (no FK dependencies on other settings entities)
+  - [x] 3.1 Create `SettingLevel` entity in `src/GroundUp.Core/Entities/Settings/SettingLevel.cs`
+    - Create the `Settings` directory under `src/GroundUp.Core/Entities/`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `Name` (string, default empty), `Description` (string?), `ParentId` (Guid?), `Parent` (SettingLevel?), `Children` (ICollection\<SettingLevel\>, initialized to new List), `DisplayOrder` (int)
+    - IAuditable properties: `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`
+    - XML doc comments on the class and all public members
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
+  - [x] 3.2 Create `SettingGroup` entity in `src/GroundUp.Core/Entities/Settings/SettingGroup.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `Key` (string, default empty), `DisplayName` (string, default empty), `Description` (string?), `Icon` (string?), `DisplayOrder` (int), `Settings` (ICollection\<SettingDefinition\>, initialized to new List)
+    - IAuditable properties: `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`
+    - XML doc comments on the class and all public members
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add SettingLevel and SettingGroup entities"
+
+- [x] 4. Create SettingDefinition entity (depends on SettingGroup)
+  - [x] 4.1 Create `SettingDefinition` entity in `src/GroundUp.Core/Entities/Settings/SettingDefinition.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Identity: `Key` (string, default empty), `DataType` (SettingDataType), `DefaultValue` (string?)
+    - Group: `GroupId` (Guid?), `Group` (SettingGroup?)
+    - UI metadata: `DisplayName` (string, default empty), `Description` (string?), `Category` (string?), `DisplayOrder` (int), `IsVisible` (bool, default true), `IsReadOnly` (bool)
+    - Multi-value: `AllowMultiple` (bool)
+    - Encryption: `IsEncrypted` (bool), `IsSecret` (bool)
+    - Validation: `IsRequired` (bool), `MinValue` (string?), `MaxValue` (string?), `MinLength` (int?), `MaxLength` (int?), `RegexPattern` (string?), `ValidationMessage` (string?)
+    - Dependencies: `DependsOnKey` (string?), `DependsOnOperator` (string?), `DependsOnValue` (string?)
+    - Custom validation: `CustomValidatorType` (string?)
+    - Navigation collections: `Options` (ICollection\<SettingOption\>), `Values` (ICollection\<SettingValue\>), `AllowedLevels` (ICollection\<SettingDefinitionLevel\>), all initialized to new List
+    - IAuditable properties: `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`
+    - XML doc comments on the class and all public members
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add SettingDefinition entity"
+
+- [x] 5. Create SettingOption, SettingValue, and SettingDefinitionLevel entities (depend on SettingDefinition and/or SettingLevel)
+  - [x] 5.1 Create `SettingOption` entity in `src/GroundUp.Core/Entities/Settings/SettingOption.cs`
+    - Sealed class extending `BaseEntity` (NOT IAuditable)
+    - Properties: `SettingDefinitionId` (Guid), `SettingDefinition` (SettingDefinition, initialized to null!), `Value` (string, default empty), `Label` (string, default empty), `DisplayOrder` (int), `IsDefault` (bool), `ParentOptionValue` (string?)
+    - XML doc comments on the class and all public members
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
+  - [x] 5.2 Create `SettingValue` entity in `src/GroundUp.Core/Entities/Settings/SettingValue.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `SettingDefinitionId` (Guid), `SettingDefinition` (SettingDefinition, initialized to null!), `LevelId` (Guid), `Level` (SettingLevel, initialized to null!), `ScopeId` (Guid?), `Value` (string?)
+    - IAuditable properties: `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`
+    - XML doc comments on the class and all public members
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
+  - [x] 5.3 Create `SettingDefinitionLevel` entity in `src/GroundUp.Core/Entities/Settings/SettingDefinitionLevel.cs`
+    - Sealed class extending `BaseEntity` (NOT IAuditable)
+    - Properties: `SettingDefinitionId` (Guid), `SettingDefinition` (SettingDefinition, initialized to null!), `SettingLevelId` (Guid), `SettingLevel` (SettingLevel, initialized to null!)
+    - XML doc comments on the class and all public members
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add SettingOption, SettingValue, and SettingDefinitionLevel entities"
+
+- [x] 6. Checkpoint — Verify all 6 entities compile and existing tests pass
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all existing tests pass
+  - Verify all 6 entity files exist in `src/GroundUp.Core/Entities/Settings/`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Create Settings DTO records
+  - [x] 7.1 Create `SettingLevelDto` in `src/GroundUp.Core/Dtos/Settings/SettingLevelDto.cs`
+    - Create the `Dtos/Settings` directory under `src/GroundUp.Core/`
+    - Record class with properties: `Id` (Guid), `Name` (string), `Description` (string?), `ParentId` (Guid?), `DisplayOrder` (int)
+    - XML doc comments on the record type and each property
+    - _Requirements: 16.1_
+  - [x] 7.2 Create `SettingGroupDto` in `src/GroundUp.Core/Dtos/Settings/SettingGroupDto.cs`
+    - Record class with properties: `Id` (Guid), `Key` (string), `DisplayName` (string), `Description` (string?), `Icon` (string?), `DisplayOrder` (int)
+    - XML doc comments on the record type and each property
+    - _Requirements: 16.2_
+  - [x] 7.3 Create `SettingDefinitionDto` in `src/GroundUp.Core/Dtos/Settings/SettingDefinitionDto.cs`
+    - Record class with all SettingDefinition properties except navigation collections and audit fields: `Id`, `Key`, `DataType`, `DefaultValue`, `GroupId`, `DisplayName`, `Description`, `Category`, `DisplayOrder`, `IsVisible`, `IsReadOnly`, `AllowMultiple`, `IsEncrypted`, `IsSecret`, `IsRequired`, `MinValue`, `MaxValue`, `MinLength`, `MaxLength`, `RegexPattern`, `ValidationMessage`, `DependsOnKey`, `DependsOnOperator`, `DependsOnValue`, `CustomValidatorType`
+    - XML doc comments on the record type and each property
+    - _Requirements: 16.3_
+  - [x] 7.4 Create `SettingOptionDto` in `src/GroundUp.Core/Dtos/Settings/SettingOptionDto.cs`
+    - Record class with properties: `Id` (Guid), `SettingDefinitionId` (Guid), `Value` (string), `Label` (string), `DisplayOrder` (int), `IsDefault` (bool), `ParentOptionValue` (string?)
+    - XML doc comments on the record type and each property
+    - _Requirements: 16.4_
+  - [x] 7.5 Create `SettingValueDto` in `src/GroundUp.Core/Dtos/Settings/SettingValueDto.cs`
+    - Record class with properties: `Id` (Guid), `SettingDefinitionId` (Guid), `LevelId` (Guid), `ScopeId` (Guid?), `Value` (string?)
+    - XML doc comments on the record type and each property
+    - _Requirements: 16.5_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add Settings DTO records (5 DTOs)"
+
+- [x] 8. Create EF Core configurations for SettingLevel and SettingGroup
+  - [x] 8.1 Create `SettingLevelConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingLevelConfiguration.cs`
+    - Create the `Configurations/Settings` directory under `src/GroundUp.Data.Postgres/`
+    - Implement `IEntityTypeConfiguration<SettingLevel>`
+    - Table name `"SettingLevels"`
+    - `Name`: required, max length 100
+    - `Description`: max length 500
+    - Self-referencing FK: `ParentId` → `SettingLevel.Id`, `Parent`/`Children` navigation, `DeleteBehavior.Restrict`
+    - `DisplayOrder`: default value 0
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
+  - [x] 8.2 Create `SettingGroupConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingGroupConfiguration.cs`
+    - Implement `IEntityTypeConfiguration<SettingGroup>`
+    - Table name `"SettingGroups"`
+    - `Key`: required, max length 200, unique index
+    - `DisplayName`: required, max length 200
+    - `Description`: max length 1000
+    - `Icon`: max length 100
+    - `DisplayOrder`: default value 0
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add EF Core configurations for SettingLevel and SettingGroup"
+
+- [x] 9. Create EF Core configuration for SettingDefinition
+  - [x] 9.1 Create `SettingDefinitionConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingDefinitionConfiguration.cs`
+    - Implement `IEntityTypeConfiguration<SettingDefinition>`
+    - Table name `"SettingDefinitions"`
+    - `Key`: required, max length 200, unique index
+    - `DataType`: required, integer conversion for the enum
+    - `DefaultValue`: max length 4000
+    - `GroupId` FK to `SettingGroup` with `DeleteBehavior.SetNull`
+    - UI metadata: `DisplayName` (required, max 200), `Description` (max 1000), `Category` (max 200), `DisplayOrder` (default 0), `IsVisible` (default true), `IsReadOnly` (default false)
+    - `AllowMultiple`: default false
+    - `IsEncrypted`: default false, `IsSecret`: default false
+    - Validation: `IsRequired` (default false), `MinValue` (max 100), `MaxValue` (max 100), `RegexPattern` (max 500), `ValidationMessage` (max 500)
+    - Dependencies: `DependsOnKey` (max 200), `DependsOnOperator` (max 20), `DependsOnValue` (max 1000)
+    - `CustomValidatorType`: max length 500
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add EF Core configuration for SettingDefinition"
+
+- [x] 10. Create EF Core configurations for SettingOption, SettingValue, and SettingDefinitionLevel
+  - [x] 10.1 Create `SettingOptionConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingOptionConfiguration.cs`
+    - Implement `IEntityTypeConfiguration<SettingOption>`
+    - Table name `"SettingOptions"`
+    - `SettingDefinitionId` FK to `SettingDefinition` with `DeleteBehavior.Cascade`
+    - `Value`: required, max length 1000
+    - `Label`: required, max length 200
+    - `DisplayOrder`: default 0
+    - `IsDefault`: default false
+    - `ParentOptionValue`: max length 1000
+    - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8_
+  - [x] 10.2 Create `SettingValueConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingValueConfiguration.cs`
+    - Implement `IEntityTypeConfiguration<SettingValue>`
+    - Table name `"SettingValues"`
+    - `SettingDefinitionId` FK to `SettingDefinition` with `DeleteBehavior.Cascade`
+    - `LevelId` FK to `SettingLevel` with `DeleteBehavior.Restrict`
+    - `Value`: max length 4000
+    - Unique composite index on (`SettingDefinitionId`, `LevelId`, `ScopeId`)
+    - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6_
+  - [x] 10.3 Create `SettingDefinitionLevelConfiguration` in `src/GroundUp.Data.Postgres/Configurations/Settings/SettingDefinitionLevelConfiguration.cs`
+    - Implement `IEntityTypeConfiguration<SettingDefinitionLevel>`
+    - Table name `"SettingDefinitionLevels"`
+    - `SettingDefinitionId` FK to `SettingDefinition` with `DeleteBehavior.Cascade`
+    - `SettingLevelId` FK to `SettingLevel` with `DeleteBehavior.Cascade`
+    - Unique composite index on (`SettingDefinitionId`, `SettingLevelId`)
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add EF Core configurations for SettingOption, SettingValue, and SettingDefinitionLevel"
+
+- [x] 11. Modify GroundUpDbContext to auto-discover configurations
+  - [x] 11.1 Update `OnModelCreating` in `src/GroundUp.Data.Postgres/GroundUpDbContext.cs`
+    - Add `modelBuilder.ApplyConfigurationsFromAssembly(typeof(GroundUpDbContext).Assembly);` AFTER `base.OnModelCreating(modelBuilder)` and BEFORE the `foreach` loop that iterates `modelBuilder.Model.GetEntityTypes()`
+    - This auto-discovers all `IEntityTypeConfiguration<T>` implementations in the `GroundUp.Data.Postgres` assembly
+    - Consuming apps that inherit from `GroundUpDbContext` get the settings schema without declaring `DbSet<T>` properties
+    - _Requirements: 17.1, 17.2, 17.3_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Run `dotnet test` to verify no regressions — existing tests must still pass
+  - Commit: "Add ApplyConfigurationsFromAssembly to GroundUpDbContext.OnModelCreating"
+
+- [x] 12. Checkpoint — Verify full data layer compiles and all existing tests pass
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all existing tests pass (no regressions)
+  - Verify all files exist:
+    - 6 entities in `src/GroundUp.Core/Entities/Settings/`
+    - 1 enum in `src/GroundUp.Core/Enums/`
+    - 1 interface in `src/GroundUp.Core/Abstractions/`
+    - 1 constants class in `src/GroundUp.Core/Constants/`
+    - 5 DTOs in `src/GroundUp.Core/Dtos/Settings/`
+    - 6 EF configs in `src/GroundUp.Data.Postgres/Configurations/Settings/`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 13. Write unit tests for entity structure verification
+  - [x] 13.1 Create `tests/GroundUp.Tests.Unit/Core/Settings/SettingEntityStructureTests.cs`
+    - Create the `Settings` directory under `tests/GroundUp.Tests.Unit/Core/`
+    - Use reflection-based tests to verify all 6 entities:
+    - `SettingLevel_IsSealed_ReturnsTrue`
+    - `SettingLevel_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingLevel_ImplementsIAuditable_ReturnsTrue`
+    - `SettingGroup_IsSealed_ReturnsTrue`
+    - `SettingGroup_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingGroup_ImplementsIAuditable_ReturnsTrue`
+    - `SettingDefinition_IsSealed_ReturnsTrue`
+    - `SettingDefinition_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingDefinition_ImplementsIAuditable_ReturnsTrue`
+    - `SettingOption_IsSealed_ReturnsTrue`
+    - `SettingOption_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingOption_DoesNotImplementIAuditable_ReturnsTrue`
+    - `SettingValue_IsSealed_ReturnsTrue`
+    - `SettingValue_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingValue_ImplementsIAuditable_ReturnsTrue`
+    - `SettingDefinitionLevel_IsSealed_ReturnsTrue`
+    - `SettingDefinitionLevel_ExtendsBaseEntity_ReturnsTrue`
+    - `SettingDefinitionLevel_DoesNotImplementIAuditable_ReturnsTrue`
+    - Verify navigation collections are initialized (not null) on new instances
+    - _Requirements: 1.1, 1.7, 2.1, 2.8, 3.1, 3.13, 4.1, 4.8, 5.1, 5.7, 6.1, 6.5, 18.2_
+  - [x] 13.2 Create `tests/GroundUp.Tests.Unit/Core/Settings/SettingDataTypeTests.cs`
+    - Verify `SettingDataType` enum has exactly 8 members
+    - Verify each member has the correct integer value: String=0, Int=1, Long=2, Decimal=3, Bool=4, DateTime=5, Date=6, Json=7
+    - _Requirements: 7.1, 7.2_
+  - [x] 13.3 Create `tests/GroundUp.Tests.Unit/Core/Settings/SettingDependencyOperatorTests.cs`
+    - Verify `SettingDependencyOperator` is a static class
+    - Verify constants: `Equals` = "Equals", `NotEquals` = "NotEquals", `Contains` = "Contains", `In` = "In"
+    - _Requirements: 9.1, 9.2_
+  - [x] 13.4 Create `tests/GroundUp.Tests.Unit/Core/Settings/ISettingEncryptionProviderTests.cs`
+    - Verify `ISettingEncryptionProvider` is an interface
+    - Verify it declares `Encrypt(string)` returning `string`
+    - Verify it declares `Decrypt(string)` returning `string`
+    - _Requirements: 8.1, 8.2, 8.3_
+  - [x] 13.5 Create `tests/GroundUp.Tests.Unit/Core/Settings/SettingDtoStructureTests.cs`
+    - Verify each of the 5 DTOs is a `record` type (check `IsClass` and compiler-generated `<Clone>$` method)
+    - Verify each DTO has the expected properties with correct types (including nullability)
+    - Verify DTOs do NOT contain navigation properties or audit fields
+    - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6_
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add unit tests for settings entity structure, enum, constants, interface, and DTOs"
+
+- [-] 14. Final checkpoint — Full solution build and test
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all tests pass
+  - Verify coding conventions across all new files: file-scoped namespaces, nullable reference types, XML documentation, sealed modifiers, one-class-per-file
+  - Verify EF configurations use Fluent API only (no data annotations)
+  - Commit: "Phase 6A complete — settings core entities and data layer"
+  - Push branch with `-u` flag: `git push -u origin phase-6a/settings-entities`
+
+## Notes
+
+- No property-based tests for this phase — it is purely structural data model with no pure functions or input spaces to explore
+- Unit tests use reflection to verify entity structure (sealed, base class, interfaces, property types)
+- EF model metadata tests are deferred to Phase 6B when the full service layer provides a natural integration test context
+- All entities are sealed and extend BaseEntity (UUID v7 Id)
+- IAuditable is applied to: SettingLevel, SettingGroup, SettingDefinition, SettingValue
+- IAuditable is NOT applied to: SettingOption, SettingDefinitionLevel
+- DTOs are record classes mirroring entity properties minus navigation collections and audit fields
+- EF configurations use Fluent API exclusively — no data annotations
+- The `ApplyConfigurationsFromAssembly` call in DbContext must be placed AFTER `base.OnModelCreating` and BEFORE the UUID v7 / soft delete loops
+- Git workflow: feature branch `phase-6a/settings-entities`, commit after each compilable step, push with `-u` on first push

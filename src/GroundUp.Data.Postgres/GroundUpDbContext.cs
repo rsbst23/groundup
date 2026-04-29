@@ -34,6 +34,9 @@ public abstract class GroundUpDbContext : DbContext
         // 1. Call base so derived context entity configurations are registered first
         base.OnModelCreating(modelBuilder);
 
+        // 2. Auto-discover all IEntityTypeConfiguration<T> implementations in this assembly
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(GroundUpDbContext).Assembly);
+
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
             var clrType = entityType.ClrType;
