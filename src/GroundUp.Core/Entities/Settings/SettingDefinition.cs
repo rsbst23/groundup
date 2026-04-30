@@ -36,6 +36,9 @@ public sealed class SettingDefinition : BaseEntity, IAuditable
     /// <summary>Optional description shown in the UI.</summary>
     public string? Description { get; set; }
 
+    /// <summary>Placeholder text shown in empty input fields (e.g., "Enter your API key").</summary>
+    public string? Placeholder { get; set; }
+
     /// <summary>Optional category for additional grouping in the UI.</summary>
     public string? Category { get; set; }
 

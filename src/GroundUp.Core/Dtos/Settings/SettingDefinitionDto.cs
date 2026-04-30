@@ -13,6 +13,7 @@ namespace GroundUp.Core.Dtos.Settings;
 /// <param name="GroupId">Optional foreign key to the owning group.</param>
 /// <param name="DisplayName">Display name for UI rendering.</param>
 /// <param name="Description">Optional description shown in the UI.</param>
+/// <param name="Placeholder">Placeholder text shown in empty input fields.</param>
 /// <param name="Category">Optional category for additional grouping in the UI.</param>
 /// <param name="DisplayOrder">Display ordering for UI rendering.</param>
 /// <param name="IsVisible">Whether the setting is visible in the UI.</param>
@@ -39,6 +40,7 @@ public record SettingDefinitionDto(
     Guid? GroupId,
     string DisplayName,
     string? Description,
+    string? Placeholder,
     string? Category,
     int DisplayOrder,
     bool IsVisible,

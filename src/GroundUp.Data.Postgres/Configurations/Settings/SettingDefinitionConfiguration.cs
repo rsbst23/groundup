@@ -35,6 +35,8 @@ public class SettingDefinitionConfiguration : IEntityTypeConfiguration<SettingDe
             .HasForeignKey(e => e.GroupId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasIndex(e => e.GroupId);
+
         // ── UI metadata ───────────────────────────────────────
         builder.Property(e => e.DisplayName)
             .IsRequired()
@@ -42,6 +44,9 @@ public class SettingDefinitionConfiguration : IEntityTypeConfiguration<SettingDe
 
         builder.Property(e => e.Description)
             .HasMaxLength(1000);
+
+        builder.Property(e => e.Placeholder)
+            .HasMaxLength(500);
 
         builder.Property(e => e.Category)
             .HasMaxLength(200);

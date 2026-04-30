@@ -27,6 +27,8 @@ public class SettingValueConfiguration : IEntityTypeConfiguration<SettingValue>
         builder.Property(e => e.Value)
             .HasMaxLength(4000);
 
+        builder.HasIndex(e => e.SettingDefinitionId);
+
         builder.HasIndex(e => new { e.SettingDefinitionId, e.LevelId, e.ScopeId })
             .IsUnique();
     }
