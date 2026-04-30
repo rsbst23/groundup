@@ -306,5 +306,29 @@ public sealed class SettingsServiceSetAsyncTests : IDisposable
         result.Message.Should().Contain("Encryption provider required");
     }
 
+    [Fact]
+    public async Task SetAsync_EmptyValueWithMinLength_WhenNotRequired_Succeeds()
+    {
+        // Arrange — IsRequired=false and MinLength=5; empty value should not be rejected
+        using var context = _fixture.CreateContext();
+        var levelId = await SettingsTestFixture.SeedLevelAsync(context, "System");
+
+        await SettingsTestFixture.SeedDefinitionAsync(context,
+            key: "OptionalMinLen",
+            isRequired: false,
+            minLength: 5,
+            allowedLevelIds: levelId);
+
+        var service = _fixture.CreateService(context);
+
+        // Act
+        var result = await service.SetAsync("OptionalMinLen", "", levelId, null);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data.Should().NotBeNull();
+        result.Data!.Value.Should().Be("");
+    }
+
     public void Dispose() => _fixture.Dispose();
 }

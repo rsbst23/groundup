@@ -35,6 +35,8 @@ public class SettingDefinitionConfiguration : IEntityTypeConfiguration<SettingDe
             .HasForeignKey(e => e.GroupId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        builder.HasIndex(e => e.GroupId);
+
         // ── UI metadata ───────────────────────────────────────
         builder.Property(e => e.DisplayName)
             .IsRequired()

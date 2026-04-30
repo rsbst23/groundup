@@ -150,28 +150,31 @@ public sealed class SettingsService : ISettingsService
                 $"Setting '{key}' requires a value");
         }
 
-        // Validation: MinValue / MaxValue (numeric types)
+        // Validation: MinValue / MaxValue (numeric types, only when value is not empty)
         var numericValidation = ValidateNumericRange(definition, value);
         if (numericValidation is not null)
         {
             return numericValidation;
         }
 
-        // Validation: MinLength / MaxLength
-        if (definition.MinLength.HasValue && value.Length < definition.MinLength.Value)
+        // Validation: MinLength / MaxLength (only when value is not empty)
+        if (!string.IsNullOrEmpty(value))
         {
-            return OperationResult<SettingValueDto>.BadRequest(
-                $"Value must be at least {definition.MinLength.Value} characters for setting '{key}'");
+            if (definition.MinLength.HasValue && value.Length < definition.MinLength.Value)
+            {
+                return OperationResult<SettingValueDto>.BadRequest(
+                    $"Value must be at least {definition.MinLength.Value} characters for setting '{key}'");
+            }
+
+            if (definition.MaxLength.HasValue && value.Length > definition.MaxLength.Value)
+            {
+                return OperationResult<SettingValueDto>.BadRequest(
+                    $"Value must be at most {definition.MaxLength.Value} characters for setting '{key}'");
+            }
         }
 
-        if (definition.MaxLength.HasValue && value.Length > definition.MaxLength.Value)
-        {
-            return OperationResult<SettingValueDto>.BadRequest(
-                $"Value must be at most {definition.MaxLength.Value} characters for setting '{key}'");
-        }
-
-        // Validation: RegexPattern
-        if (!string.IsNullOrEmpty(definition.RegexPattern))
+        // Validation: RegexPattern (only when value is not empty)
+        if (!string.IsNullOrEmpty(definition.RegexPattern) && !string.IsNullOrEmpty(value))
         {
             if (!Regex.IsMatch(value, definition.RegexPattern))
             {
@@ -458,6 +461,11 @@ public sealed class SettingsService : ISettingsService
         SettingDefinition definition,
         string value)
     {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
         if (definition.MinValue is null && definition.MaxValue is null)
         {
             return null;
