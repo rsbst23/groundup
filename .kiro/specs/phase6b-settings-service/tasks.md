@@ -168,15 +168,15 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
 - [x] 4. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 5. PR4: Unit tests for SettingsService
-  - [ ] 5.1 Set up test infrastructure for SettingsService tests
+- [x] 5. PR4: Unit tests for SettingsService
+  - [x] 5.1 Set up test infrastructure for SettingsService tests
     - Create a test helper/fixture that sets up SQLite in-memory DbContext for EF Core query testing
     - Add `Microsoft.EntityFrameworkCore.Sqlite` package reference to `GroundUp.Tests.Unit.csproj` if not present
     - Create a concrete test DbContext deriving from `GroundUpDbContext` for use in tests
     - Set up NSubstitute mocks for `IEventBus` and `ISettingEncryptionProvider`
     - _Requirements: 13.3_
 
-  - [ ] 5.2 Write unit tests for GetAsync<T>
+  - [x] 5.2 Write unit tests for GetAsync<T>
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceGetAsyncTests.cs`
     - Test: key not found returns NotFound (Req 4.2)
     - Test: empty scope chain returns default value (Req 4.7)
@@ -189,7 +189,7 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
     - Test: null value returns default(T) (Req 5.11)
     - _Requirements: 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 5.11, 6.1, 6.3, 6.5_
 
-  - [ ] 5.3 Write unit tests for SetAsync
+  - [x] 5.3 Write unit tests for SetAsync
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceSetAsyncTests.cs`
     - Test: key not found returns NotFound (Req 7.1)
     - Test: disallowed level returns BadRequest (Req 7.2)
@@ -207,13 +207,13 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
     - Test: encrypted write without provider returns Fail (Req 6.3)
     - _Requirements: 7.1–7.9, 8.1–8.4, 6.2, 6.3_
 
-  - [ ] 5.4 Write unit tests for DeleteValueAsync
+  - [x] 5.4 Write unit tests for DeleteValueAsync
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceDeleteValueAsyncTests.cs`
     - Test: not found returns NotFound (Req 9.2)
     - Test: successful delete removes entity and returns Ok (Req 9.3, 9.4)
     - _Requirements: 9.2, 9.3, 9.4_
 
-  - [ ] 5.5 Write unit tests for GetAllForScopeAsync
+  - [x] 5.5 Write unit tests for GetAllForScopeAsync
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceGetAllForScopeAsyncTests.cs`
     - Test: loads all definitions and resolves each (Req 11.1, 11.2)
     - Test: IsInherited false when value from first scope entry (Req 11.4)
@@ -221,14 +221,14 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
     - Test: secret values are masked (Req 11.6)
     - _Requirements: 11.1, 11.2, 11.4, 11.5, 11.6_
 
-  - [ ] 5.6 Write unit tests for GetGroupAsync
+  - [x] 5.6 Write unit tests for GetGroupAsync
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceGetGroupAsyncTests.cs`
     - Test: group not found returns NotFound (Req 12.2)
     - Test: resolves settings in group with cascade logic (Req 12.3)
     - Test: results ordered by DisplayOrder (Req 12.4)
     - _Requirements: 12.2, 12.3, 12.4_
 
-  - [ ] 5.7 Write unit tests for event publishing
+  - [x] 5.7 Write unit tests for event publishing
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceEventTests.cs`
     - Test: SetAsync publishes SettingChangedEvent on create (Req 10.3)
     - Test: SetAsync publishes SettingChangedEvent on update with old value (Req 10.3)
@@ -236,7 +236,7 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
     - Test: event publishing failure does not fail the operation (Req 10.5)
     - _Requirements: 10.3, 10.4, 10.5_
 
-  - [ ] 5.8 Write unit tests for DI registration
+  - [x] 5.8 Write unit tests for DI registration
     - Create `tests/GroundUp.Tests.Unit/Services/Settings/SettingsServiceCollectionExtensionsTests.cs`
     - Test: AddGroundUpSettings registers ISettingsService as scoped (Req 14.2)
     - Test: works without ISettingEncryptionProvider registered (Req 14.3)
@@ -292,17 +292,17 @@ All code uses C# targeting net8.0 with nullable reference types, file-scoped nam
     - Use FsCheck.Xunit with minimum 100 iterations
     - Tag: `// Feature: phase6b-settings-service, Property 9: Group and bulk results are ordered by DisplayOrder`
 
-  - [ ] 5.16 Verify all tests pass and solution builds
+  - [x] 5.16 Verify all tests pass and solution builds
     - Run `dotnet build groundup.sln` — zero errors
     - Run `dotnet test` — all tests pass
     - _Requirements: 15.1_
 
-  - [ ] 5.17 Commit and push PR4
+  - [x] 5.17 Commit and push PR4
     - Commit with message "test(phase-6b): add unit tests for SettingsService"
     - Push to remote
     - _Requirements: 15.2_
 
-- [ ] 6. Final checkpoint — Ensure all tests pass
+- [x] 6. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

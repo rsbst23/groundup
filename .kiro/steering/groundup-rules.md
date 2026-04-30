@@ -170,14 +170,42 @@ Before committing any production code or test code, perform a self-review:
 ## Phase Workflow
 
 For each new build phase:
-1. Pull the Jira stories under the phase epic
-2. Review and refine the backlog together — compare against BUILD_PHASES.md, identify gaps, update Jira as needed
-3. Only after the backlog is reviewed and agreed upon, create a Kiro spec from the refined stories
-4. Execute the spec tasks iteratively — build, test, verify at each step
-5. Update Jira status as tasks complete
-6. Merge to main when the phase is verified and complete
 
-Never skip the backlog review step. Never create a spec without first discussing the stories with the user.
+### Step 1: Backlog Review
+1. Pull the Jira stories under the phase epic
+2. Read BUILD_PHASES.md for the phase description and acceptance criteria
+3. Compare Jira stories against BUILD_PHASES.md — identify gaps, missing stories, or scope changes
+4. Discuss the backlog with the user — talk through the approach, raise design questions, identify edge cases
+5. Update Jira stories and BUILD_PHASES.md as needed based on the discussion
+6. Transition the phase epic to In Progress
+
+### Step 2: Design Discussion
+1. Before creating any spec documents, discuss the technical approach with the user
+2. Raise architectural questions (e.g., where should code live, how does it interact with existing patterns)
+3. Identify potential issues early (security, multi-tenancy, performance, extensibility)
+4. Align on the approach before writing anything down
+5. For large phases, agree on sub-phase breakdown (e.g., Phase 6A, 6B, 6C)
+
+### Step 3: Spec Creation
+1. Create the requirements document — present to user for review
+2. After requirements are approved, create the design document — present to user for review
+3. Before moving to tasks, do a thorough gap analysis of requirements + design — look for missing edge cases, better approaches, or things we forgot
+4. After design is approved (with any fixes from the gap analysis), create the tasks document
+5. Tasks should be broken into small, reviewable PRs (~10-15 files max per PR)
+
+### Step 4: Execution
+1. Execute tasks iteratively — build, test, verify at each step
+2. Commit frequently with clear messages
+3. Push and create PRs at natural boundaries
+4. Stop for user review at each PR before merging
+5. Before the final PR merge, do a thorough code review — check for gaps, edge cases, code quality
+
+### Step 5: Completion
+1. After all PRs are merged, switch to main and pull
+2. Update Jira — transition stories and epic to Done
+3. Commit any spec files or steering file updates that aren't yet committed
+
+Never skip the backlog review step. Never create a spec without first discussing the stories with the user. Never skip the design discussion — architectural decisions made early save rework later.
 
 ## Git Workflow
 
