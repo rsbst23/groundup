@@ -172,8 +172,8 @@ Before committing any production code or test code, perform a self-review:
 For each new build phase:
 
 ### Step 1: Backlog Review
-1. Pull the Jira stories under the phase epic
-2. Read BUILD_PHASES.md for the phase description and acceptance criteria
+1. Read CLAUDE.md and BUILD_PHASES.md for the overall architecture vision and phase description
+2. Pull the Jira stories under the phase epic
 3. Compare Jira stories against BUILD_PHASES.md — identify gaps, missing stories, or scope changes
 4. Discuss the backlog with the user — talk through the approach, raise design questions, identify edge cases
 5. Update Jira stories and BUILD_PHASES.md as needed based on the discussion
