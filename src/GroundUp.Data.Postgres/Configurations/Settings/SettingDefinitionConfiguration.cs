@@ -45,6 +45,9 @@ public class SettingDefinitionConfiguration : IEntityTypeConfiguration<SettingDe
         builder.Property(e => e.Description)
             .HasMaxLength(1000);
 
+        builder.Property(e => e.Placeholder)
+            .HasMaxLength(500);
+
         builder.Property(e => e.Category)
             .HasMaxLength(200);
 

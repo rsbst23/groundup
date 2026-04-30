@@ -72,6 +72,7 @@ public sealed class SettingDtoStructureTests
         propDict.Should().ContainKey("GroupId").WhoseValue.Should().Be(typeof(Guid?));
         propDict.Should().ContainKey("DisplayName").WhoseValue.Should().Be(typeof(string));
         propDict.Should().ContainKey("Description").WhoseValue.Should().Be(typeof(string));
+        propDict.Should().ContainKey("Placeholder").WhoseValue.Should().Be(typeof(string));
         propDict.Should().ContainKey("Category").WhoseValue.Should().Be(typeof(string));
         propDict.Should().ContainKey("DisplayOrder").WhoseValue.Should().Be(typeof(int));
         propDict.Should().ContainKey("IsVisible").WhoseValue.Should().Be(typeof(bool));

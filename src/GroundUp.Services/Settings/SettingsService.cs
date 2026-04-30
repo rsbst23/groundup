@@ -519,6 +519,7 @@ public sealed class SettingsService : ISettingsService
         def.GroupId,
         def.DisplayName,
         def.Description,
+        def.Placeholder,
         def.Category,
         def.DisplayOrder,
         def.IsVisible,
