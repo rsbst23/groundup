@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="GroundUp.Tests.Unit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="FluentValidation" Version="11.*" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.*" />
@@ -15,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
+    <ProjectReference Include="..\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
     <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
   </ItemGroup>
 
