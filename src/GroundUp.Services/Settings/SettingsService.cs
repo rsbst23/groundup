@@ -9,6 +9,8 @@ using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
 using GroundUp.Events;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace GroundUp.Services.Settings;
 
@@ -24,6 +26,10 @@ public sealed class SettingsService : ISettingsService
     private readonly GroundUpDbContext _dbContext;
     private readonly IEventBus _eventBus;
     private readonly ISettingEncryptionProvider? _encryptionProvider;
+    private readonly IScopeChainProvider _scopeChainProvider;
+    private readonly IMemoryCache _cache;
+    private readonly SettingsCacheOptions _cacheOptions;
+    private readonly SettingsCacheKeyTracker _cacheKeyTracker;
 
     private const string SecretMask = "••••••••";
 
@@ -32,6 +38,10 @@ public sealed class SettingsService : ISettingsService
     /// </summary>
     /// <param name="dbContext">The EF Core database context for querying settings entities.</param>
     /// <param name="eventBus">The event bus for publishing <see cref="SettingChangedEvent"/>.</param>
+    /// <param name="scopeChainProvider">The scope chain provider for convenience overloads.</param>
+    /// <param name="cache">The in-memory cache for caching resolved settings.</param>
+    /// <param name="cacheOptions">Configuration options for cache TTL.</param>
+    /// <param name="cacheKeyTracker">Shared tracker for active cache keys.</param>
     /// <param name="encryptionProvider">
     /// Optional encryption provider. When null, the service works for non-encrypted settings
     /// and fails with a clear error only when an encrypted setting is actually accessed.
@@ -39,10 +49,18 @@ public sealed class SettingsService : ISettingsService
     public SettingsService(
         GroundUpDbContext dbContext,
         IEventBus eventBus,
+        IScopeChainProvider scopeChainProvider,
+        IMemoryCache cache,
+        IOptions<SettingsCacheOptions> cacheOptions,
+        SettingsCacheKeyTracker cacheKeyTracker,
         ISettingEncryptionProvider? encryptionProvider = null)
     {
         _dbContext = dbContext;
         _eventBus = eventBus;
+        _scopeChainProvider = scopeChainProvider;
+        _cache = cache;
+        _cacheOptions = cacheOptions.Value;
+        _cacheKeyTracker = cacheKeyTracker;
         _encryptionProvider = encryptionProvider;
     }
 
@@ -52,61 +70,33 @@ public sealed class SettingsService : ISettingsService
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken = default)
     {
-        var definition = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .Include(d => d.AllowedLevels)
-            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+        var cacheKey = $"settings:get:{key}:{ComputeScopeChainHash(scopeChain)}";
 
-        if (definition is null)
+        try
         {
-            return OperationResult<T>.NotFound($"Setting '{key}' not found");
-        }
-
-        var allowedLevelIds = definition.AllowedLevels
-            .Select(al => al.SettingLevelId)
-            .ToHashSet();
-
-        string? effectiveValue = null;
-
-        if (scopeChain is { Count: > 0 })
-        {
-            foreach (var entry in scopeChain)
+            if (_cache.TryGetValue(cacheKey, out OperationResult<T>? cached) && cached is not null)
             {
-                if (!allowedLevelIds.Contains(entry.LevelId))
-                {
-                    continue;
-                }
-
-                var settingValue = await _dbContext.Set<SettingValue>()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(v =>
-                        v.SettingDefinitionId == definition.Id &&
-                        v.LevelId == entry.LevelId &&
-                        v.ScopeId == entry.ScopeId,
-                        cancellationToken);
-
-                if (settingValue is not null)
-                {
-                    effectiveValue = settingValue.Value;
-                    break;
-                }
+                return cached;
             }
         }
-
-        effectiveValue ??= definition.DefaultValue;
-
-        if (definition.IsEncrypted && effectiveValue is not null)
+        catch
         {
-            if (_encryptionProvider is null)
-            {
-                return OperationResult<T>.Fail(
-                    $"Encryption provider required to read encrypted setting '{key}'", 500);
-            }
-
-            effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+            // Cache exceptions are swallowed — fall through to DB resolution
         }
 
-        return SettingValueConverter.Convert<T>(effectiveValue, definition.DataType, definition.AllowMultiple, key);
+        var result = await ResolveFromDatabaseAsync<T>(key, scopeChain, cancellationToken);
+
+        try
+        {
+            _cache.Set(cacheKey, result, _cacheOptions.CacheDuration);
+            _cacheKeyTracker.Track(cacheKey);
+        }
+        catch
+        {
+            // Cache exceptions are swallowed — result is still returned
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -301,6 +291,170 @@ public sealed class SettingsService : ISettingsService
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken = default)
     {
+        var cacheKey = $"settings:all:{ComputeScopeChainHash(scopeChain)}";
+
+        try
+        {
+            if (_cache.TryGetValue(cacheKey, out OperationResult<IReadOnlyList<ResolvedSettingDto>>? cached) && cached is not null)
+            {
+                return cached;
+            }
+        }
+        catch
+        {
+            // Cache exceptions are swallowed — fall through to DB resolution
+        }
+
+        var result = await ResolveAllFromDatabaseAsync(scopeChain, cancellationToken);
+
+        try
+        {
+            _cache.Set(cacheKey, result, _cacheOptions.CacheDuration);
+            _cacheKeyTracker.Track(cacheKey);
+        }
+        catch
+        {
+            // Cache exceptions are swallowed — result is still returned
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
+        string groupKey,
+        IReadOnlyList<SettingScopeEntry> scopeChain,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"settings:group:{groupKey}:{ComputeScopeChainHash(scopeChain)}";
+
+        try
+        {
+            if (_cache.TryGetValue(cacheKey, out OperationResult<IReadOnlyList<ResolvedSettingDto>>? cached) && cached is not null)
+            {
+                return cached;
+            }
+        }
+        catch
+        {
+            // Cache exceptions are swallowed — fall through to DB resolution
+        }
+
+        var result = await ResolveGroupFromDatabaseAsync(groupKey, scopeChain, cancellationToken);
+
+        try
+        {
+            _cache.Set(cacheKey, result, _cacheOptions.CacheDuration);
+            _cacheKeyTracker.Track(cacheKey);
+        }
+        catch
+        {
+            // Cache exceptions are swallowed — result is still returned
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<T>> GetAsync<T>(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        var scopeChain = await _scopeChainProvider.GetScopeChainAsync(cancellationToken);
+        return await GetAsync<T>(key, scopeChain, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetAllForScopeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var scopeChain = await _scopeChainProvider.GetScopeChainAsync(cancellationToken);
+        return await GetAllForScopeAsync(scopeChain, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
+        string groupKey,
+        CancellationToken cancellationToken = default)
+    {
+        var scopeChain = await _scopeChainProvider.GetScopeChainAsync(cancellationToken);
+        return await GetGroupAsync(groupKey, scopeChain, cancellationToken);
+    }
+
+    #region Private Helpers
+
+    /// <summary>
+    /// Resolves a single setting from the database (bypassing cache).
+    /// </summary>
+    private async Task<OperationResult<T>> ResolveFromDatabaseAsync<T>(
+        string key,
+        IReadOnlyList<SettingScopeEntry> scopeChain,
+        CancellationToken cancellationToken)
+    {
+        var definition = await _dbContext.Set<SettingDefinition>()
+            .AsNoTracking()
+            .Include(d => d.AllowedLevels)
+            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+
+        if (definition is null)
+        {
+            return OperationResult<T>.NotFound($"Setting '{key}' not found");
+        }
+
+        var allowedLevelIds = definition.AllowedLevels
+            .Select(al => al.SettingLevelId)
+            .ToHashSet();
+
+        string? effectiveValue = null;
+
+        if (scopeChain is { Count: > 0 })
+        {
+            foreach (var entry in scopeChain)
+            {
+                if (!allowedLevelIds.Contains(entry.LevelId))
+                {
+                    continue;
+                }
+
+                var settingValue = await _dbContext.Set<SettingValue>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(v =>
+                        v.SettingDefinitionId == definition.Id &&
+                        v.LevelId == entry.LevelId &&
+                        v.ScopeId == entry.ScopeId,
+                        cancellationToken);
+
+                if (settingValue is not null)
+                {
+                    effectiveValue = settingValue.Value;
+                    break;
+                }
+            }
+        }
+
+        effectiveValue ??= definition.DefaultValue;
+
+        if (definition.IsEncrypted && effectiveValue is not null)
+        {
+            if (_encryptionProvider is null)
+            {
+                return OperationResult<T>.Fail(
+                    $"Encryption provider required to read encrypted setting '{key}'", 500);
+            }
+
+            effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+        }
+
+        return SettingValueConverter.Convert<T>(effectiveValue, definition.DataType, definition.AllowMultiple, key);
+    }
+
+    /// <summary>
+    /// Resolves all settings from the database (bypassing cache).
+    /// </summary>
+    private async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> ResolveAllFromDatabaseAsync(
+        IReadOnlyList<SettingScopeEntry> scopeChain,
+        CancellationToken cancellationToken)
+    {
         var definitions = await _dbContext.Set<SettingDefinition>()
             .AsNoTracking()
             .Include(d => d.AllowedLevels)
@@ -320,13 +474,11 @@ public sealed class SettingsService : ISettingsService
             var resolved = ResolveEffectiveValue(definition, allValues, scopeChain);
             var effectiveValue = resolved.Value;
 
-            // Decrypt if encrypted and provider available
             if (definition.IsEncrypted && effectiveValue is not null && _encryptionProvider is not null)
             {
                 effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
             }
 
-            // Mask secret values
             if (definition.IsSecret && effectiveValue is not null)
             {
                 effectiveValue = SecretMask;
@@ -344,11 +496,13 @@ public sealed class SettingsService : ISettingsService
         return OperationResult<IReadOnlyList<ResolvedSettingDto>>.Ok(ordered);
     }
 
-    /// <inheritdoc />
-    public async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
+    /// <summary>
+    /// Resolves all settings in a group from the database (bypassing cache).
+    /// </summary>
+    private async Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> ResolveGroupFromDatabaseAsync(
         string groupKey,
         IReadOnlyList<SettingScopeEntry> scopeChain,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         var group = await _dbContext.Set<SettingGroup>()
             .AsNoTracking()
@@ -380,13 +534,11 @@ public sealed class SettingsService : ISettingsService
             var resolved = ResolveEffectiveValue(definition, allValues, scopeChain);
             var effectiveValue = resolved.Value;
 
-            // Decrypt if encrypted and provider available
             if (definition.IsEncrypted && effectiveValue is not null && _encryptionProvider is not null)
             {
                 effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
             }
 
-            // Mask secret values
             if (definition.IsSecret && effectiveValue is not null)
             {
                 effectiveValue = SecretMask;
@@ -404,7 +556,26 @@ public sealed class SettingsService : ISettingsService
         return OperationResult<IReadOnlyList<ResolvedSettingDto>>.Ok(ordered);
     }
 
-    #region Private Helpers
+    /// <summary>
+    /// Computes a deterministic hash from the scope chain entries for use in cache keys.
+    /// Uses <see cref="HashCode.Combine"/> on ordered (LevelId, ScopeId) pairs.
+    /// </summary>
+    internal static int ComputeScopeChainHash(IReadOnlyList<SettingScopeEntry> scopeChain)
+    {
+        if (scopeChain is not { Count: > 0 })
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        foreach (var entry in scopeChain)
+        {
+            hash.Add(entry.LevelId);
+            hash.Add(entry.ScopeId);
+        }
+
+        return hash.ToHashCode();
+    }
 
     /// <summary>
     /// Resolves the effective value for a definition by walking the scope chain.

@@ -100,4 +100,48 @@ public interface ISettingsService
     Task<OperationResult> DeleteValueAsync(
         Guid settingValueId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a single setting to a typed value using the scope chain
+    /// from <see cref="IScopeChainProvider"/>. Convenience overload that
+    /// avoids the caller needing to build a scope chain manually.
+    /// </summary>
+    /// <typeparam name="T">The CLR type to deserialize the setting value into.</typeparam>
+    /// <param name="key">The setting definition key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// An <see cref="OperationResult{T}"/> containing the typed value on success,
+    /// or a failure result if the key is not found or the value cannot be converted.
+    /// </returns>
+    Task<OperationResult<T>> GetAsync<T>(
+        string key,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves all settings with their effective values using the scope chain
+    /// from <see cref="IScopeChainProvider"/>. Convenience overload that
+    /// avoids the caller needing to build a scope chain manually.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// An <see cref="OperationResult{T}"/> containing a list of
+    /// <see cref="ResolvedSettingDto"/> ordered by display order.
+    /// </returns>
+    Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetAllForScopeAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves all settings in a specific group with their effective values
+    /// using the scope chain from <see cref="IScopeChainProvider"/>. Convenience
+    /// overload that avoids the caller needing to build a scope chain manually.
+    /// </summary>
+    /// <param name="groupKey">The setting group key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// An <see cref="OperationResult{T}"/> containing a list of
+    /// <see cref="ResolvedSettingDto"/> for the group, ordered by display order.
+    /// </returns>
+    Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
+        string groupKey,
+        CancellationToken cancellationToken = default);
 }

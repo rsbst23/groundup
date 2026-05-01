@@ -1,10 +1,13 @@
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
+using GroundUp.Core.Models;
 using GroundUp.Events;
 using GroundUp.Services.Settings;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace GroundUp.Tests.Unit.Services.Settings.TestHelpers;
@@ -19,6 +22,10 @@ public sealed class SettingsTestFixture : IDisposable
 
     public IEventBus EventBus { get; }
     public ISettingEncryptionProvider EncryptionProvider { get; }
+    public IScopeChainProvider ScopeChainProvider { get; }
+    public IMemoryCache MemoryCache { get; }
+    public IOptions<SettingsCacheOptions> CacheOptions { get; }
+    public SettingsCacheKeyTracker CacheKeyTracker { get; }
 
     public SettingsTestFixture()
     {
@@ -27,6 +34,14 @@ public sealed class SettingsTestFixture : IDisposable
 
         EventBus = Substitute.For<IEventBus>();
         EncryptionProvider = Substitute.For<ISettingEncryptionProvider>();
+        ScopeChainProvider = Substitute.For<IScopeChainProvider>();
+        MemoryCache = new MemoryCache(new MemoryCacheOptions());
+        CacheOptions = Options.Create(new SettingsCacheOptions());
+        CacheKeyTracker = new SettingsCacheKeyTracker();
+
+        // Default: scope chain provider returns empty chain
+        ScopeChainProvider.GetScopeChainAsync(Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<SettingScopeEntry>());
     }
 
     /// <summary>
@@ -49,7 +64,14 @@ public sealed class SettingsTestFixture : IDisposable
     /// </summary>
     public SettingsService CreateService(TestSettingsDbContext context, ISettingEncryptionProvider? encryptionProvider = null)
     {
-        return new SettingsService(context, EventBus, encryptionProvider);
+        return new SettingsService(
+            context,
+            EventBus,
+            ScopeChainProvider,
+            MemoryCache,
+            CacheOptions,
+            CacheKeyTracker,
+            encryptionProvider);
     }
 
     /// <summary>
@@ -57,7 +79,14 @@ public sealed class SettingsTestFixture : IDisposable
     /// </summary>
     public SettingsService CreateServiceWithEncryption(TestSettingsDbContext context)
     {
-        return new SettingsService(context, EventBus, EncryptionProvider);
+        return new SettingsService(
+            context,
+            EventBus,
+            ScopeChainProvider,
+            MemoryCache,
+            CacheOptions,
+            CacheKeyTracker,
+            EncryptionProvider);
     }
 
     /// <summary>
