@@ -7,6 +7,7 @@ using GroundUp.Sample.Dtos;
 using GroundUp.Sample.Repositories;
 using GroundUp.Sample.Services;
 using GroundUp.Services;
+using GroundUp.Services.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,10 @@ builder.Services.AddGroundUpPostgres<SampleDbContext>(connectionString);
 builder.Services.AddGroundUpEvents();
 builder.Services.AddGroundUpServices(typeof(Program).Assembly);
 builder.Services.AddGroundUpApi();
+builder.Services.AddGroundUpSettings();
+
+// Settings seeder
+builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();
 
 // TodoItem — simple pattern (single DTO, base classes handle everything)
 builder.Services.AddScoped<IBaseRepository<TodoItemDto>, TodoItemRepository>();

@@ -38,6 +38,10 @@ public static class PostgresServiceCollectionExtensions
                 sp.GetRequiredService<SoftDeleteInterceptor>());
         });
 
+        // Register GroundUpDbContext as a forwarding service so framework services
+        // (e.g., SettingsService, DefaultScopeChainProvider) can resolve the base type.
+        services.AddScoped<GroundUpDbContext>(sp => sp.GetRequiredService<TContext>());
+
         // Register DataSeederRunner as hosted service
         services.AddHostedService<DataSeederRunner>();
 

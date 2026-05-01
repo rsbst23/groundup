@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\GroundUp.Events\GroundUp.Events.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Repositories\GroundUp.Repositories.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Services\GroundUp.Services.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Tests.Common\GroundUp.Tests.Common.csproj" />
     <ProjectReference Include="..\..\samples\GroundUp.Sample\GroundUp.Sample.csproj" />
   </ItemGroup>
 

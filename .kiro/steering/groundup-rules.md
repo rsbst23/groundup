@@ -193,12 +193,16 @@ For each new build phase:
 4. After design is approved (with any fixes from the gap analysis), create the tasks document
 5. Tasks should be broken into small, reviewable PRs (~10-15 files max per PR)
 
-### Step 4: Execution
-1. Execute tasks iteratively — build, test, verify at each step
-2. Commit frequently with clear messages
-3. Push and create PRs at natural boundaries
-4. Stop for user review at each PR before merging
-5. Before the final PR merge, do a thorough code review — check for gaps, edge cases, code quality
+### Step 4: Execution — MANDATORY INCREMENTAL WORKFLOW
+1. Execute ONE task group at a time (one numbered top-level task from tasks.md)
+2. After each task group: build, run tests, verify everything passes
+3. Commit the task group with a clear message describing what was added
+4. **STOP and present the commit to the user for review** — list the files changed and summarize what was done
+5. **DO NOT proceed to the next task group until the user says to continue**
+6. At natural PR boundaries (every 2-3 task groups, or ~10-15 files), push and create a PR
+7. Before the final PR merge, do a thorough code review — check for gaps, edge cases, code quality
+
+**CRITICAL**: Never execute all tasks in a single pass. The user MUST be able to review each increment before the next one starts. If the user says "proceed" or "continue", that means execute the NEXT task group only — not all remaining tasks.
 
 ### Step 5: Completion
 1. After all PRs are merged, switch to main and pull
