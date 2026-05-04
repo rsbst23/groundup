@@ -18,25 +18,25 @@ Refactor `BaseController<TDto>` and `BaseService<TDto>` from generic CRUD base c
     - Add `using Microsoft.Extensions.DependencyInjection;` for `GetService<T>()`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 11.1, 11.4_
 
-- [ ] 2. Checkpoint — Verify framework projects compile
+- [x] 2. Checkpoint — Verify framework projects compile
   - Run `dotnet build src/GroundUp.Api/GroundUp.Api.csproj` and `dotnet build src/GroundUp.Services/GroundUp.Services.csproj` to confirm the framework layer compiles. The sample app and tests will NOT compile yet — that's expected.
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 3. Migrate simple entity services (TodoItem, Customer)
-  - [ ] 3.1 Rewrite `samples/GroundUp.Sample/Services/TodoItemService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<TodoItemDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods (GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync) that delegate to the repository with validation and event publishing via base helpers.
+- [x] 3. Migrate simple entity services (TodoItem, Customer)
+  - [x] 3.1 Rewrite `samples/GroundUp.Sample/Services/TodoItemService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<TodoItemDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods (GetAllAsync, GetByIdAsync, AddAsync, UpdateAsync, DeleteAsync) that delegate to the repository with validation and event publishing via base helpers.
     - _Requirements: 2.6, 4.1, 4.3, 10.1, 10.2, 10.3, 10.4, 11.2_
 
-  - [ ] 3.2 Rewrite `samples/GroundUp.Sample/Services/CustomerService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<CustomerDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods following the same pattern as TodoItemService.
+  - [x] 3.2 Rewrite `samples/GroundUp.Sample/Services/CustomerService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<CustomerDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods following the same pattern as TodoItemService.
     - _Requirements: 2.6, 4.1, 4.3, 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 4. Migrate complex entity service (Order)
-  - [ ] 4.1 Rewrite `samples/GroundUp.Sample/Services/OrderService.cs` to extend non-generic `BaseService`, inject `OrderRepository` + `IEventBus` + `IServiceProvider`, and define methods with correct per-operation DTO types: `GetAllAsync` returning `PaginatedData<OrderListDto>`, `GetByIdAsync` returning `OrderDetailDto`, `CreateAsync` accepting `CreateOrderDto` returning `OrderDetailDto`, `UpdateAsync` accepting `UpdateOrderDto` returning `OrderDetailDto`, `DeleteAsync` returning `OperationResult`.
+- [x] 4. Migrate complex entity service (Order)
+  - [x] 4.1 Rewrite `samples/GroundUp.Sample/Services/OrderService.cs` to extend non-generic `BaseService`, inject `OrderRepository` + `IEventBus` + `IServiceProvider`, and define methods with correct per-operation DTO types: `GetAllAsync` returning `PaginatedData<OrderListDto>`, `GetByIdAsync` returning `OrderDetailDto`, `CreateAsync` accepting `CreateOrderDto` returning `OrderDetailDto`, `UpdateAsync` accepting `UpdateOrderDto` returning `OrderDetailDto`, `DeleteAsync` returning `OperationResult`.
     - Remove the `BaseService<OrderListDto>` inheritance and `_orderRepository` field naming — use `_repository` directly
     - Use `ValidateAsync<CreateOrderDto>` and `ValidateAsync<UpdateOrderDto>` for per-DTO validation
     - _Requirements: 5.2, 5.7, 10.1, 10.2, 10.3, 10.4, 11.2, 11.3_
 
-- [ ] 5. Migrate tenant-scoped entity service (Project)
-  - [ ] 5.1 Rewrite `samples/GroundUp.Sample/Services/ProjectService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<ProjectDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods following the same pattern as TodoItemService.
+- [x] 5. Migrate tenant-scoped entity service (Project)
+  - [x] 5.1 Rewrite `samples/GroundUp.Sample/Services/ProjectService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<ProjectDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods following the same pattern as TodoItemService.
     - _Requirements: 2.6, 6.1, 6.2, 6.4_
 
 - [ ] 6. Migrate simple entity controllers (TodoItems, Customers)
