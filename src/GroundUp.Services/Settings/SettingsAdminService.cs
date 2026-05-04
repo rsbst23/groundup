@@ -45,6 +45,15 @@ public sealed class SettingsAdminService : ISettingsAdminService
         CreateSettingLevelDto dto,
         CancellationToken cancellationToken = default)
     {
+        var exists = await _dbContext.Set<SettingLevel>()
+            .AnyAsync(l => l.Name == dto.Name, cancellationToken);
+
+        if (exists)
+        {
+            return OperationResult<SettingLevelDto>.BadRequest(
+                $"A setting level with name '{dto.Name}' already exists");
+        }
+
         var entity = new SettingLevel
         {
             Name = dto.Name,
@@ -146,6 +155,15 @@ public sealed class SettingsAdminService : ISettingsAdminService
         CreateSettingGroupDto dto,
         CancellationToken cancellationToken = default)
     {
+        var exists = await _dbContext.Set<SettingGroup>()
+            .AnyAsync(g => g.Key == dto.Key, cancellationToken);
+
+        if (exists)
+        {
+            return OperationResult<SettingGroupDto>.BadRequest(
+                $"A setting group with key '{dto.Key}' already exists");
+        }
+
         var entity = new SettingGroup
         {
             Key = dto.Key,
@@ -259,6 +277,15 @@ public sealed class SettingsAdminService : ISettingsAdminService
         CreateSettingDefinitionDto dto,
         CancellationToken cancellationToken = default)
     {
+        var exists = await _dbContext.Set<SettingDefinition>()
+            .AnyAsync(d => d.Key == dto.Key, cancellationToken);
+
+        if (exists)
+        {
+            return OperationResult<SettingDefinitionDto>.BadRequest(
+                $"A setting definition with key '{dto.Key}' already exists");
+        }
+
         var entity = new SettingDefinition
         {
             Key = dto.Key,
