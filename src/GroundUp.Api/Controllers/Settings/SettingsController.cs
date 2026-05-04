@@ -10,7 +10,7 @@ namespace GroundUp.Api.Controllers.Settings;
 /// Uses <see cref="ISettingsService"/> convenience overloads that resolve the scope chain
 /// from <see cref="IScopeChainProvider"/> automatically.
 /// <para>
-/// This controller does NOT extend <see cref="BaseController{TDto}"/> because settings
+/// This controller does NOT extend <see cref="BaseController"/> because settings
 /// endpoints don't follow the standard CRUD pattern — routes are custom, DTOs vary per
 /// endpoint, and there is no single entity type.
 /// </para>
