@@ -1,5 +1,4 @@
 using FluentAssertions;
-using GroundUp.Core.Abstractions;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Services.Settings;
@@ -10,9 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace GroundUp.Tests.Unit.Services.Settings;
 
 /// <summary>
-/// Tests what happens when creating settings entities with duplicate keys/names.
-/// The SettingsAdminService does NOT check for duplicates before inserting — it relies
-/// on database unique constraints. These tests document the current behavior.
+/// Tests that creating settings entities with duplicate keys/names returns
+/// a clean BadRequest result instead of throwing an unhandled exception.
 /// </summary>
 public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
 {
@@ -32,15 +30,13 @@ public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
         _context = new TestSettingsDbContext(options);
         _context.Database.EnsureCreated();
 
-        // SettingsAdminService takes GroundUpDbContext — TestSettingsDbContext inherits from it
         _adminService = new SettingsAdminService(_context);
     }
 
     [Fact]
-    public async Task CreateLevelAsync_DuplicateName_BehaviorTest()
+    public async Task CreateLevelAsync_DuplicateName_ReturnsBadRequest()
     {
-        // Arrange — SettingLevel does NOT have a unique index on Name,
-        // so duplicate names are allowed at the database level.
+        // Arrange
         var dto = new CreateSettingLevelDto("System", null, null, 0);
 
         // Act — create first
@@ -50,19 +46,17 @@ public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
         // Act — create second with same name
         var second = await _adminService.CreateLevelAsync(dto);
 
-        // Assert — both succeed because there is no unique constraint on SettingLevel.Name.
-        // NOTE: This means the application allows duplicate level names.
-        // If this is undesirable, a unique index or application-level check should be added.
-        second.Success.Should().BeTrue();
-        second.Data!.Id.Should().NotBe(first.Data!.Id);
+        // Assert — returns BadRequest with descriptive message
+        second.Success.Should().BeFalse();
+        second.StatusCode.Should().Be(400);
+        second.Message.Should().Contain("System");
+        second.Message.Should().Contain("already exists");
     }
 
     [Fact]
-    public async Task CreateGroupAsync_DuplicateKey_BehaviorTest()
+    public async Task CreateGroupAsync_DuplicateKey_ReturnsBadRequest()
     {
-        // Arrange — SettingGroup HAS a unique index on Key.
-        // The SettingsAdminService does NOT check for duplicates before inserting,
-        // so the DB constraint will throw a DbUpdateException.
+        // Arrange
         var dto = new CreateSettingGroupDto("MyGroup", "My Group", null, null, 0);
 
         // Act — create first
@@ -70,20 +64,19 @@ public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
         first.Success.Should().BeTrue();
 
         // Act — create second with same key
-        // NOTE: This throws an unhandled DbUpdateException because the admin service
-        // does not catch unique constraint violations. This is a potential improvement area —
-        // the service could catch the exception and return a BadRequest/Conflict result.
-        var act = () => _adminService.CreateGroupAsync(dto);
+        var second = await _adminService.CreateGroupAsync(dto);
 
-        // Assert — unhandled exception from DB unique constraint violation
-        await act.Should().ThrowAsync<DbUpdateException>();
+        // Assert — returns BadRequest with descriptive message
+        second.Success.Should().BeFalse();
+        second.StatusCode.Should().Be(400);
+        second.Message.Should().Contain("MyGroup");
+        second.Message.Should().Contain("already exists");
     }
 
     [Fact]
-    public async Task CreateDefinitionAsync_DuplicateKey_BehaviorTest()
+    public async Task CreateDefinitionAsync_DuplicateKey_ReturnsBadRequest()
     {
-        // Arrange — SettingDefinition HAS a unique index on Key.
-        // Same behavior as groups: no application-level duplicate check.
+        // Arrange
         var dto = new CreateSettingDefinitionDto(
             Key: "MySetting",
             DataType: SettingDataType.String,
@@ -118,13 +111,13 @@ public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
         first.Success.Should().BeTrue();
 
         // Act — create second with same key
-        // NOTE: This throws an unhandled DbUpdateException because the admin service
-        // does not catch unique constraint violations. This is a potential improvement area —
-        // the service could catch the exception and return a BadRequest/Conflict result.
-        var act = () => _adminService.CreateDefinitionAsync(dto);
+        var second = await _adminService.CreateDefinitionAsync(dto);
 
-        // Assert — unhandled exception from DB unique constraint violation
-        await act.Should().ThrowAsync<DbUpdateException>();
+        // Assert — returns BadRequest with descriptive message
+        second.Success.Should().BeFalse();
+        second.StatusCode.Should().Be(400);
+        second.Message.Should().Contain("MySetting");
+        second.Message.Should().Contain("already exists");
     }
 
     public void Dispose()
