@@ -1,3 +1,4 @@
+using GroundUp.Api.Controllers;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Results;
@@ -10,9 +11,8 @@ namespace GroundUp.Sample.Controllers.Settings;
 /// service pattern — consuming applications copy and customize this controller
 /// with their own authorization and routing requirements.
 /// </summary>
-[ApiController]
 [Route("api/settings/groups")]
-public sealed class SettingGroupsController : ControllerBase
+public sealed class SettingGroupsController : BaseController
 {
     private readonly ISettingsAdminService _adminService;
 
@@ -81,35 +81,4 @@ public sealed class SettingGroupsController : ControllerBase
         return ToActionResult(result);
     }
 
-    #region Private Helpers
-
-    private ActionResult ToActionResult<T>(OperationResult<T> result)
-    {
-        return result.StatusCode switch
-        {
-            200 => Ok(result),
-            201 => StatusCode(201, result),
-            400 => BadRequest(result),
-            401 => Unauthorized(),
-            403 => StatusCode(403, result),
-            404 => NotFound(result),
-            _ => new ObjectResult(result) { StatusCode = result.StatusCode }
-        };
-    }
-
-    private ActionResult ToActionResult(OperationResult result)
-    {
-        return result.StatusCode switch
-        {
-            200 => Ok(result),
-            201 => StatusCode(201, result),
-            400 => BadRequest(result),
-            401 => Unauthorized(),
-            403 => StatusCode(403, result),
-            404 => NotFound(result),
-            _ => new ObjectResult(result) { StatusCode = result.StatusCode }
-        };
-    }
-
-    #endregion
 }

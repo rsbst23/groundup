@@ -1,5 +1,6 @@
 using System.Reflection;
 using FluentAssertions;
+using GroundUp.Api.Controllers;
 using GroundUp.Api.Controllers.Settings;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Mvc;
@@ -15,9 +16,9 @@ public sealed class SettingsControllerStructureTests
     private readonly Type _controllerType = typeof(SettingsController);
 
     [Fact]
-    public void SettingsController_InheritsFromControllerBase()
+    public void SettingsController_InheritsFromBaseController()
     {
-        _controllerType.BaseType.Should().Be(typeof(ControllerBase));
+        _controllerType.BaseType.Should().Be(typeof(BaseController));
     }
 
     [Fact]
@@ -30,9 +31,9 @@ public sealed class SettingsControllerStructureTests
     [Fact]
     public void SettingsController_HasCorrectRouteAttribute()
     {
-        var attribute = _controllerType.GetCustomAttribute<RouteAttribute>();
-        attribute.Should().NotBeNull();
-        attribute!.Template.Should().Be("api/settings");
+        var attributes = _controllerType.GetCustomAttributes<RouteAttribute>(inherit: false);
+        attributes.Should().ContainSingle()
+            .Which.Template.Should().Be("api/settings");
     }
 
     [Fact]
