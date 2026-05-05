@@ -26,15 +26,17 @@ public sealed class SettingsController : BaseController
 
     /// <summary>
     /// Resolves the effective value for a single setting using the current scope chain.
+    /// Returns the value in its correct type (int, bool, string, etc.) based on the
+    /// setting definition's DataType.
     /// </summary>
     /// <param name="key">The setting definition key.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The effective value as a string.</returns>
+    /// <returns>The effective value in its correct type.</returns>
     [HttpGet("{key}")]
-    public async Task<ActionResult<OperationResult<string>>> GetByKey(
+    public async Task<ActionResult<OperationResult<object?>>> GetByKey(
         string key, CancellationToken cancellationToken = default)
     {
-        var result = await _settingsService.GetAsync<string>(key, cancellationToken);
+        var result = await _settingsService.GetTypedValueAsync(key, cancellationToken);
         return ToActionResult(result);
     }
 

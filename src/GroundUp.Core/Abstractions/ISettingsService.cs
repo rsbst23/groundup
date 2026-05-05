@@ -144,4 +144,19 @@ public interface ISettingsService
     Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
         string groupKey,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves a single setting to its correctly-typed value (int, bool, string, etc.)
+    /// based on the definition's DataType. Uses the scope chain from
+    /// <see cref="IScopeChainProvider"/>. Returns the value as <c>object</c> so the
+    /// API can serialize it with the correct JSON type (number, boolean, string).
+    /// </summary>
+    /// <param name="key">The setting definition key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// An <see cref="OperationResult{T}"/> containing the typed value boxed as object.
+    /// </returns>
+    Task<OperationResult<object?>> GetTypedValueAsync(
+        string key,
+        CancellationToken cancellationToken = default);
 }
