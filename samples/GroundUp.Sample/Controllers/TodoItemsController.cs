@@ -2,41 +2,61 @@ using GroundUp.Api.Controllers;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Sample.Dtos;
-using GroundUp.Services;
+using GroundUp.Sample.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GroundUp.Sample.Controllers;
 
-/// <summary>
-/// Simple CRUD controller — demonstrates the "just works" pattern.
-/// One-line overrides add HTTP attributes to expose base class methods.
-/// </summary>
-public class TodoItemsController : BaseController<TodoItemDto>
+public class TodoItemsController : BaseController
 {
-    public TodoItemsController(BaseService<TodoItemDto> service) : base(service) { }
+    private readonly TodoItemService _service;
+
+    public TodoItemsController(TodoItemService service)
+    {
+        _service = service;
+    }
 
     [HttpGet]
-    public override Task<ActionResult<OperationResult<PaginatedData<TodoItemDto>>>> GetAll(
-        [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
-        => base.GetAll(filterParams, cancellationToken);
+    public async Task<ActionResult<OperationResult<PaginatedData<TodoItemDto>>>> GetAll(
+        [FromQuery] FilterParams filterParams, CancellationToken ct = default)
+    {
+        var result = await _service.GetAllAsync(filterParams, ct);
+        if (result.Success && result.Data is not null)
+            AddPaginationHeaders(result.Data);
+        return ToActionResult(result);
+    }
 
     [HttpGet("{id}")]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> GetById(
-        Guid id, CancellationToken cancellationToken = default)
-        => base.GetById(id, cancellationToken);
+    public async Task<ActionResult<OperationResult<TodoItemDto>>> GetById(
+        Guid id, CancellationToken ct = default)
+    {
+        var result = await _service.GetByIdAsync(id, ct);
+        return ToActionResult(result);
+    }
 
     [HttpPost]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> Create(
-        [FromBody] TodoItemDto dto, CancellationToken cancellationToken = default)
-        => base.Create(dto, cancellationToken);
+    public async Task<ActionResult<OperationResult<TodoItemDto>>> Create(
+        [FromBody] TodoItemDto dto, CancellationToken ct = default)
+    {
+        var result = await _service.AddAsync(dto, ct);
+        if (result.Success && result.StatusCode == 201)
+            return CreatedAtAction(nameof(GetById), new { id = result.Data!.Id }, result);
+        return ToActionResult(result);
+    }
 
     [HttpPut("{id}")]
-    public override Task<ActionResult<OperationResult<TodoItemDto>>> Update(
-        Guid id, [FromBody] TodoItemDto dto, CancellationToken cancellationToken = default)
-        => base.Update(id, dto, cancellationToken);
+    public async Task<ActionResult<OperationResult<TodoItemDto>>> Update(
+        Guid id, [FromBody] TodoItemDto dto, CancellationToken ct = default)
+    {
+        var result = await _service.UpdateAsync(id, dto, ct);
+        return ToActionResult(result);
+    }
 
     [HttpDelete("{id}")]
-    public override Task<ActionResult<OperationResult>> Delete(
-        Guid id, CancellationToken cancellationToken = default)
-        => base.Delete(id, cancellationToken);
+    public async Task<ActionResult<OperationResult>> Delete(
+        Guid id, CancellationToken ct = default)
+    {
+        var result = await _service.DeleteAsync(id, ct);
+        return ToActionResult(result);
+    }
 }

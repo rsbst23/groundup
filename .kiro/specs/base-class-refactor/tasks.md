@@ -39,25 +39,25 @@ Refactor `BaseController<TDto>` and `BaseService<TDto>` from generic CRUD base c
   - [x] 5.1 Rewrite `samples/GroundUp.Sample/Services/ProjectService.cs` to extend non-generic `BaseService`, inject `IBaseRepository<ProjectDto>` + `IEventBus` + `IServiceProvider`, and define 5 explicit CRUD methods following the same pattern as TodoItemService.
     - _Requirements: 2.6, 6.1, 6.2, 6.4_
 
-- [ ] 6. Migrate simple entity controllers (TodoItems, Customers)
-  - [ ] 6.1 Rewrite `samples/GroundUp.Sample/Controllers/TodoItemsController.cs` to extend non-generic `BaseController`, inject `TodoItemService` directly (not `BaseService<TodoItemDto>`), and define 5 endpoint methods with explicit HTTP attributes, calling the service and using `ToActionResult` + `AddPaginationHeaders` from the base class.
+- [x] 6. Migrate simple entity controllers (TodoItems, Customers)
+  - [x] 6.1 Rewrite `samples/GroundUp.Sample/Controllers/TodoItemsController.cs` to extend non-generic `BaseController`, inject `TodoItemService` directly (not `BaseService<TodoItemDto>`), and define 5 endpoint methods with explicit HTTP attributes, calling the service and using `ToActionResult` + `AddPaginationHeaders` from the base class.
     - _Requirements: 1.7, 4.2, 4.4, 4.5, 8.1, 8.2_
 
-  - [ ] 6.2 Rewrite `samples/GroundUp.Sample/Controllers/CustomersController.cs` to extend non-generic `BaseController`, inject `CustomerService` directly, and define 5 endpoint methods following the same pattern as TodoItemsController.
+  - [x] 6.2 Rewrite `samples/GroundUp.Sample/Controllers/CustomersController.cs` to extend non-generic `BaseController`, inject `CustomerService` directly, and define 5 endpoint methods following the same pattern as TodoItemsController.
     - _Requirements: 1.7, 4.2, 4.4, 4.5, 8.1, 8.2_
 
-- [ ] 7. Migrate complex entity controller (Orders)
-  - [ ] 7.1 Rewrite `samples/GroundUp.Sample/Controllers/OrdersController.cs` to extend non-generic `BaseController`, inject `OrderService` directly, and define 5 endpoint methods with correct per-operation DTO types: `GetAll` returning `PaginatedData<OrderListDto>`, `GetById` returning `OrderDetailDto`, `Create` accepting `CreateOrderDto` returning `OrderDetailDto`, `Update` accepting `UpdateOrderDto` returning `OrderDetailDto`, `Delete` returning `OperationResult`.
+- [x] 7. Migrate complex entity controller (Orders)
+  - [x] 7.1 Rewrite `samples/GroundUp.Sample/Controllers/OrdersController.cs` to extend non-generic `BaseController`, inject `OrderService` directly, and define 5 endpoint methods with correct per-operation DTO types: `GetAll` returning `PaginatedData<OrderListDto>`, `GetById` returning `OrderDetailDto`, `Create` accepting `CreateOrderDto` returning `OrderDetailDto`, `Update` accepting `UpdateOrderDto` returning `OrderDetailDto`, `Delete` returning `OperationResult`.
     - Remove the `BaseController<OrderListDto>` inheritance and the `_orderService` field — use `_service` directly
     - Use standard method names (Create, Update, GetById) — no more `CreateOrder`/`UpdateOrder` disambiguation
     - _Requirements: 5.1, 5.3, 5.4, 5.5, 5.6, 5.7, 8.1, 8.2, 8.4_
 
-- [ ] 8. Migrate tenant-scoped entity controller (Projects)
-  - [ ] 8.1 Rewrite `samples/GroundUp.Sample/Controllers/ProjectsController.cs` to extend non-generic `BaseController`, inject `ProjectService` directly, and define 5 endpoint methods following the same pattern as TodoItemsController.
+- [x] 8. Migrate tenant-scoped entity controller (Projects)
+  - [x] 8.1 Rewrite `samples/GroundUp.Sample/Controllers/ProjectsController.cs` to extend non-generic `BaseController`, inject `ProjectService` directly, and define 5 endpoint methods following the same pattern as TodoItemsController.
     - _Requirements: 1.7, 6.3, 6.4_
 
-- [ ] 9. Update DI registration in Program.cs
-  - [ ] 9.1 Update `samples/GroundUp.Sample/Program.cs` to remove all `BaseService<TDto>` registrations and register services by their concrete type only. Specifically:
+- [x] 9. Update DI registration in Program.cs
+  - [x] 9.1 Update `samples/GroundUp.Sample/Program.cs` to remove all `BaseService<TDto>` registrations and register services by their concrete type only. Specifically:
     - Change `builder.Services.AddScoped<BaseService<TodoItemDto>, TodoItemService>()` → `builder.Services.AddScoped<TodoItemService>()`
     - Change `builder.Services.AddScoped<BaseService<CustomerDto>, CustomerService>()` → `builder.Services.AddScoped<CustomerService>()`
     - Remove `builder.Services.AddScoped<BaseService<OrderListDto>, OrderService>()` (keep `builder.Services.AddScoped<OrderService>()`)
