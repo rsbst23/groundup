@@ -24,23 +24,22 @@ builder.Services.AddGroundUpSettings();
 // Settings seeder
 builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();
 
-// TodoItem — simple pattern (single DTO, base classes handle everything)
+// TodoItem — simple pattern: register repository interface + concrete service
 builder.Services.AddScoped<IBaseRepository<TodoItemDto>, TodoItemRepository>();
-builder.Services.AddScoped<BaseService<TodoItemDto>, TodoItemService>();
+builder.Services.AddScoped<TodoItemService>();
 
-// Customer — simple pattern (single DTO, base classes handle everything)
+// Customer — simple pattern: register repository interface + concrete service
 builder.Services.AddScoped<IBaseRepository<CustomerDto>, CustomerRepository>();
-builder.Services.AddScoped<BaseService<CustomerDto>, CustomerService>();
+builder.Services.AddScoped<CustomerService>();
 
-// Order — complex pattern (multiple DTOs, custom service/repository methods)
+// Order — complex pattern: register concrete repository + concrete service
 builder.Services.AddScoped<OrderRepository>();
 builder.Services.AddScoped<IBaseRepository<OrderListDto>, OrderRepository>();
 builder.Services.AddScoped<OrderService>();
-builder.Services.AddScoped<BaseService<OrderListDto>, OrderService>();
 
-// Project — tenant-scoped pattern (BaseTenantRepository handles isolation)
+// Project — tenant-scoped pattern: register repository interface + concrete service
 builder.Services.AddScoped<IBaseRepository<ProjectDto>, ProjectRepository>();
-builder.Services.AddScoped<BaseService<ProjectDto>, ProjectService>();
+builder.Services.AddScoped<ProjectService>();
 
 // ASP.NET Core services
 builder.Services.AddControllers();

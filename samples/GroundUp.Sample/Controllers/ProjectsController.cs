@@ -2,41 +2,61 @@ using GroundUp.Api.Controllers;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Sample.Dtos;
-using GroundUp.Services;
+using GroundUp.Sample.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GroundUp.Sample.Controllers;
 
-/// <summary>
-/// Tenant-scoped CRUD controller — demonstrates the BaseTenantRepository pattern.
-/// One-line overrides add HTTP attributes to expose base class methods.
-/// </summary>
-public class ProjectsController : BaseController<ProjectDto>
+public class ProjectsController : BaseController
 {
-    public ProjectsController(BaseService<ProjectDto> service) : base(service) { }
+    private readonly ProjectService _service;
+
+    public ProjectsController(ProjectService service)
+    {
+        _service = service;
+    }
 
     [HttpGet]
-    public override Task<ActionResult<OperationResult<PaginatedData<ProjectDto>>>> GetAll(
-        [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
-        => base.GetAll(filterParams, cancellationToken);
+    public async Task<ActionResult<OperationResult<PaginatedData<ProjectDto>>>> GetAll(
+        [FromQuery] FilterParams filterParams, CancellationToken ct = default)
+    {
+        var result = await _service.GetAllAsync(filterParams, ct);
+        if (result.Success && result.Data is not null)
+            AddPaginationHeaders(result.Data);
+        return ToActionResult(result);
+    }
 
     [HttpGet("{id}")]
-    public override Task<ActionResult<OperationResult<ProjectDto>>> GetById(
-        Guid id, CancellationToken cancellationToken = default)
-        => base.GetById(id, cancellationToken);
+    public async Task<ActionResult<OperationResult<ProjectDto>>> GetById(
+        Guid id, CancellationToken ct = default)
+    {
+        var result = await _service.GetByIdAsync(id, ct);
+        return ToActionResult(result);
+    }
 
     [HttpPost]
-    public override Task<ActionResult<OperationResult<ProjectDto>>> Create(
-        [FromBody] ProjectDto dto, CancellationToken cancellationToken = default)
-        => base.Create(dto, cancellationToken);
+    public async Task<ActionResult<OperationResult<ProjectDto>>> Create(
+        [FromBody] ProjectDto dto, CancellationToken ct = default)
+    {
+        var result = await _service.AddAsync(dto, ct);
+        if (result.Success && result.StatusCode == 201)
+            return CreatedAtAction(nameof(GetById), new { id = result.Data!.Id }, result);
+        return ToActionResult(result);
+    }
 
     [HttpPut("{id}")]
-    public override Task<ActionResult<OperationResult<ProjectDto>>> Update(
-        Guid id, [FromBody] ProjectDto dto, CancellationToken cancellationToken = default)
-        => base.Update(id, dto, cancellationToken);
+    public async Task<ActionResult<OperationResult<ProjectDto>>> Update(
+        Guid id, [FromBody] ProjectDto dto, CancellationToken ct = default)
+    {
+        var result = await _service.UpdateAsync(id, dto, ct);
+        return ToActionResult(result);
+    }
 
     [HttpDelete("{id}")]
-    public override Task<ActionResult<OperationResult>> Delete(
-        Guid id, CancellationToken cancellationToken = default)
-        => base.Delete(id, cancellationToken);
+    public async Task<ActionResult<OperationResult>> Delete(
+        Guid id, CancellationToken ct = default)
+    {
+        var result = await _service.DeleteAsync(id, ct);
+        return ToActionResult(result);
+    }
 }

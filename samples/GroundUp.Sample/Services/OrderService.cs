@@ -1,3 +1,4 @@
+using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Events;
 using GroundUp.Sample.Dtos;
@@ -6,59 +7,62 @@ using GroundUp.Services;
 
 namespace GroundUp.Sample.Services;
 
-/// <summary>
-/// Order service — demonstrates the override pattern for complex entities.
-/// Uses different DTOs for different operations.
-/// </summary>
-public class OrderService : BaseService<OrderListDto>
+public class OrderService : BaseService
 {
-    private readonly OrderRepository _orderRepository;
+    private readonly OrderRepository _repository;
 
-    public OrderService(OrderRepository repository, IEventBus eventBus)
-        : base(repository, eventBus)
+    public OrderService(
+        OrderRepository repository,
+        IEventBus eventBus,
+        IServiceProvider serviceProvider)
+        : base(eventBus, serviceProvider)
     {
-        _orderRepository = repository;
+        _repository = repository;
     }
 
-    // GetAllAsync — inherited from BaseService, returns PaginatedData<OrderListDto>
-    // DeleteAsync — inherited from BaseService, works as-is
+    public async Task<OperationResult<PaginatedData<OrderListDto>>> GetAllAsync(
+        FilterParams filterParams, CancellationToken ct = default)
+        => await _repository.GetAllAsync(filterParams, ct);
 
-    /// <summary>
-    /// Get order detail with full customer info — different response DTO than GetAll.
-    /// </summary>
-    public async Task<OperationResult<OrderDetailDto>> GetDetailByIdAsync(
-        Guid id, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<OrderDetailDto>> GetByIdAsync(
+        Guid id, CancellationToken ct = default)
+        => await _repository.GetDetailByIdAsync(id, ct);
+
+    public async Task<OperationResult<OrderDetailDto>> CreateAsync(
+        CreateOrderDto dto, CancellationToken ct = default)
     {
-        return await _orderRepository.GetDetailByIdAsync(id, cancellationToken);
-    }
+        var error = await ValidateAsync(dto, ct);
+        if (error is not null)
+            return OperationResult<OrderDetailDto>.BadRequest(error.Message, error.Errors);
 
-    /// <summary>
-    /// Create order — accepts CreateOrderDto (not OrderListDto).
-    /// </summary>
-    public async Task<OperationResult<OrderDetailDto>> CreateOrderAsync(
-        CreateOrderDto dto, CancellationToken cancellationToken = default)
-    {
-        var result = await _orderRepository.CreateOrderAsync(dto, cancellationToken);
-
+        var result = await _repository.CreateOrderAsync(dto, ct);
         if (result.Success)
             await PublishEventSafelyAsync(
-                new EntityCreatedEvent<OrderDetailDto> { Entity = result.Data! }, cancellationToken);
-
+                new EntityCreatedEvent<OrderDetailDto> { Entity = result.Data! }, ct);
         return result;
     }
 
-    /// <summary>
-    /// Update order — accepts UpdateOrderDto (not OrderListDto).
-    /// </summary>
-    public async Task<OperationResult<OrderDetailDto>> UpdateOrderAsync(
-        Guid id, UpdateOrderDto dto, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<OrderDetailDto>> UpdateAsync(
+        Guid id, UpdateOrderDto dto, CancellationToken ct = default)
     {
-        var result = await _orderRepository.UpdateOrderAsync(id, dto, cancellationToken);
+        var error = await ValidateAsync(dto, ct);
+        if (error is not null)
+            return OperationResult<OrderDetailDto>.BadRequest(error.Message, error.Errors);
 
+        var result = await _repository.UpdateOrderAsync(id, dto, ct);
         if (result.Success)
             await PublishEventSafelyAsync(
-                new EntityUpdatedEvent<OrderDetailDto> { Entity = result.Data! }, cancellationToken);
+                new EntityUpdatedEvent<OrderDetailDto> { Entity = result.Data! }, ct);
+        return result;
+    }
 
+    public async Task<OperationResult> DeleteAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var result = await _repository.DeleteAsync(id, ct);
+        if (result.Success)
+            await PublishEventSafelyAsync(
+                new EntityDeletedEvent<OrderDetailDto> { EntityId = id }, ct);
         return result;
     }
 }

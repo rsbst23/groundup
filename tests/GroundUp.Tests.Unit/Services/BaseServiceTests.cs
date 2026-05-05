@@ -12,22 +12,133 @@ using NSubstitute.ExceptionExtensions;
 namespace GroundUp.Tests.Unit.Services;
 
 /// <summary>
-/// Unit tests for <see cref="GroundUp.Services.BaseService{TDto}"/>
-/// covering AddAsync, UpdateAsync, DeleteAsync, and read operations.
+/// Unit tests for <see cref="GroundUp.Services.BaseService"/>
+/// covering AddAsync, UpdateAsync, DeleteAsync, read operations,
+/// ValidateAsync resolution from IServiceProvider, and PublishEventSafelyAsync.
 /// </summary>
 public sealed class BaseServiceTests
 {
     private readonly IBaseRepository<ServiceTestDto> _repository = Substitute.For<IBaseRepository<ServiceTestDto>>();
     private readonly IEventBus _eventBus = Substitute.For<IEventBus>();
     private readonly IValidator<ServiceTestDto> _validator = Substitute.For<IValidator<ServiceTestDto>>();
+    private readonly IServiceProvider _serviceProvider = Substitute.For<IServiceProvider>();
+    private readonly IServiceProvider _serviceProviderNoValidator = Substitute.For<IServiceProvider>();
     private readonly TestService _service;
     private readonly TestService _serviceNoValidator;
 
     public BaseServiceTests()
     {
-        _service = new TestService(_repository, _eventBus, _validator);
-        _serviceNoValidator = new TestService(_repository, _eventBus, validator: null);
+        // Service provider that returns a validator
+        _serviceProvider.GetService(typeof(IValidator<ServiceTestDto>))
+            .Returns(_validator);
+
+        // Service provider that returns no validator
+        _serviceProviderNoValidator.GetService(typeof(IValidator<ServiceTestDto>))
+            .Returns(null);
+
+        _service = new TestService(_repository, _eventBus, _serviceProvider);
+        _serviceNoValidator = new TestService(_repository, _eventBus, _serviceProviderNoValidator);
     }
+
+    #region Structure Tests
+
+    [Fact]
+    public void BaseService_IsNotGeneric()
+    {
+        var type = typeof(GroundUp.Services.BaseService);
+        Assert.False(type.IsGenericType);
+        Assert.False(type.IsGenericTypeDefinition);
+    }
+
+    [Fact]
+    public void BaseService_HasNoCrudMethods()
+    {
+        var type = typeof(GroundUp.Services.BaseService);
+        var publicMethods = type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly);
+        var crudMethodNames = new[] { "GetAllAsync", "GetByIdAsync", "AddAsync", "UpdateAsync", "DeleteAsync" };
+        var foundCrudMethods = publicMethods.Where(m => crudMethodNames.Contains(m.Name)).ToList();
+        Assert.Empty(foundCrudMethods);
+    }
+
+    #endregion
+
+    #region ValidateAsync Tests
+
+    [Fact]
+    public async Task ValidateAsync_NoValidatorRegistered_SkipsValidationAndCallsRepo()
+    {
+        // Arrange
+        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "Test" };
+        _repository.AddAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<ServiceTestDto>.Ok(dto));
+
+        // Act
+        var result = await _serviceNoValidator.AddAsync(dto);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data.Should().Be(dto);
+        await _repository.Received(1).AddAsync(dto, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ValidatorRegistered_ValidationPasses_CallsRepo()
+    {
+        // Arrange
+        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "Test" };
+        _validator.ValidateAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ValidationResult());
+        _repository.AddAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<ServiceTestDto>.Ok(dto));
+
+        // Act
+        var result = await _service.AddAsync(dto);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data.Should().Be(dto);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ValidatorRegistered_ValidationFails_ReturnsBadRequest()
+    {
+        // Arrange
+        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "" };
+        var failures = new List<ValidationFailure>
+        {
+            new("Name", "Name is required"),
+            new("Name", "Name must be at least 2 characters")
+        };
+        _validator.ValidateAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ValidationResult(failures));
+
+        // Act
+        var result = await _service.AddAsync(dto);
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Message.Should().Be("Validation failed");
+        result.Errors.Should().ContainInOrder("Name is required", "Name must be at least 2 characters");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ValidationFails_DoesNotCallRepository()
+    {
+        // Arrange
+        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "" };
+        var failures = new List<ValidationFailure> { new("Name", "Name is required") };
+        _validator.ValidateAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ValidationResult(failures));
+
+        // Act
+        await _service.AddAsync(dto);
+
+        // Assert
+        await _repository.DidNotReceive().AddAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>());
+    }
+
+    #endregion
 
     #region AddAsync Tests
 
@@ -69,45 +180,6 @@ public sealed class BaseServiceTests
     }
 
     [Fact]
-    public async Task AddAsync_ValidationFails_ReturnsBadRequestWithErrors()
-    {
-        // Arrange
-        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "" };
-        var failures = new List<ValidationFailure>
-        {
-            new("Name", "Name is required"),
-            new("Name", "Name must be at least 2 characters")
-        };
-        _validator.ValidateAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
-            .Returns(new ValidationResult(failures));
-
-        // Act
-        var result = await _service.AddAsync(dto);
-
-        // Assert
-        result.Success.Should().BeFalse();
-        result.StatusCode.Should().Be(400);
-        result.Message.Should().Be("Validation failed");
-        result.Errors.Should().ContainInOrder("Name is required", "Name must be at least 2 characters");
-    }
-
-    [Fact]
-    public async Task AddAsync_ValidationFails_DoesNotCallRepository()
-    {
-        // Arrange
-        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "" };
-        var failures = new List<ValidationFailure> { new("Name", "Name is required") };
-        _validator.ValidateAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
-            .Returns(new ValidationResult(failures));
-
-        // Act
-        await _service.AddAsync(dto);
-
-        // Assert
-        await _repository.DidNotReceive().AddAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task AddAsync_ValidationFails_DoesNotPublishEvent()
     {
         // Arrange
@@ -123,23 +195,6 @@ public sealed class BaseServiceTests
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<EntityCreatedEvent<ServiceTestDto>>(),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task AddAsync_NoValidator_SkipsValidationAndCallsRepo()
-    {
-        // Arrange
-        var dto = new ServiceTestDto { Id = Guid.NewGuid(), Name = "Test" };
-        _repository.AddAsync(Arg.Any<ServiceTestDto>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<ServiceTestDto>.Ok(dto));
-
-        // Act
-        var result = await _serviceNoValidator.AddAsync(dto);
-
-        // Assert
-        result.Success.Should().BeTrue();
-        result.Data.Should().Be(dto);
-        await _repository.Received(1).AddAsync(dto, Arg.Any<CancellationToken>());
     }
 
     [Fact]

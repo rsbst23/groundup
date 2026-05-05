@@ -9,15 +9,9 @@ namespace GroundUp.Api.Controllers.Settings;
 /// Consumer-facing controller for resolving effective settings and setting overrides.
 /// Uses <see cref="ISettingsService"/> convenience overloads that resolve the scope chain
 /// from <see cref="IScopeChainProvider"/> automatically.
-/// <para>
-/// This controller does NOT extend <see cref="BaseController{TDto}"/> because settings
-/// endpoints don't follow the standard CRUD pattern — routes are custom, DTOs vary per
-/// endpoint, and there is no single entity type.
-/// </para>
 /// </summary>
-[ApiController]
 [Route("api/settings")]
-public sealed class SettingsController : ControllerBase
+public sealed class SettingsController : BaseController
 {
     private readonly ISettingsService _settingsService;
 
@@ -102,35 +96,4 @@ public sealed class SettingsController : ControllerBase
         return ToActionResult(result);
     }
 
-    #region Private Helpers
-
-    private ActionResult ToActionResult<T>(OperationResult<T> result)
-    {
-        return result.StatusCode switch
-        {
-            200 => Ok(result),
-            201 => StatusCode(201, result),
-            400 => BadRequest(result),
-            401 => Unauthorized(),
-            403 => StatusCode(403, result),
-            404 => NotFound(result),
-            _ => new ObjectResult(result) { StatusCode = result.StatusCode }
-        };
-    }
-
-    private ActionResult ToActionResult(OperationResult result)
-    {
-        return result.StatusCode switch
-        {
-            200 => Ok(result),
-            201 => StatusCode(201, result),
-            400 => BadRequest(result),
-            401 => Unauthorized(),
-            403 => StatusCode(403, result),
-            404 => NotFound(result),
-            _ => new ObjectResult(result) { StatusCode = result.StatusCode }
-        };
-    }
-
-    #endregion
 }
