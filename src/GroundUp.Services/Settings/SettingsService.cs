@@ -381,6 +381,56 @@ public sealed class SettingsService : ISettingsService
         return await GetGroupAsync(groupKey, scopeChain, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<OperationResult<object?>> GetTypedValueAsync(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        // Look up the definition to determine the DataType
+        var definition = await _dbContext.Set<SettingDefinition>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+
+        if (definition is null)
+        {
+            return OperationResult<object?>.NotFound($"Setting '{key}' not found");
+        }
+
+        // Dispatch to the correct typed GetAsync based on DataType
+        return definition.DataType switch
+        {
+            SettingDataType.String => BoxResult(await GetAsync<string>(key, cancellationToken)),
+            SettingDataType.Int => BoxResult(await GetAsync<int>(key, cancellationToken)),
+            SettingDataType.Long => BoxResult(await GetAsync<long>(key, cancellationToken)),
+            SettingDataType.Decimal => BoxResult(await GetAsync<decimal>(key, cancellationToken)),
+            SettingDataType.Bool => BoxResult(await GetAsync<bool>(key, cancellationToken)),
+            SettingDataType.DateTime => BoxResult(await GetAsync<DateTime>(key, cancellationToken)),
+            SettingDataType.Date => BoxResult(await GetAsync<DateOnly>(key, cancellationToken)),
+            SettingDataType.Json => BoxResult(await GetAsync<string>(key, cancellationToken)),
+            _ => OperationResult<object?>.Fail($"Unsupported data type '{definition.DataType}' for setting '{key}'", 400)
+        };
+    }
+
+    /// <summary>
+    /// Boxes a typed OperationResult into OperationResult&lt;object?&gt;.
+    /// </summary>
+    private static OperationResult<object?> BoxResult<T>(OperationResult<T> result)
+    {
+        if (!result.Success)
+        {
+            return new OperationResult<object?>
+            {
+                Success = false,
+                StatusCode = result.StatusCode,
+                Message = result.Message,
+                Errors = result.Errors,
+                ErrorCode = result.ErrorCode
+            };
+        }
+
+        return OperationResult<object?>.Ok(result.Data);
+    }
+
     #region Private Helpers
 
     /// <summary>
