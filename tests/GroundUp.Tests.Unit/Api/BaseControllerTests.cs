@@ -10,14 +10,15 @@ using NSubstitute;
 namespace GroundUp.Tests.Unit.Api;
 
 /// <summary>
-/// Unit tests for <see cref="GroundUp.Api.Controllers.BaseController{TDto}"/>.
-/// Validates ToActionResult mapping and CRUD endpoint behavior using
-/// a concrete TestController backed by a mocked service.
+/// Unit tests for <see cref="GroundUp.Api.Controllers.BaseController"/>.
+/// Validates ToActionResult mapping, AddPaginationHeaders, and CRUD endpoint behavior
+/// using a concrete TestController backed by a mocked service.
 /// </summary>
 public sealed class BaseControllerTests
 {
     private readonly IBaseRepository<ControllerTestDto> _repository;
     private readonly IEventBus _eventBus;
+    private readonly IServiceProvider _serviceProvider;
     private readonly TestBaseService _service;
     private readonly TestController _controller;
 
@@ -25,7 +26,8 @@ public sealed class BaseControllerTests
     {
         _repository = Substitute.For<IBaseRepository<ControllerTestDto>>();
         _eventBus = Substitute.For<IEventBus>();
-        _service = new TestBaseService(_repository, _eventBus);
+        _serviceProvider = Substitute.For<IServiceProvider>();
+        _service = new TestBaseService(_repository, _eventBus, _serviceProvider);
         _controller = new TestController(_service)
         {
             ControllerContext = new ControllerContext
@@ -146,6 +148,50 @@ public sealed class BaseControllerTests
         // Assert
         var actionResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(409, actionResult.StatusCode);
+    }
+
+    #endregion
+
+    #region Structure Tests
+
+    [Fact]
+    public void BaseController_IsNotGeneric()
+    {
+        // Assert
+        var type = typeof(GroundUp.Api.Controllers.BaseController);
+        Assert.False(type.IsGenericType);
+        Assert.False(type.IsGenericTypeDefinition);
+    }
+
+    [Fact]
+    public void BaseController_HasApiControllerAttribute()
+    {
+        // Assert
+        var type = typeof(GroundUp.Api.Controllers.BaseController);
+        var attr = type.GetCustomAttributes(typeof(ApiControllerAttribute), inherit: true);
+        Assert.NotEmpty(attr);
+    }
+
+    [Fact]
+    public void BaseController_HasRouteAttribute()
+    {
+        // Assert
+        var type = typeof(GroundUp.Api.Controllers.BaseController);
+        var attr = type.GetCustomAttributes(typeof(RouteAttribute), inherit: true);
+        Assert.NotEmpty(attr);
+        var routeAttr = (RouteAttribute)attr[0];
+        Assert.Equal("api/[controller]", routeAttr.Template);
+    }
+
+    [Fact]
+    public void BaseController_HasNoCrudMethods()
+    {
+        // Assert — the base class should not define any public CRUD methods
+        var type = typeof(GroundUp.Api.Controllers.BaseController);
+        var publicMethods = type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly);
+        var crudMethodNames = new[] { "GetAll", "GetById", "Create", "Update", "Delete" };
+        var foundCrudMethods = publicMethods.Where(m => crudMethodNames.Contains(m.Name)).ToList();
+        Assert.Empty(foundCrudMethods);
     }
 
     #endregion

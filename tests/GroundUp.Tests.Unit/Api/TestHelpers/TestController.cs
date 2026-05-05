@@ -1,37 +1,65 @@
 using GroundUp.Api.Controllers;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
-using GroundUp.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GroundUp.Tests.Unit.Api.TestHelpers;
 
-public class TestController : BaseController<ControllerTestDto>
+/// <summary>
+/// Concrete test controller extending the non-generic BaseController.
+/// Defines explicit CRUD endpoints that delegate to TestBaseService,
+/// mirroring the pattern used by real controllers (e.g., TodoItemsController).
+/// </summary>
+public class TestController : BaseController
 {
-    public TestController(BaseService<ControllerTestDto> service) : base(service) { }
+    private readonly TestBaseService _service;
+
+    public TestController(TestBaseService service)
+    {
+        _service = service;
+    }
 
     [HttpGet]
-    public override Task<ActionResult<OperationResult<PaginatedData<ControllerTestDto>>>> GetAll(
+    public async Task<ActionResult<OperationResult<PaginatedData<ControllerTestDto>>>> GetAll(
         [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
-        => base.GetAll(filterParams, cancellationToken);
+    {
+        var result = await _service.GetAllAsync(filterParams, cancellationToken);
+        if (result.Success && result.Data is not null)
+            AddPaginationHeaders(result.Data);
+        return ToActionResult(result);
+    }
 
     [HttpGet("{id}")]
-    public override Task<ActionResult<OperationResult<ControllerTestDto>>> GetById(
+    public async Task<ActionResult<OperationResult<ControllerTestDto>>> GetById(
         Guid id, CancellationToken cancellationToken = default)
-        => base.GetById(id, cancellationToken);
+    {
+        var result = await _service.GetByIdAsync(id, cancellationToken);
+        return ToActionResult(result);
+    }
 
     [HttpPost]
-    public override Task<ActionResult<OperationResult<ControllerTestDto>>> Create(
+    public async Task<ActionResult<OperationResult<ControllerTestDto>>> Create(
         [FromBody] ControllerTestDto dto, CancellationToken cancellationToken = default)
-        => base.Create(dto, cancellationToken);
+    {
+        var result = await _service.AddAsync(dto, cancellationToken);
+        if (result.Success && result.StatusCode == 201)
+            return CreatedAtAction(nameof(GetById), new { id = result.Data!.Id }, result);
+        return ToActionResult(result);
+    }
 
     [HttpPut("{id}")]
-    public override Task<ActionResult<OperationResult<ControllerTestDto>>> Update(
+    public async Task<ActionResult<OperationResult<ControllerTestDto>>> Update(
         Guid id, [FromBody] ControllerTestDto dto, CancellationToken cancellationToken = default)
-        => base.Update(id, dto, cancellationToken);
+    {
+        var result = await _service.UpdateAsync(id, dto, cancellationToken);
+        return ToActionResult(result);
+    }
 
     [HttpDelete("{id}")]
-    public override Task<ActionResult<OperationResult>> Delete(
+    public async Task<ActionResult<OperationResult>> Delete(
         Guid id, CancellationToken cancellationToken = default)
-        => base.Delete(id, cancellationToken);
+    {
+        var result = await _service.DeleteAsync(id, cancellationToken);
+        return ToActionResult(result);
+    }
 }

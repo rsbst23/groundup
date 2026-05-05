@@ -65,36 +65,36 @@ Refactor `BaseController<TDto>` and `BaseService<TDto>` from generic CRUD base c
     - Keep all `IBaseRepository<TDto>` and concrete repository registrations unchanged
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 12.6_
 
-- [ ] 10. Checkpoint — Verify full solution compiles and Swagger loads
+- [x] 10. Checkpoint — Verify full solution compiles and Swagger loads
   - Run `dotnet build groundup.sln` to confirm the entire solution compiles.
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Fix/update unit tests for BaseController and BaseService
-  - [ ] 11.1 Update `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs` to test the non-generic `BaseController`: verify `ToActionResult<T>` and `ToActionResult` map all status codes correctly, verify `AddPaginationHeaders` sets the four expected headers, verify the class has `[ApiController]` and `[Route("api/[controller]")]` attributes, verify no CRUD methods exist, verify the class is not generic.
+- [x] 11. Fix/update unit tests for BaseController and BaseService
+  - [x] 11.1 Update `tests/GroundUp.Tests.Unit/Api/BaseControllerTests.cs` to test the non-generic `BaseController`: verify `ToActionResult<T>` and `ToActionResult` map all status codes correctly, verify `AddPaginationHeaders` sets the four expected headers, verify the class has `[ApiController]` and `[Route("api/[controller]")]` attributes, verify no CRUD methods exist, verify the class is not generic.
     - Create a concrete test subclass of `BaseController` to test the protected helpers
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 8.3_
 
-  - [ ] 11.2 Update `tests/GroundUp.Tests.Unit/Api/BaseControllerPropertyTests.cs` to test properties against the non-generic `BaseController`: Property 1 (ToActionResult status code mapping) and Property 2 (AddPaginationHeaders round-trip).
+  - [x] 11.2 Update `tests/GroundUp.Tests.Unit/Api/BaseControllerPropertyTests.cs` to test properties against the non-generic `BaseController`: Property 1 (ToActionResult status code mapping) and Property 2 (AddPaginationHeaders round-trip).
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 11.3 Update `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs` to test the non-generic `BaseService`: verify `ValidateAsync<TDto>` resolves validators from IServiceProvider, verify it returns null when no validator registered, verify it returns BadRequest with errors when validation fails, verify `PublishEventSafelyAsync` publishes events and swallows exceptions, verify no CRUD methods exist, verify the class is not generic.
+  - [x] 11.3 Update `tests/GroundUp.Tests.Unit/Services/BaseServiceTests.cs` to test the non-generic `BaseService`: verify `ValidateAsync<TDto>` resolves validators from IServiceProvider, verify it returns null when no validator registered, verify it returns BadRequest with errors when validation fails, verify `PublishEventSafelyAsync` publishes events and swallows exceptions, verify no CRUD methods exist, verify the class is not generic.
     - Create a concrete test subclass of `BaseService` to test the protected helpers
     - Use NSubstitute to mock IServiceProvider, IValidator<T>, and IEventBus
     - _Requirements: 2.1, 2.2, 2.4, 2.5, 2.7, 10.5, 11.1, 11.4, 11.5_
 
-  - [ ] 11.4 Update `tests/GroundUp.Tests.Unit/Services/BaseServicePropertyTests.cs` to test properties against the non-generic `BaseService`: Property 3 (ValidateAsync correctness), Property 4 (ValidateAsync resolves correct validator per type), Property 5 (PublishEventSafelyAsync swallows exceptions).
+  - [x] 11.4 Update `tests/GroundUp.Tests.Unit/Services/BaseServicePropertyTests.cs` to test properties against the non-generic `BaseService`: Property 3 (ValidateAsync correctness), Property 4 (ValidateAsync resolves correct validator per type), Property 5 (PublishEventSafelyAsync swallows exceptions).
     - _Requirements: 2.1, 2.2, 2.7, 10.5, 11.1, 11.4, 11.5_
 
-- [ ] 12. Fix/update integration tests
-  - [ ] 12.1 Update `tests/GroundUp.Tests.Integration/Filtering/OrderFilteringTests.cs` to work with the refactored controllers and services. Verify that existing HTTP routes still work (GET /api/orders, GET /api/orders/{id}, POST /api/orders, PUT /api/orders/{id}, DELETE /api/orders/{id}) and that the correct DTO types are returned.
+- [x] 12. Fix/update integration tests
+  - [x] 12.1 Update `tests/GroundUp.Tests.Integration/Filtering/OrderFilteringTests.cs` to work with the refactored controllers and services. Verify that existing HTTP routes still work (GET /api/orders, GET /api/orders/{id}, POST /api/orders, PUT /api/orders/{id}, DELETE /api/orders/{id}) and that the correct DTO types are returned.
     - _Requirements: 9.4, 9.5, 12.5_
 
-  - [ ]* 12.2 Add integration test verifying Swagger endpoint loads without ambiguous HTTP method errors
+  - [x]* 12.2 Add integration test verifying Swagger endpoint loads without ambiguous HTTP method errors
     - GET /swagger/v1/swagger.json should return 200 with valid OpenAPI JSON
     - Verify OrdersController endpoints show correct DTO types in the schema
     - _Requirements: 8.1, 8.2, 8.4, 12.5_
 
-- [ ] 13. Final checkpoint — Full build and test verification
+- [x] 13. Final checkpoint — Full build and test verification
   - Run `dotnet build groundup.sln` and `dotnet test groundup.sln` to confirm everything compiles and all tests pass.
   - Verify no Swagger ambiguity errors by checking the OpenAPI spec generation.
   - Ensure all tests pass, ask the user if questions arise.
