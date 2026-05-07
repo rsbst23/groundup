@@ -38,7 +38,7 @@ Implementation follows dependency order: project setup + security attributes →
   - Run `dotnet build groundup.sln` to verify compilation
   - Commit: "Add GroundUp.Auth.Core project and security attributes"
 
-- [ ] 2. Create auth enums and entities
+- [x] 2. Create auth enums and entities
   - [ ] 2.1 Create `TenantType` enum in `src/GroundUp.Auth.Core/Enums/TenantType.cs`
     - Create the `Enums` directory under `src/GroundUp.Auth.Core/`
     - Members: `Standard = 0`, `Enterprise = 1`
