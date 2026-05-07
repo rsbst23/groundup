@@ -122,7 +122,7 @@ Implementation follows dependency order: project setup + security attributes →
     - 2 attributes in `src/GroundUp.Core/Attributes/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 4. Create auth DTO records
+- [x] 4. Create auth DTO records
   - [ ] 4.1 Create `UserDto` in `src/GroundUp.Auth.Core/Dtos/UserDto.cs`
     - Create the `Dtos` directory under `src/GroundUp.Auth.Core/`
     - Record with properties: `Id` (Guid), `ExternalUserId` (string), `Email` (string), `DisplayName` (string), `IsActive` (bool)
@@ -217,7 +217,7 @@ Implementation follows dependency order: project setup + security attributes →
     - 2 attributes in `src/GroundUp.Core/Attributes/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Write unit tests and property-based tests
+- [x] 7. Write unit tests and property-based tests
   - [ ] 7.1 Add `GroundUp.Auth.Core` project reference to `GroundUp.Tests.Unit`
     - Add `<ProjectReference Include="..\..\src\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />` to `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
     - Add FsCheck.Xunit package reference if not already present: `<PackageReference Include="FsCheck.Xunit" Version="2.*" />`
