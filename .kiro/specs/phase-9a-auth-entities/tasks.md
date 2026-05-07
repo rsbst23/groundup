@@ -1,0 +1,305 @@
+# Implementation Plan: Phase 9A — Auth Core Entities, Enums, and Base DTOs
+
+## Overview
+
+Establish the foundational data model for the GroundUp authentication and authorization system. This phase delivers a new `GroundUp.Auth.Core` class library project containing 9 entities, 3 enums, 11 DTO records, 6 FluentValidation validators, and 2 security attributes in `GroundUp.Core`. All code is C# targeting .NET 8.
+
+Implementation follows dependency order: project setup + security attributes → enums + entities → DTOs → validators → unit tests + property-based tests. Each task group compiles independently and is sized for incremental review (~10-15 files max).
+
+## Tasks
+
+- [x] 1. Create feature branch, new project, and security attributes
+  - [x] 1.1 Create and checkout branch `phase-9a/auth-entities` from `main`
+    - Run `git checkout main && git pull`
+    - Run `git checkout -b phase-9a/auth-entities`
+    - Run `dotnet build groundup.sln` to verify clean starting point
+    - Run `dotnet test` to verify all existing tests pass
+    - _Requirements: 19.1_
+  - [x] 1.2 Create `GroundUp.Auth.Core` project
+    - Create `src/GroundUp.Auth.Core/GroundUp.Auth.Core.csproj` targeting net8.0
+    - Enable nullable reference types, implicit usings, and GenerateDocumentationFile
+    - Add `<PackageReference Include="FluentValidation" Version="11.*" />`
+    - Add `<ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />`
+    - Add the project to `groundup.sln` under the `src` solution folder using `dotnet sln add`
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8_
+  - [x] 1.3 Create `RequiresPermissionAttribute` in `src/GroundUp.Core/Attributes/RequiresPermissionAttribute.cs`
+    - Create the `Attributes` directory under `src/GroundUp.Core/`
+    - Sealed class with `[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]`
+    - Constructor accepts `params string[] permissions`
+    - Exposes `IReadOnlyList<string> Permissions` property
+    - XML doc comments on class, constructor, and property
+    - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
+  - [x] 1.4 Create `RequiresRoleAttribute` in `src/GroundUp.Core/Attributes/RequiresRoleAttribute.cs`
+    - Sealed class with `[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]`
+    - Constructor accepts `params string[] roles`
+    - Exposes `IReadOnlyList<string> Roles` property
+    - XML doc comments on class, constructor, and property
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add GroundUp.Auth.Core project and security attributes"
+
+- [x] 2. Create auth enums and entities
+  - [ ] 2.1 Create `TenantType` enum in `src/GroundUp.Auth.Core/Enums/TenantType.cs`
+    - Create the `Enums` directory under `src/GroundUp.Auth.Core/`
+    - Members: `Standard = 0`, `Enterprise = 1`
+    - XML doc comments on enum type and each member
+    - _Requirements: 11.1, 11.2, 11.3_
+  - [ ] 2.2 Create `OnboardingMode` enum in `src/GroundUp.Auth.Core/Enums/OnboardingMode.cs`
+    - Members: `InviteOnly = 0`, `JoinLink = 1`, `Open = 2`
+    - XML doc comments on enum type and each member
+    - _Requirements: 12.1, 12.2, 12.3_
+  - [ ] 2.3 Create `RoleType` enum in `src/GroundUp.Auth.Core/Enums/RoleType.cs`
+    - Members: `System = 0`, `Application = 1`, `Workspace = 2`
+    - XML doc comments on enum type and each member
+    - _Requirements: 13.1, 13.2, 13.3_
+  - [ ] 2.4 Create `User` entity in `src/GroundUp.Auth.Core/Entities/User.cs`
+    - Create the `Entities` directory under `src/GroundUp.Auth.Core/`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `ExternalUserId` (string), `Email` (string), `DisplayName` (string), `IsActive` (bool, default true)
+    - Navigation collections: `UserTenants` (ICollection<UserTenant>), `UserRoles` (ICollection<UserRole>)
+    - IAuditable properties: `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`
+    - XML doc comments on class and all public members
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
+  - [ ] 2.5 Create `Tenant` entity in `src/GroundUp.Auth.Core/Entities/Tenant.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable` and `ISoftDeletable`
+    - Properties: `Name` (string), `Slug` (string), `TenantType` (TenantType), `OnboardingMode` (OnboardingMode), `ParentTenantId` (Guid?), `Parent` (Tenant?), `Children` (ICollection<Tenant>), `RealmName` (string?), `CustomDomain` (string?), `IsActive` (bool, default true)
+    - Navigation collections: `UserTenants` (ICollection<UserTenant>), `Roles` (ICollection<Role>)
+    - IAuditable + ISoftDeletable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13_
+  - [ ] 2.6 Create `UserTenant` entity in `src/GroundUp.Auth.Core/Entities/UserTenant.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `UserId` (Guid), `User` (User), `TenantId` (Guid), `Tenant` (Tenant), `ExternalUserId` (string), `IsActive` (bool, default true)
+    - IAuditable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
+  - [ ] 2.7 Create `Role` entity in `src/GroundUp.Auth.Core/Entities/Role.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable` and `ITenantEntity`
+    - Properties: `Name` (string), `Description` (string?), `RoleType` (RoleType), `TenantId` (Guid), `Tenant` (Tenant), `IsSystem` (bool)
+    - Navigation collections: `RolePolicies` (ICollection<RolePolicy>), `UserRoles` (ICollection<UserRole>)
+    - IAuditable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9_
+  - [ ] 2.8 Create `Policy` entity in `src/GroundUp.Auth.Core/Entities/Policy.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable` and `ITenantEntity`
+    - Properties: `Name` (string), `Description` (string?), `TenantId` (Guid), `Tenant` (Tenant)
+    - Navigation collections: `RolePolicies` (ICollection<RolePolicy>), `PolicyPermissions` (ICollection<PolicyPermission>)
+    - IAuditable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
+  - [ ] 2.9 Create `Permission` entity in `src/GroundUp.Auth.Core/Entities/Permission.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable`
+    - Properties: `Key` (string), `Name` (string), `Description` (string?), `Module` (string)
+    - Navigation collection: `PolicyPermissions` (ICollection<PolicyPermission>)
+    - IAuditable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7_
+  - [ ] 2.10 Create `RolePolicy` entity in `src/GroundUp.Auth.Core/Entities/RolePolicy.cs`
+    - Sealed class extending `BaseEntity` (no IAuditable)
+    - Properties: `RoleId` (Guid), `Role` (Role), `PolicyId` (Guid), `Policy` (Policy)
+    - XML doc comments on class and all public members
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
+  - [ ] 2.11 Create `PolicyPermission` entity in `src/GroundUp.Auth.Core/Entities/PolicyPermission.cs`
+    - Sealed class extending `BaseEntity` (no IAuditable)
+    - Properties: `PolicyId` (Guid), `Policy` (Policy), `PermissionId` (Guid), `Permission` (Permission)
+    - XML doc comments on class and all public members
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
+  - [ ] 2.12 Create `UserRole` entity in `src/GroundUp.Auth.Core/Entities/UserRole.cs`
+    - Sealed class extending `BaseEntity`, implementing `IAuditable` and `ITenantEntity`
+    - Properties: `UserId` (Guid), `User` (User), `RoleId` (Guid), `Role` (Role), `TenantId` (Guid), `Tenant` (Tenant)
+    - IAuditable properties
+    - XML doc comments on class and all public members
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add auth enums (3) and entities (9)"
+
+- [ ] 3. Checkpoint — Verify enums and entities compile and existing tests pass
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all existing tests pass
+  - Verify all files exist:
+    - 3 enums in `src/GroundUp.Auth.Core/Enums/`
+    - 9 entities in `src/GroundUp.Auth.Core/Entities/`
+    - 2 attributes in `src/GroundUp.Core/Attributes/`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Create auth DTO records
+  - [ ] 4.1 Create `UserDto` in `src/GroundUp.Auth.Core/Dtos/UserDto.cs`
+    - Create the `Dtos` directory under `src/GroundUp.Auth.Core/`
+    - Record with properties: `Id` (Guid), `ExternalUserId` (string), `Email` (string), `DisplayName` (string), `IsActive` (bool)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 16.1, 16.6_
+  - [ ] 4.2 Create `TenantDto` in `src/GroundUp.Auth.Core/Dtos/TenantDto.cs`
+    - Record with properties: `Id` (Guid), `Name` (string), `Slug` (string), `TenantType` (TenantType), `OnboardingMode` (OnboardingMode), `ParentTenantId` (Guid?), `RealmName` (string?), `CustomDomain` (string?), `IsActive` (bool)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 16.2, 16.6_
+  - [ ] 4.3 Create `RoleDto` in `src/GroundUp.Auth.Core/Dtos/RoleDto.cs`
+    - Record with properties: `Id` (Guid), `Name` (string), `Description` (string?), `RoleType` (RoleType), `TenantId` (Guid), `IsSystem` (bool)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 16.3, 16.6_
+  - [ ] 4.4 Create `PolicyDto` in `src/GroundUp.Auth.Core/Dtos/PolicyDto.cs`
+    - Record with properties: `Id` (Guid), `Name` (string), `Description` (string?), `TenantId` (Guid)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 16.4, 16.6_
+  - [ ] 4.5 Create `PermissionDto` in `src/GroundUp.Auth.Core/Dtos/PermissionDto.cs`
+    - Record with properties: `Id` (Guid), `Key` (string), `Name` (string), `Description` (string?), `Module` (string)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 16.5, 16.6_
+  - [ ] 4.6 Create `CreateTenantDto` in `src/GroundUp.Auth.Core/Dtos/CreateTenantDto.cs`
+    - Record with properties: `Name` (string), `Slug` (string), `TenantType` (TenantType), `OnboardingMode` (OnboardingMode), `ParentTenantId` (Guid?), `RealmName` (string?), `CustomDomain` (string?)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.1, 17.7_
+  - [ ] 4.7 Create `UpdateTenantDto` in `src/GroundUp.Auth.Core/Dtos/UpdateTenantDto.cs`
+    - Record with properties: `Name` (string), `Slug` (string), `TenantType` (TenantType), `OnboardingMode` (OnboardingMode), `RealmName` (string?), `CustomDomain` (string?), `IsActive` (bool)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.2, 17.7_
+  - [ ] 4.8 Create `CreateRoleDto` in `src/GroundUp.Auth.Core/Dtos/CreateRoleDto.cs`
+    - Record with properties: `Name` (string), `Description` (string?), `RoleType` (RoleType)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.3, 17.7_
+  - [ ] 4.9 Create `UpdateRoleDto` in `src/GroundUp.Auth.Core/Dtos/UpdateRoleDto.cs`
+    - Record with properties: `Name` (string), `Description` (string?)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.4, 17.7_
+  - [ ] 4.10 Create `CreatePolicyDto` in `src/GroundUp.Auth.Core/Dtos/CreatePolicyDto.cs`
+    - Record with properties: `Name` (string), `Description` (string?)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.5, 17.7_
+  - [ ] 4.11 Create `CreatePermissionDto` in `src/GroundUp.Auth.Core/Dtos/CreatePermissionDto.cs`
+    - Record with properties: `Key` (string), `Name` (string), `Description` (string?), `Module` (string)
+    - XML doc comments on record type and each property parameter
+    - _Requirements: 17.6, 17.7_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add auth DTO records (11 DTOs)"
+
+- [ ] 5. Create FluentValidation validators
+  - [ ] 5.1 Create `CreateTenantDtoValidator` in `src/GroundUp.Auth.Core/Validators/CreateTenantDtoValidator.cs`
+    - Create the `Validators` directory under `src/GroundUp.Auth.Core/`
+    - Sealed class extending `AbstractValidator<CreateTenantDto>`
+    - Rules: Name (NotEmpty, MaxLength 200), Slug (NotEmpty, MaxLength 100, Matches slug pattern `^[a-z0-9]+(?:-[a-z0-9]+)*$`), TenantType (IsInEnum), OnboardingMode (IsInEnum), RealmName (MaxLength 200 when not null), CustomDomain (MaxLength 500 when not null)
+    - XML doc comments on class
+    - _Requirements: 18.1_
+  - [ ] 5.2 Create `UpdateTenantDtoValidator` in `src/GroundUp.Auth.Core/Validators/UpdateTenantDtoValidator.cs`
+    - Sealed class extending `AbstractValidator<UpdateTenantDto>`
+    - Same validation rules as CreateTenantDtoValidator for corresponding properties
+    - XML doc comments on class
+    - _Requirements: 18.2_
+  - [ ] 5.3 Create `CreateRoleDtoValidator` in `src/GroundUp.Auth.Core/Validators/CreateRoleDtoValidator.cs`
+    - Sealed class extending `AbstractValidator<CreateRoleDto>`
+    - Rules: Name (NotEmpty, MaxLength 200), Description (MaxLength 1000 when not null), RoleType (IsInEnum)
+    - XML doc comments on class
+    - _Requirements: 18.3_
+  - [ ] 5.4 Create `UpdateRoleDtoValidator` in `src/GroundUp.Auth.Core/Validators/UpdateRoleDtoValidator.cs`
+    - Sealed class extending `AbstractValidator<UpdateRoleDto>`
+    - Rules: Name (NotEmpty, MaxLength 200), Description (MaxLength 1000 when not null)
+    - XML doc comments on class
+    - _Requirements: 18.4_
+  - [ ] 5.5 Create `CreatePolicyDtoValidator` in `src/GroundUp.Auth.Core/Validators/CreatePolicyDtoValidator.cs`
+    - Sealed class extending `AbstractValidator<CreatePolicyDto>`
+    - Rules: Name (NotEmpty, MaxLength 200), Description (MaxLength 1000 when not null)
+    - XML doc comments on class
+    - _Requirements: 18.5_
+  - [ ] 5.6 Create `CreatePermissionDtoValidator` in `src/GroundUp.Auth.Core/Validators/CreatePermissionDtoValidator.cs`
+    - Sealed class extending `AbstractValidator<CreatePermissionDto>`
+    - Rules: Key (NotEmpty, MaxLength 200, Matches permission key pattern `^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$`), Name (NotEmpty, MaxLength 200), Description (MaxLength 1000 when not null), Module (NotEmpty, MaxLength 100)
+    - XML doc comments on class
+    - _Requirements: 18.6_
+  - Run `dotnet build groundup.sln` to verify compilation
+  - Commit: "Add FluentValidation validators for auth DTOs (6 validators)"
+
+- [ ] 6. Checkpoint — Verify full Auth.Core project compiles
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all existing tests pass (no regressions)
+  - Verify all files exist:
+    - 3 enums in `src/GroundUp.Auth.Core/Enums/`
+    - 9 entities in `src/GroundUp.Auth.Core/Entities/`
+    - 11 DTOs in `src/GroundUp.Auth.Core/Dtos/`
+    - 6 validators in `src/GroundUp.Auth.Core/Validators/`
+    - 2 attributes in `src/GroundUp.Core/Attributes/`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 7. Write unit tests and property-based tests
+  - [ ] 7.1 Add `GroundUp.Auth.Core` project reference to `GroundUp.Tests.Unit`
+    - Add `<ProjectReference Include="..\..\src\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />` to `tests/GroundUp.Tests.Unit/GroundUp.Tests.Unit.csproj`
+    - Add FsCheck.Xunit package reference if not already present: `<PackageReference Include="FsCheck.Xunit" Version="2.*" />`
+    - _Requirements: 19.1_
+  - [ ] 7.2 Create `tests/GroundUp.Tests.Unit/Authentication/AuthEntityStructureTests.cs`
+    - Create the `Authentication` directory under `tests/GroundUp.Tests.Unit/`
+    - Reflection-based tests verifying all 9 entities:
+      - Each entity is sealed
+      - Each entity extends BaseEntity
+      - IAuditable implemented on: User, Tenant, UserTenant, Role, Policy, Permission, UserRole
+      - IAuditable NOT implemented on: RolePolicy, PolicyPermission
+      - ISoftDeletable implemented on: Tenant only
+      - ITenantEntity implemented on: Role, Policy, UserRole
+      - Navigation collections initialized (not null) on new instances
+      - Default values: IsActive = true on User, Tenant, UserTenant
+    - _Requirements: 2.1, 2.5, 2.8, 3.1, 3.10, 3.13, 4.1, 4.5, 4.7, 5.1, 5.9, 6.1, 6.7, 7.1, 7.7, 8.1, 8.5, 9.1, 9.5, 10.1, 10.6, 19.2_
+  - [ ] 7.3 Create `tests/GroundUp.Tests.Unit/Authentication/AuthEnumTests.cs`
+    - Verify `TenantType` has exactly 2 members with correct integer values
+    - Verify `OnboardingMode` has exactly 3 members with correct integer values
+    - Verify `RoleType` has exactly 3 members with correct integer values
+    - _Requirements: 11.2, 12.2, 13.2_
+  - [ ] 7.4 Create `tests/GroundUp.Tests.Unit/Authentication/SecurityAttributeTests.cs`
+    - Verify `RequiresPermissionAttribute` has correct `[AttributeUsage]` (Method, AllowMultiple=false)
+    - Verify `RequiresRoleAttribute` has correct `[AttributeUsage]` (Method, AllowMultiple=false)
+    - Verify constructor stores permissions/roles correctly (empty array, single, multiple)
+    - Verify `Permissions`/`Roles` property returns IReadOnlyList<string>
+    - _Requirements: 14.2, 14.3, 14.4, 15.2, 15.3, 15.4_
+  - [ ]* 7.5 Create `tests/GroundUp.Tests.Unit/Authentication/SecurityAttributePropertyTests.cs`
+    - **Property 1: Security attribute constructor round-trip**
+    - Use FsCheck to generate random string arrays (0–20 elements, 0–50 chars each)
+    - Verify RequiresPermissionAttribute.Permissions contains exactly the same strings in the same order
+    - Verify RequiresRoleAttribute.Roles contains exactly the same strings in the same order
+    - Verify count equals input array length
+    - Tag: `Feature: phase-9a-auth-entities, Property 1: Security attribute constructor round-trip`
+    - **Validates: Requirements 14.2, 14.3, 15.2, 15.3**
+  - [ ]* 7.6 Create `tests/GroundUp.Tests.Unit/Authentication/TenantSlugValidatorPropertyTests.cs`
+    - **Property 2: Tenant slug validation accepts valid slugs and rejects invalid ones**
+    - Use FsCheck to generate valid slug strings matching `^[a-z0-9]+(?:-[a-z0-9]+)*$` with length ≤ 100
+    - Verify CreateTenantDtoValidator and UpdateTenantDtoValidator produce zero errors for valid slugs (with valid other fields)
+    - Generate invalid slugs (uppercase, spaces, consecutive hyphens, leading/trailing hyphens, special chars)
+    - Verify validators produce at least one error on the Slug field for invalid slugs
+    - Tag: `Feature: phase-9a-auth-entities, Property 2: Tenant slug validation`
+    - **Validates: Requirements 18.1, 18.2**
+  - [ ]* 7.7 Create `tests/GroundUp.Tests.Unit/Authentication/NameDescriptionValidatorPropertyTests.cs`
+    - **Property 3: Name/Description validators accept valid inputs and reject length violations**
+    - Use FsCheck to generate valid Name strings (1–200 chars) and Description strings (≤ 1000 or null)
+    - Verify CreateRoleDtoValidator, UpdateRoleDtoValidator, CreatePolicyDtoValidator produce zero errors
+    - Generate invalid inputs: empty Name, Name > 200 chars, Description > 1000 chars
+    - Verify validators produce at least one error for invalid inputs
+    - Tag: `Feature: phase-9a-auth-entities, Property 3: Name/Description validation`
+    - **Validates: Requirements 18.3, 18.4, 18.5**
+  - [ ]* 7.8 Create `tests/GroundUp.Tests.Unit/Authentication/PermissionKeyValidatorPropertyTests.cs`
+    - **Property 4: Permission key validation accepts valid dot-notation keys and rejects invalid ones**
+    - Use FsCheck to generate valid permission keys matching `^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$` with length ≤ 200
+    - Verify CreatePermissionDtoValidator produces zero errors for valid keys (with valid Name, Module)
+    - Generate invalid keys (uppercase, starts with digit, consecutive dots, invalid chars)
+    - Verify validator produces at least one error on the Key field for invalid keys
+    - Tag: `Feature: phase-9a-auth-entities, Property 4: Permission key validation`
+    - **Validates: Requirements 18.6**
+  - Run `dotnet test` to verify all tests pass
+  - Commit: "Add unit tests and property-based tests for auth entities and validators"
+
+- [ ] 8. Final checkpoint — Full solution build and test
+  - Run `dotnet build groundup.sln` — zero errors
+  - Run `dotnet test` — all tests pass
+  - Verify coding conventions across all new files: file-scoped namespaces, nullable reference types, XML documentation, sealed modifiers, one-class-per-file
+  - Verify all requirements are covered by implementation tasks
+  - Commit: "Phase 9A complete — auth core entities, enums, and base DTOs"
+  - Push branch with `-u` flag: `git push -u origin phase-9a/auth-entities`
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests validate universal correctness properties from the design document using FsCheck.Xunit
+- Unit tests validate specific examples, structure, and edge cases
+- The design uses C# explicitly — no language selection needed
+- Unique composite constraints (UserTenant, RolePolicy, PolicyPermission, UserRole) are enforced at the EF configuration level in Phase 9B — not in this phase
+- Git workflow: feature branch `phase-9a/auth-entities`, commit after each compilable step, push with `-u` on first push
+- All entities are sealed and extend BaseEntity (UUID v7 Id)
+- IAuditable is applied to: User, Tenant, UserTenant, Role, Policy, Permission, UserRole
+- IAuditable is NOT applied to: RolePolicy, PolicyPermission
+- ISoftDeletable is applied to: Tenant only
+- ITenantEntity is applied to: Role, Policy, UserRole
