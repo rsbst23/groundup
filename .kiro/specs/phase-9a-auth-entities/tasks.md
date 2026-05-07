@@ -122,7 +122,7 @@ Implementation follows dependency order: project setup + security attributes →
     - 2 attributes in `src/GroundUp.Core/Attributes/`
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Create auth DTO records
+- [-] 4. Create auth DTO records
   - [ ] 4.1 Create `UserDto` in `src/GroundUp.Auth.Core/Dtos/UserDto.cs`
     - Create the `Dtos` directory under `src/GroundUp.Auth.Core/`
     - Record with properties: `Id` (Guid), `ExternalUserId` (string), `Email` (string), `DisplayName` (string), `IsActive` (bool)
