@@ -36,6 +36,12 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
     private readonly ITenantContext _tenantContext;
 
     /// <summary>
+    /// Provides the current tenant identity for derived repositories
+    /// that need to apply tenant filtering in custom query methods.
+    /// </summary>
+    protected ITenantContext TenantContext => _tenantContext;
+
+    /// <summary>
     /// Initializes a new instance of <see cref="BaseTenantRepository{TEntity, TDto}"/>.
     /// </summary>
     /// <param name="context">The EF Core database context.</param>

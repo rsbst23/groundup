@@ -2,6 +2,7 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
+using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
@@ -107,5 +108,99 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
     {
         var tenantId = _tenantContext.TenantId;
         return q => q.Where(t => t.Id == tenantId || t.ParentTenantId == tenantId);
+    }
+
+    /// <summary>
+    /// Creates a new tenant. If ParentTenantId is set, verifies it matches the current tenant
+    /// (only the current tenant can create children under itself). Top-level tenant creation
+    /// (no parent) is allowed without restriction — this is a system-level operation.
+    /// </summary>
+    public override async Task<OperationResult<TenantDto>> AddAsync(
+        TenantDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = MapToEntity(dto);
+
+        // If creating a child tenant, enforce that ParentTenantId == current tenant
+        if (entity.ParentTenantId.HasValue && entity.ParentTenantId.Value != _tenantContext.TenantId)
+            return OperationResult<TenantDto>.NotFound();
+
+        try
+        {
+            DbSet.Add(entity);
+            await Context.SaveChangesAsync(cancellationToken);
+            return OperationResult<TenantDto>.Ok(MapToDto(entity), "Created", 201);
+        }
+        catch (DbUpdateException)
+        {
+            return OperationResult<TenantDto>.Fail(
+                "A conflict occurred while saving the entity.",
+                409,
+                ErrorCodes.Conflict);
+        }
+    }
+
+    /// <summary>
+    /// Updates a tenant after verifying it is visible to the current tenant (self or child).
+    /// Returns NotFound if the tenant is not within visibility scope.
+    /// </summary>
+    public override async Task<OperationResult<TenantDto>> UpdateAsync(
+        Guid id,
+        TenantDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        // Verify visibility — can only update self or direct children
+        var existing = await GetByIdAsync(id, cancellationToken);
+        if (!existing.Success)
+            return OperationResult<TenantDto>.NotFound();
+
+        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+        if (entity is null)
+            return OperationResult<TenantDto>.NotFound();
+
+        var originalParentTenantId = entity.ParentTenantId;
+        var updated = MapToEntity(dto);
+        Context.Entry(entity).CurrentValues.SetValues(updated);
+
+        // Preserve ParentTenantId — cannot be changed via update
+        entity.ParentTenantId = originalParentTenantId;
+
+        try
+        {
+            await Context.SaveChangesAsync(cancellationToken);
+            return OperationResult<TenantDto>.Ok(MapToDto(entity));
+        }
+        catch (DbUpdateException)
+        {
+            return OperationResult<TenantDto>.Fail(
+                "A conflict occurred while updating the entity.",
+                409,
+                ErrorCodes.Conflict);
+        }
+    }
+
+    /// <summary>
+    /// Soft-deletes a tenant after verifying it is visible to the current tenant (self or child).
+    /// Returns NotFound if the tenant is not within visibility scope.
+    /// </summary>
+    public override async Task<OperationResult> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        // Verify visibility — can only delete self or direct children
+        var existing = await GetByIdAsync(id, cancellationToken);
+        if (!existing.Success)
+            return OperationResult.NotFound();
+
+        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+        if (entity is null)
+            return OperationResult.NotFound();
+
+        // Use Remove() so the SoftDeleteInterceptor handles the conversion
+        // (sets IsDeleted, DeletedAt, DeletedBy from ICurrentUser)
+        DbSet.Remove(entity);
+
+        await Context.SaveChangesAsync(cancellationToken);
+        return OperationResult.Ok();
     }
 }
