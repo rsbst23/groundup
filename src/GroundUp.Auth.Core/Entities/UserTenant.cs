@@ -6,7 +6,7 @@ namespace GroundUp.Auth.Core.Entities;
 /// Junction entity linking a <see cref="User"/> to a <see cref="Tenant"/>,
 /// carrying the per-tenant external user identifier from the identity provider.
 /// </summary>
-public sealed class UserTenant : BaseEntity, IAuditable
+public sealed class UserTenant : BaseEntity, IAuditable, ITenantEntity
 {
     /// <summary>
     /// The user identifier (foreign key).
