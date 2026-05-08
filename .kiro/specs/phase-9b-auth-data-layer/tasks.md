@@ -1,0 +1,335 @@
+# Implementation Plan: Phase 9B — Auth Data Layer
+
+## Overview
+
+Build the complete data access layer for the GroundUp authentication and authorization module across three new projects: `GroundUp.Auth.Data.Abstractions` (repository interfaces), `GroundUp.Auth.Repositories` (implementations + Mapperly mappers), and `GroundUp.Auth.Data.Postgres` (EF Core configurations, AuthDbContext, DI registration, migration).
+
+Each task group is independently buildable and testable. The user will review after each group before proceeding.
+
+## Tasks
+
+- [x] 1. Entity change + Junction DTOs + Project scaffolding
+  - [x] 1.1 Add ITenantEntity interface to UserTenant entity
+    - Modify `src/GroundUp.Auth.Core/Entities/UserTenant.cs` to implement `ITenantEntity` (it already has TenantId, just add the interface declaration)
+    - _Requirements: 26.1_
+  - [x] 1.2 Create UserTenantDto record in GroundUp.Auth.Core/Dtos/
+    - Record with properties: Id, UserId, TenantId, ExternalUserId, IsActive
+    - _Requirements: 23.1_
+  - [x] 1.3 Create UserRoleDto record in GroundUp.Auth.Core/Dtos/
+    - Record with properties: Id, UserId, RoleId, TenantId
+    - _Requirements: 23.2_
+  - [x] 1.4 Create GroundUp.Auth.Data.Abstractions project
+    - Target net8.0, nullable enabled
+    - Reference GroundUp.Core, GroundUp.Auth.Core, GroundUp.Data.Abstractions
+    - NO EF Core packages
+    - _Requirements: 1.1, 1.2, 1.3_
+  - [x] 1.5 Create GroundUp.Auth.Repositories project
+    - Target net8.0, nullable enabled
+    - Reference GroundUp.Core, GroundUp.Auth.Core, GroundUp.Auth.Data.Abstractions, GroundUp.Repositories
+    - Include Riok.Mapperly NuGet package
+    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - [x] 1.6 Create GroundUp.Auth.Data.Postgres project
+    - Target net8.0, nullable enabled
+    - Reference GroundUp.Core, GroundUp.Auth.Core, GroundUp.Auth.Data.Abstractions, GroundUp.Auth.Repositories, GroundUp.Data.Postgres
+    - Include EF Core, Npgsql.EntityFrameworkCore.PostgreSQL, Microsoft.EntityFrameworkCore.Design packages
+    - _Requirements: 14.1, 14.2, 14.3_
+  - [x] 1.7 Add all three projects to groundup.sln
+    - Verify solution builds cleanly
+    - _Requirements: 1.1, 8.1, 14.1_
+
+- [x] 2. Repository interfaces (Auth.Data.Abstractions)
+  - [x] 2.1 Create IUserRepository interface
+    - Extends `IBaseRepository<UserDto>`
+    - Declare `GetByExternalUserIdAsync(string externalUserId)` returning `OperationResult<UserDto>`
+    - Declare `GetByEmailAsync(string email)` returning `OperationResult<UserDto>`
+    - _Requirements: 2.1, 2.2, 2.3_
+  - [x] 2.2 Create ITenantRepository interface
+    - Extends `IBaseRepository<TenantDto>`
+    - Declare `GetBySlugAsync(string slug)` returning `OperationResult<TenantDto>`
+    - Declare `GetChildTenantsAsync(Guid parentTenantId, FilterParams filterParams)` returning `OperationResult<PaginatedData<TenantDto>>`
+    - _Requirements: 3.1, 3.2, 3.3_
+  - [x] 2.3 Create IRoleRepository interface
+    - Extends `IBaseRepository<RoleDto>`
+    - Declare `GetPoliciesForRoleAsync(Guid roleId)` returning `OperationResult<List<PolicyDto>>`
+    - Declare `AssignPolicyAsync(Guid roleId, Guid policyId)` returning `OperationResult`
+    - Declare `RemovePolicyAsync(Guid roleId, Guid policyId)` returning `OperationResult`
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [x] 2.4 Create IPolicyRepository interface
+    - Extends `IBaseRepository<PolicyDto>`
+    - Declare `GetPermissionsForPolicyAsync(Guid policyId)` returning `OperationResult<List<PermissionDto>>`
+    - Declare `AssignPermissionAsync(Guid policyId, Guid permissionId)` returning `OperationResult`
+    - Declare `RemovePermissionAsync(Guid policyId, Guid permissionId)` returning `OperationResult`
+    - _Requirements: 5.1, 5.2, 5.3, 5.4_
+  - [x] 2.5 Create IPermissionRepository interface
+    - Extends `IBaseRepository<PermissionDto>`
+    - Declare `GetByKeyAsync(string key)` returning `OperationResult<PermissionDto>`
+    - Declare `GetByModuleAsync(string module, FilterParams filterParams)` returning `OperationResult<PaginatedData<PermissionDto>>`
+    - _Requirements: 6.1, 6.2, 6.3_
+  - [x] 2.6 Create IUserTenantRepository interface
+    - Extends `IBaseRepository<UserTenantDto>`
+    - Declare `GetByUserIdAsync(Guid userId)` returning `OperationResult<UserTenantDto>`
+    - Declare `GetAllMembershipsForUserAsync(Guid userId)` returning `OperationResult<List<UserTenantDto>>` (system bypass, no tenant filter)
+    - _Requirements: 7.1, 7.2, 7.3_
+  - [x] 2.7 Create IUserRoleRepository interface
+    - Extends `IBaseRepository<UserRoleDto>`
+    - Declare `GetByUserIdAsync(Guid userId)` returning `OperationResult<List<UserRoleDto>>`
+    - _Requirements: 7.4, 7.5_
+
+- [x] 3. Mapperly mappers (Auth.Repositories)
+  - [x] 3.1 Create AuthUserMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(User entity)` → UserDto
+    - `ToEntity(UserDto dto)` → User
+    - _Requirements: 13.1_
+  - [x] 3.2 Create AuthTenantMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(Tenant entity)` → TenantDto
+    - `ToEntity(TenantDto dto)` → Tenant
+    - _Requirements: 13.2_
+  - [x] 3.3 Create AuthRoleMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(Role entity)` → RoleDto
+    - `ToEntity(RoleDto dto)` → Role
+    - _Requirements: 13.3_
+  - [x] 3.4 Create AuthPolicyMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(Policy entity)` → PolicyDto
+    - `ToEntity(PolicyDto dto)` → Policy
+    - _Requirements: 13.4_
+  - [x] 3.5 Create AuthPermissionMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(Permission entity)` → PermissionDto
+    - `ToEntity(PermissionDto dto)` → Permission
+    - _Requirements: 13.5_
+  - [x] 3.6 Create AuthUserTenantMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(UserTenant entity)` → UserTenantDto
+    - `ToEntity(UserTenantDto dto)` → UserTenant
+    - _Requirements: 13.6_
+  - [x] 3.7 Create AuthUserRoleMapper
+    - Static partial class with [Mapper] attribute
+    - `ToDto(UserRole entity)` → UserRoleDto
+    - `ToEntity(UserRoleDto dto)` → UserRole
+    - _Requirements: 13.6_
+
+- [x] 4. Repository implementations — BaseRepository-based
+  - [x] 4.1 Implement UserRepository
+    - Extends `BaseRepository<User, UserDto>`, implements `IUserRepository`
+    - Constructor takes `AuthDbContext` and passes mapper delegates
+    - `GetByExternalUserIdAsync` — query by ExternalUserId, return mapped DTO or NotFound
+    - `GetByEmailAsync` — query by Email (case-insensitive via ToLower()), return mapped DTO or NotFound
+    - _Requirements: 9.1, 9.2, 9.3, 9.4_
+  - [x] 4.2 Implement TenantRepository
+    - Extends `BaseRepository<Tenant, TenantDto>`, implements `ITenantRepository`
+    - Constructor takes `AuthDbContext` and `ITenantContext`
+    - Override `GetAllAsync` with custom visibility queryShaper: filter to self (Id == currentTenantId) OR direct children (ParentTenantId == currentTenantId)
+    - Override `GetByIdAsync` with same visibility check
+    - `GetBySlugAsync` — query by Slug with visibility filter, return mapped DTO or NotFound
+    - `GetChildTenantsAsync` — query where ParentTenantId matches provided ID, subject to visibility
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7_
+  - [x] 4.3 Implement PermissionRepository
+    - Extends `BaseRepository<Permission, PermissionDto>`, implements `IPermissionRepository`
+    - Constructor takes `AuthDbContext` and passes mapper delegates
+    - `GetByKeyAsync` — query by Key, return mapped DTO or NotFound
+    - `GetByModuleAsync` — query where Module matches, apply FilterParams for paging/sorting
+    - _Requirements: 12.1, 6.2, 6.3_
+
+- [x] 5. Repository implementations — BaseTenantRepository-based
+  - [x] 5.1 Implement RoleRepository
+    - Extends `BaseTenantRepository<Role, RoleDto>`, implements `IRoleRepository`
+    - Constructor takes `AuthDbContext` and `ITenantContext`
+    - `GetPoliciesForRoleAsync` — load role with RolePolicies.Include(Policy), map policies to PolicyDto list
+    - `AssignPolicyAsync` — find role (tenant-scoped), find policy, check not already assigned, create RolePolicy record
+    - `RemovePolicyAsync` — find RolePolicy junction record, remove it, or return NotFound
+    - _Requirements: 11.1, 11.7, 4.2, 4.3, 4.4_
+  - [x] 5.2 Implement PolicyRepository
+    - Extends `BaseTenantRepository<Policy, PolicyDto>`, implements `IPolicyRepository`
+    - Constructor takes `AuthDbContext` and `ITenantContext`
+    - `GetPermissionsForPolicyAsync` — load policy with PolicyPermissions.Include(Permission), map permissions to PermissionDto list
+    - `AssignPermissionAsync` — find policy (tenant-scoped), find permission, check not already assigned, create PolicyPermission record
+    - `RemovePermissionAsync` — find PolicyPermission junction record, remove it, or return NotFound
+    - _Requirements: 11.2, 11.8, 5.2, 5.3, 5.4_
+  - [x] 5.3 Implement UserTenantRepository
+    - Extends `BaseTenantRepository<UserTenant, UserTenantDto>`, implements `IUserTenantRepository`
+    - Constructor takes `AuthDbContext` and `ITenantContext`
+    - `GetByUserIdAsync` — query UserTenant by UserId within current tenant, return mapped DTO or NotFound
+    - `GetAllMembershipsForUserAsync` — bypass tenant filter by querying DbSet directly (AsNoTracking), return all UserTenant records for the user across all tenants
+    - _Requirements: 11.4, 7.2, 7.3_
+  - [x] 5.4 Implement UserRoleRepository
+    - Extends `BaseTenantRepository<UserRole, UserRoleDto>`, implements `IUserRoleRepository`
+    - Constructor takes `AuthDbContext` and `ITenantContext`
+    - `GetByUserIdAsync` — query UserRole by UserId within current tenant, return mapped DTO list
+    - _Requirements: 11.3, 7.5_
+
+- [x] 6. Entity configurations (Auth.Data.Postgres)
+  - [x] 6.1 Create UserConfiguration
+    - Table "AuthUsers"
+    - ExternalUserId: required, max 200
+    - Email: required, max 320
+    - DisplayName: required, max 200
+    - IsActive: default true
+    - _Requirements: 15.1, 19.1, 22.1_
+  - [x] 6.2 Create TenantConfiguration
+    - Table "AuthTenants"
+    - Name: required, max 200
+    - Slug: required, max 100, unique index
+    - RealmName: max 200
+    - CustomDomain: max 500
+    - TenantType: integer conversion
+    - OnboardingMode: integer conversion
+    - IsActive: default true
+    - Self-referencing FK via ParentTenantId with Restrict delete
+    - Index on ParentTenantId
+    - _Requirements: 15.2, 16.1, 17.1, 18.1, 19.2, 22.2, 24.7_
+  - [x] 6.3 Create UserTenantConfiguration
+    - Table "AuthUserTenants"
+    - ExternalUserId: required, max 200
+    - IsActive: default true
+    - Unique composite index on (UserId, TenantId)
+    - FK to User with Cascade delete
+    - FK to Tenant with Restrict delete
+    - Individual indexes on UserId and TenantId
+    - _Requirements: 15.6, 16.3, 17.2, 19.3, 22.3, 24.1_
+  - [x] 6.4 Create RoleConfiguration
+    - Table "AuthRoles"
+    - Name: required, max 200
+    - Description: max 1000
+    - RoleType: integer conversion
+    - IsSystem: default false
+    - FK to Tenant with Restrict delete
+    - Index on TenantId
+    - _Requirements: 15.3, 17.3, 18.2, 19.4, 22.4, 24.2_
+  - [x] 6.5 Create PolicyConfiguration
+    - Table "AuthPolicies"
+    - Name: required, max 200
+    - Description: max 1000
+    - FK to Tenant with Restrict delete
+    - Index on TenantId
+    - _Requirements: 15.4, 17.4, 22.5, 24.3_
+  - [x] 6.6 Create PermissionConfiguration
+    - Table "AuthPermissions"
+    - Key: required, max 200, unique index
+    - Name: required, max 200
+    - Description: max 1000
+    - Module: required, max 100
+    - _Requirements: 15.5, 16.2, 22.6_
+  - [x] 6.7 Create RolePolicyConfiguration
+    - Table "AuthRolePolicies"
+    - Unique composite index on (RoleId, PolicyId)
+    - FK to Role with Cascade delete
+    - FK to Policy with Cascade delete
+    - Individual indexes on RoleId and PolicyId
+    - _Requirements: 16.4, 17.5, 22.7, 24.4_
+  - [x] 6.8 Create PolicyPermissionConfiguration
+    - Table "AuthPolicyPermissions"
+    - Unique composite index on (PolicyId, PermissionId)
+    - FK to Policy with Cascade delete
+    - FK to Permission with Restrict delete
+    - Individual indexes on PolicyId and PermissionId
+    - _Requirements: 16.5, 17.6, 22.8, 24.5_
+  - [x] 6.9 Create UserRoleConfiguration
+    - Table "AuthUserRoles"
+    - Unique composite index on (UserId, RoleId, TenantId)
+    - FK to User with Cascade delete
+    - FK to Role with Cascade delete
+    - FK to Tenant with Restrict delete
+    - Individual indexes on UserId, RoleId, and TenantId
+    - _Requirements: 16.6, 17.7, 22.9, 24.6_
+
+- [x] 7. AuthDbContext + DI registration + Migration
+  - [x] 7.1 Create AuthDbContext class
+    - Inherit from `GroundUpDbContext`
+    - Define DbSet properties for all 9 auth entities
+    - Override OnModelCreating: call base, then ApplyConfigurationsFromAssembly for Auth.Data.Postgres assembly
+    - _Requirements: 20.1, 20.2, 20.3, 20.4_
+  - [x] 7.2 Create AuthServiceCollectionExtensions with AddGroundUpAuthPostgres method
+    - Extension method on IServiceCollection taking connectionString parameter
+    - Register AuditableInterceptor and SoftDeleteInterceptor as singletons
+    - Register AuthDbContext with Npgsql and interceptors
+    - Register all 7 repository implementations against their interfaces as scoped
+    - _Requirements: 21.1, 21.2, 21.3, 21.4_
+  - [x] 7.3 Generate initial EF Core migration
+    - Run EF Core migration tooling to create initial migration
+    - Verify migration creates all 9 "Auth"-prefixed tables with correct schema
+    - Verify build passes and migration applies cleanly
+    - _Requirements: 25.1, 25.2, 25.3_
+
+- [x] 8. Checkpoint — Verify full build and schema
+  - Ensure solution builds cleanly with all new projects
+  - Verify migration applies to a fresh database
+  - Ask the user if questions arise
+
+- [ ]* 9. Property-based tests (mapper round-trips)
+  - [x]* 9.1 Write property test for AuthUserMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random User entities, map to UserDto and back, verify all fields preserved
+    - **Validates: Requirements 13.1**
+  - [x]* 9.2 Write property test for AuthTenantMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random Tenant entities, map to TenantDto and back, verify all fields preserved
+    - **Validates: Requirements 13.2**
+  - [x]* 9.3 Write property test for AuthRoleMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random Role entities, map to RoleDto and back, verify all fields preserved
+    - **Validates: Requirements 13.3**
+  - [x]* 9.4 Write property test for AuthPolicyMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random Policy entities, map to PolicyDto and back, verify all fields preserved
+    - **Validates: Requirements 13.4**
+  - [x]* 9.5 Write property test for AuthPermissionMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random Permission entities, map to PermissionDto and back, verify all fields preserved
+    - **Validates: Requirements 13.5**
+  - [x]* 9.6 Write property test for AuthUserTenantMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random UserTenant entities, map to UserTenantDto and back, verify all fields preserved
+    - **Validates: Requirements 13.6**
+  - [x]* 9.7 Write property test for AuthUserRoleMapper round-trip
+    - **Property 1: Mapper round-trip preserves entity fields**
+    - Generate random UserRole entities, map to UserRoleDto and back, verify all fields preserved
+    - **Validates: Requirements 13.6**
+
+- [x]* 10. Integration tests
+  - [x]* 10.1 Write tenant visibility integration tests
+    - **Property 2: TenantRepository visibility restricts to self and direct children**
+    - Test GetAllAsync only returns current tenant + direct children
+    - Test GetByIdAsync returns NotFound for grandchildren, siblings, unrelated tenants
+    - Test GetBySlugAsync respects visibility rules
+    - **Validates: Requirements 10.2, 10.3, 10.4, 10.5**
+  - [x]* 10.2 Write tenant isolation integration tests
+    - **Property 6: Tenant-scoped repositories enforce tenant isolation**
+    - Test RoleRepository, PolicyRepository, UserTenantRepository, UserRoleRepository only return entities for current tenant
+    - Test AddAsync sets TenantId automatically
+    - **Validates: Requirements 11.5, 11.6**
+  - [x]* 10.3 Write junction management integration tests
+    - **Property 8: RoleRepository junction management round-trip**
+    - **Property 9: PolicyRepository junction management round-trip**
+    - Test assign/get/remove cycle for RolePolicy and PolicyPermission
+    - Test idempotent assignment (no duplicates)
+    - **Validates: Requirements 11.7, 11.8, 4.2, 4.3, 4.4, 5.2, 5.3, 5.4**
+  - [x]* 10.4 Write system bypass method integration test
+    - **Property 7: GetAllMembershipsForUserAsync bypasses tenant filtering**
+    - Create user with memberships in multiple tenants
+    - Verify GetAllMembershipsForUserAsync returns all regardless of current tenant context
+    - **Validates: Requirements 7.3**
+  - [x]* 10.5 Write UserRepository lookup integration tests
+    - **Property 4: UserRepository ExternalUserId lookup returns correct user**
+    - **Property 5: UserRepository email lookup is case-insensitive**
+    - Test GetByExternalUserIdAsync returns correct user or NotFound
+    - Test GetByEmailAsync is case-insensitive
+    - **Validates: Requirements 9.2, 9.3, 9.4**
+
+- [x] 11. Final checkpoint — Ensure all tests pass
+  - Ensure solution builds and all tests pass
+  - Ask the user if questions arise
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task group (1–7) must compile independently after completion
+- The user will review after each task group before proceeding
+- Follow existing patterns exactly (SettingGroupConfiguration for EF config, PostgresServiceCollectionExtensions for DI)
+- All files must have: file-scoped namespaces, sealed classes where appropriate, XML doc comments
+- No data seeders in this phase (deferred to 9C)
+- Property tests validate universal correctness properties from the design document
+- Integration tests use Testcontainers with real Postgres
