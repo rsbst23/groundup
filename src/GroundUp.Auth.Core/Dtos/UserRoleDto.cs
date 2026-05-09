@@ -7,8 +7,10 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="UserId">The user identifier.</param>
 /// <param name="RoleId">The role identifier.</param>
 /// <param name="TenantId">The tenant identifier scoping this role assignment.</param>
+/// <param name="RoleName">The display name of the assigned role. Populated by system role queries.</param>
 public record UserRoleDto(
     Guid Id,
     Guid UserId,
     Guid RoleId,
-    Guid TenantId);
+    Guid TenantId,
+    string? RoleName = null);

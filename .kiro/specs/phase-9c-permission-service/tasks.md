@@ -1,0 +1,263 @@
+# Implementation Plan: Phase 9C — Permission Service & Enforcement
+
+## Overview
+
+This plan implements the authorization service layer for the GroundUp framework. It introduces the `GroundUp.Auth.Services` project containing the permission resolution engine, DispatchProxy-based authorization enforcement, JWT-based identity implementations, cache invalidation handlers, and DI registration extensions. Tasks are broken into small, independently buildable groups following a logical dependency order.
+
+## Tasks
+
+- [x] 1. Project setup + new DTOs
+  - [x] 1.1 Create `src/GroundUp.Auth.Services/GroundUp.Auth.Services.csproj` with net8.0, nullable enabled, GenerateDocumentationFile, and references to GroundUp.Core, GroundUp.Auth.Core, GroundUp.Auth.Data.Abstractions, GroundUp.Services, GroundUp.Events, plus NuGet packages Microsoft.Extensions.Caching.Memory, Microsoft.AspNetCore.Http.Abstractions, Microsoft.Extensions.Options, Microsoft.Extensions.Options.ConfigurationExtensions
+    - Add the project to `groundup.sln` using `dotnet sln add`
+    - Create the directory structure: Authorization/, Identity/, Configuration/, EventHandlers/
+    - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
+  - [x] 1.2 Create `src/GroundUp.Auth.Core/Dtos/RolePolicyDto.cs`
+    - `public record RolePolicyDto(Guid Id, Guid RoleId, Guid PolicyId);`
+    - XML doc comments on the record and parameters
+    - _Requirements: 3.1, 3.2 (event payload for RolePolicy changes)_
+  - [x] 1.3 Create `src/GroundUp.Auth.Core/Dtos/PolicyPermissionDto.cs`
+    - `public record PolicyPermissionDto(Guid Id, Guid PolicyId, Guid PermissionId);`
+    - XML doc comments on the record and parameters
+    - _Requirements: 3.3 (event payload for PolicyPermission changes)_
+  - [x] 1.4 Update `src/GroundUp.Auth.Core/Dtos/UserRoleDto.cs` to add optional `RoleName` parameter
+    - Change to: `public record UserRoleDto(Guid Id, Guid UserId, Guid RoleId, Guid TenantId, string? RoleName = null);`
+    - _Requirements: 15.4_
+  - [x] 1.5 Add `GetSystemRolesForUserAsync(Guid userId)` to `src/GroundUp.Auth.Data.Abstractions/IUserRoleRepository.cs`
+    - Returns `Task<OperationResult<List<UserRoleDto>>>` — system roles regardless of tenant context
+    - XML doc comments explaining it bypasses tenant filtering and includes Role name
+    - _Requirements: 15.1, 15.2, 15.3, 15.4_
+  - [x] 1.6 Implement `GetSystemRolesForUserAsync` in `src/GroundUp.Auth.Repositories/UserRoleRepository.cs`
+    - Bypass tenant filter (query all UserRoles where Role.RoleType == System for the given userId)
+    - Include Role navigation property to populate RoleName in the DTO projection
+    - Use AsNoTracking()
+    - _Requirements: 15.1, 15.2, 15.3, 15.4_
+  - [x] 1.7 Verify build passes with `dotnet build`
+    - _Checkpoint: Ensure the new project compiles and integrates with the solution_
+
+- [x] 2. Configuration + Identity implementations
+  - [x] 2.1 Create `src/GroundUp.Auth.Services/Configuration/AuthOptions.cs`
+    - Sealed class with properties: PermissionCacheTtlMinutes (int, default 15), UserIdClaimType (string, default "sub"), EmailClaimType (string, default "email"), DisplayNameClaimType (string, default "name"), TenantIdClaimType (string, default "tenant_id")
+    - XML doc comments on class and all properties
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+  - [x] 2.2 Create `src/GroundUp.Auth.Services/Identity/JwtCurrentUser.cs`
+    - Sealed class implementing ICurrentUser
+    - Inject IHttpContextAccessor and IOptions<AuthOptions>
+    - Extract UserId (Guid.TryParse with Guid.Empty fallback), Email, DisplayName from configured claim types
+    - Return Guid.Empty / null when no HttpContext or no authenticated user
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
+  - [x] 2.3 Create `src/GroundUp.Auth.Services/Identity/JwtTenantContext.cs`
+    - Sealed class implementing ITenantContext
+    - Inject IHttpContextAccessor and IOptions<AuthOptions>
+    - Extract TenantId from configured claim type (Guid.TryParse with Guid.Empty fallback)
+    - _Requirements: 9.1, 9.2, 9.3, 9.4_
+  - [x] 2.4 Create `src/GroundUp.Auth.Services/Identity/SystemCurrentUser.cs`
+    - Sealed class implementing ICurrentUser with constructor parameters (Guid userId, string? email, string? displayName)
+    - _Requirements: 10.1_
+  - [x] 2.5 Create `src/GroundUp.Auth.Services/Identity/SystemTenantContext.cs`
+    - Sealed class implementing ITenantContext with constructor parameter (Guid tenantId)
+    - _Requirements: 10.2_
+  - [x] 2.6 Verify build passes with `dotnet build`
+    - _Checkpoint: Ensure identity implementations compile correctly_
+
+- [ ] 3. Permission Service
+  - [ ] 3.1 Create `src/GroundUp.Auth.Services/IPermissionService.cs`
+    - Interface with methods: HasPermissionAsync, HasAnyPermissionAsync, GetUserPermissionsAsync, HasSystemRoleAsync, HasAnySystemRoleAsync
+    - Full XML doc comments on interface and all methods
+    - _Requirements: 1.1, 1.2, 1.3, 5.5_
+  - [ ] 3.2 Create `src/GroundUp.Auth.Services/PermissionService.cs`
+    - Sealed class implementing IPermissionService
+    - Inject IUserRoleRepository, IRoleRepository, IPolicyRepository, ITenantContext, IMemoryCache, IOptions<AuthOptions>
+    - Implement GetUserPermissionsAsync: resolve tenant-scoped roles (GetByUserIdAsync) + system roles (GetSystemRolesForUserAsync), traverse RolePolicies → Policies → PolicyPermissions → Permissions, union and deduplicate into HashSet<string>
+    - Implement caching: key format `permissions:{userId}:{tenantId}`, configurable TTL from AuthOptions.PermissionCacheTtlMinutes
+    - Implement HasPermissionAsync: get cached permissions, check Contains
+    - Implement HasAnyPermissionAsync: get cached permissions, check Overlaps
+    - Implement HasSystemRoleAsync / HasAnySystemRoleAsync: query GetSystemRolesForUserAsync, case-insensitive comparison
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [ ] 3.3 Verify build passes with `dotnet build`
+    - _Checkpoint: Ensure permission service compiles_
+
+- [ ] 4. Authorization Proxy
+  - [ ] 4.1 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationInterceptor.cs`
+    - Sealed class extending `DispatchProxy` with generic type parameter TInterface
+    - Fields: _target (TInterface), _permissionService (IPermissionService), _currentUser (ICurrentUser)
+    - Override Invoke: check return type (only intercept Task<OperationResult<T>> or Task<OperationResult>), read [RequiresPermission]/[RequiresRole] from interface method, enforce AND semantics for permissions, OR semantics for roles (case-insensitive, system roles only), return Forbidden() or delegate
+    - Static Create factory method
+    - Handle Guid.Empty UserId as unauthorized (return Forbidden)
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.1, 6.2, 6.3_
+  - [ ] 4.2 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationServiceCollectionExtensions.cs`
+    - Static class with `AddAuthorized<TInterface, TImplementation>()` extension method
+    - Register TImplementation as scoped, then register TInterface as scoped factory that creates the proxy
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - [ ] 4.3 Verify build passes with `dotnet build`
+    - _Checkpoint: Ensure proxy compiles_
+
+- [ ] 5. Cache Invalidation + DI Registration
+  - [ ] 5.1 Create `src/GroundUp.Auth.Services/EventHandlers/UserRoleChangedHandler.cs`
+    - Implement IEventHandler<EntityCreatedEvent<UserRoleDto>> and IEventHandler<EntityDeletedEvent<UserRoleDto>>
+    - Evict cache key `permissions:{dto.UserId}:{dto.TenantId}`
+    - _Requirements: 3.1, 3.5_
+  - [ ] 5.2 Create `src/GroundUp.Auth.Services/EventHandlers/RolePolicyChangedHandler.cs`
+    - Implement IEventHandler<EntityCreatedEvent<RolePolicyDto>> and IEventHandler<EntityDeletedEvent<RolePolicyDto>>
+    - Query IUserRoleRepository for users holding the affected role, evict their cache entries
+    - _Requirements: 3.2, 3.5_
+  - [ ] 5.3 Create `src/GroundUp.Auth.Services/EventHandlers/PolicyPermissionChangedHandler.cs`
+    - Implement IEventHandler<EntityCreatedEvent<PolicyPermissionDto>> and IEventHandler<EntityDeletedEvent<PolicyPermissionDto>>
+    - Query IRoleRepository for roles containing the affected policy, then IUserRoleRepository for users holding those roles, evict their cache entries
+    - _Requirements: 3.3, 3.5_
+  - [ ] 5.4 Create `src/GroundUp.Auth.Services/AuthServiceCollectionExtensions.cs`
+    - `AddGroundUpAuth(IConfiguration configuration)` overload: bind AuthOptions from "GroundUp:Auth", AddMemoryCache, AddHttpContextAccessor, register IPermissionService, ICurrentUser (JwtCurrentUser), ITenantContext (JwtTenantContext), all event handlers
+    - `AddGroundUpAuth(Action<AuthOptions> configure)` overload: same registrations with explicit configure action
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 11.6_
+  - [ ] 5.5 Verify build passes with `dotnet build`
+    - _Checkpoint: Ensure all auth services compile and wire together_
+
+- [ ] 6. Unit Tests
+  - [ ] 6.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServiceTests.cs`
+    - Test permission resolution calls repositories in correct order
+    - Test cache is populated on first call and used on subsequent calls
+    - Test cache key format is `permissions:{userId}:{tenantId}`
+    - Test empty permission set returned when user has no roles
+    - Test configurable TTL is applied to cache entries
+    - Test system role permissions are included regardless of tenant
+    - Test deduplication of overlapping permissions
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [ ] 6.2 Create `tests/GroundUp.Tests.Unit/Auth/Services/AuthorizationInterceptorTests.cs`
+    - Test Forbidden returned when user lacks required permissions (AND semantics)
+    - Test method invoked when user has all required permissions
+    - Test Forbidden returned when user lacks required system role (OR semantics)
+    - Test method invoked when user has at least one required system role
+    - Test pass-through for methods without auth attributes
+    - Test pass-through for methods with non-OperationResult return types
+    - Test attribute is read from interface, not implementation
+    - Test correct generic type parameter in Forbidden response (generic and non-generic)
+    - Test case-insensitive role comparison
+    - Test Guid.Empty UserId returns Forbidden
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.1, 6.2, 6.3_
+  - [ ] 6.3 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtCurrentUserTests.cs`
+    - Test returns Guid.Empty when no HttpContext
+    - Test returns null for missing claims
+    - Test extracts correct values from configured claim types
+    - Test Guid.TryParse fallback for invalid UserId claim
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
+  - [ ] 6.4 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtTenantContextTests.cs`
+    - Test returns Guid.Empty when no HttpContext or no tenant claim
+    - Test extracts TenantId from configured claim type
+    - _Requirements: 9.1, 9.2, 9.3, 9.4_
+  - [ ] 6.5 Create `tests/GroundUp.Tests.Unit/Auth/Identity/SystemIdentityTests.cs`
+    - Test SystemCurrentUser exposes constructor values
+    - Test SystemTenantContext exposes constructor value
+    - _Requirements: 10.1, 10.2_
+  - [ ] 6.6 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/UserRoleChangedHandlerTests.cs`
+    - Test evicts correct cache key on EntityCreatedEvent and EntityDeletedEvent
+    - _Requirements: 3.1_
+  - [ ] 6.7 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/RolePolicyChangedHandlerTests.cs`
+    - Test queries affected users and evicts their cache entries
+    - _Requirements: 3.2_
+  - [ ] 6.8 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/PolicyPermissionChangedHandlerTests.cs`
+    - Test cascades through roles to find affected users and evicts their cache entries
+    - _Requirements: 3.3_
+  - [ ] 6.9 Create `tests/GroundUp.Tests.Unit/Auth/DI/AuthServiceRegistrationTests.cs`
+    - Test AddGroundUpAuth registers all expected services (IPermissionService, ICurrentUser, ITenantContext, event handlers)
+    - Test AddAuthorized wraps service with proxy
+    - Test standard AddScoped does not wrap with proxy
+    - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 7.1, 7.2, 7.3, 7.4_
+  - [ ] 6.10 Verify all unit tests pass with `dotnet test tests/GroundUp.Tests.Unit`
+    - _Checkpoint: Ensure all unit tests pass_
+
+- [ ]* 7. Property-Based Tests
+  - [ ]* 7.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServicePropertyTests.cs`
+    - **Property 1: Permission resolution produces the correct union of tenant and system role permissions**
+    - Generate random permission graphs, mock repositories, compute expected permissions by graph traversal, verify service returns matching set
+    - **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
+  - [ ]* 7.2 Add Property 2 test to `PermissionServicePropertyTests.cs`
+    - **Property 2: System role permissions transcend tenant boundaries**
+    - Generate users with system roles, set current tenant to a different tenant, verify system role permissions still appear
+    - **Validates: Requirements 1.5, 1.8**
+  - [ ]* 7.3 Add Property 3 test to `PermissionServicePropertyTests.cs`
+    - **Property 3: Permission set deduplication invariant**
+    - Generate permission graphs with intentional overlaps, verify result count equals distinct key count
+    - **Validates: Requirements 1.6**
+  - [ ]* 7.4 Create `tests/GroundUp.Tests.Unit/Auth/Services/AuthorizationInterceptorPropertyTests.cs`
+    - **Property 4: Authorization proxy enforces AND semantics for [RequiresPermission]**
+    - Generate random required permission sets and random user permission sets, verify proxy allows iff required ⊆ user
+    - **Validates: Requirements 4.1, 4.2, 4.3**
+  - [ ]* 7.5 Add Property 5 test to `AuthorizationInterceptorPropertyTests.cs`
+    - **Property 5: Authorization proxy enforces OR semantics for [RequiresRole] using system roles only**
+    - Generate random required role sets and random user system role sets, verify proxy allows iff intersection is non-empty (case-insensitive)
+    - **Validates: Requirements 5.1, 5.2, 5.3, 5.5**
+  - [ ]* 7.6 Add Property 6 test to `AuthorizationInterceptorPropertyTests.cs`
+    - **Property 6: Role name comparison is case-insensitive**
+    - Generate random role name strings, apply random case transformations, verify case-insensitive matching
+    - **Validates: Requirements 5.6**
+  - [ ]* 7.7 Add Property 7 test to `AuthorizationInterceptorPropertyTests.cs`
+    - **Property 7: Proxy pass-through for undecorated or non-OperationResult methods**
+    - Generate random user permission states, invoke undecorated methods, verify always passes through
+    - **Validates: Requirements 4.6, 6.3**
+  - [ ]* 7.8 Create `tests/GroundUp.Tests.Unit/Auth/Identity/IdentityPropertyTests.cs`
+    - **Property 8: JWT claim extraction round-trip**
+    - Generate random Guids and strings, set as claims, verify properties return exact values
+    - **Validates: Requirements 8.1, 8.2, 8.3, 8.6, 9.1, 9.4**
+  - [ ]* 7.9 Add Property 9 test to `IdentityPropertyTests.cs`
+    - **Property 9: System identity constructor round-trip**
+    - Generate random Guids and optional strings, construct instances, verify properties match
+    - **Validates: Requirements 10.1, 10.2**
+  - [ ]* 7.10 Verify all property tests pass with `dotnet test tests/GroundUp.Tests.Unit --filter "Category=Property"`
+    - _Checkpoint: Ensure all property-based tests pass_
+
+- [ ] 8. Integration Tests
+  - [ ] 8.1 Create `tests/GroundUp.Tests.Integration/Auth/Services/PermissionResolutionTests.cs`
+    - Seed a full permission hierarchy (users, roles, policies, permissions, junction records)
+    - Resolve permissions via PermissionService, verify correct set returned
+    - Test with multiple roles granting overlapping permissions
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
+  - [ ] 8.2 Create `tests/GroundUp.Tests.Integration/Auth/Services/SystemRoleResolutionTests.cs`
+    - Seed system roles across tenants
+    - Verify resolution in different tenant contexts includes system role permissions
+    - Verify user with only system roles (no tenant membership) still gets system permissions
+    - _Requirements: 1.5, 1.7, 1.8_
+  - [ ] 8.3 Create `tests/GroundUp.Tests.Integration/Auth/Services/CacheInvalidationTests.cs`
+    - Seed data, resolve permissions (populates cache)
+    - Modify role assignments via repository, publish events
+    - Verify cache is invalidated and re-resolution produces updated results
+    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+  - [ ] 8.4 Create `tests/GroundUp.Tests.Integration/Auth/Repositories/UserRoleSystemRolesTests.cs`
+    - Seed system and tenant-scoped roles
+    - Verify GetSystemRolesForUserAsync returns only system roles regardless of tenant context
+    - Verify RoleName is populated in the result
+    - _Requirements: 15.1, 15.2, 15.3, 15.4_
+  - [ ] 8.5 Create `tests/GroundUp.Tests.Integration/Auth/Services/AuthorizationProxyIntegrationTests.cs`
+    - Register a test service with AddAuthorized, invoke through proxy
+    - Verify enforcement works end-to-end with real permission resolution
+    - Test both allowed and denied scenarios
+    - _Requirements: 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 7.1, 7.2, 10.4_
+  - [ ] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
+    - _Checkpoint: Ensure all integration tests pass_
+
+- [ ] 9. Sample App Integration
+  - [ ] 9.1 Add project references to `samples/GroundUp.Sample/GroundUp.Sample.csproj`
+    - Reference GroundUp.Auth.Data.Postgres and GroundUp.Auth.Services
+    - _Requirements: 13.1_
+  - [ ] 9.2 Update `samples/GroundUp.Sample/Program.cs`
+    - Call `AddGroundUpAuthPostgres(connectionString)` and `AddGroundUpAuth(configuration)`
+    - _Requirements: 13.2_
+  - [ ] 9.3 Add `[RequiresPermission]` to at least one service interface method and register via `AddAuthorized<TInterface, TImplementation>()`
+    - Demonstrate permission enforcement on an existing or new sample service
+    - _Requirements: 13.3_
+  - [ ] 9.4 Create a migration that applies the auth schema to the local Postgres database
+    - Run `dotnet ef migrations add AddAuthSchema` in the Sample project
+    - _Requirements: 13.4_
+  - [ ] 9.5 Verify Sample app builds and starts without errors
+    - _Checkpoint: Ensure sample app compiles with auth wired in_
+
+- [ ] 10. Final checkpoint
+  - Ensure all tests pass (`dotnet test`), ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation between task groups
+- Property tests validate universal correctness properties from the design document
+- Unit tests validate specific examples and edge cases with mocked dependencies
+- Integration tests verify end-to-end behavior with real Postgres via Testcontainers
+- The design uses C# throughout — no language selection was needed
