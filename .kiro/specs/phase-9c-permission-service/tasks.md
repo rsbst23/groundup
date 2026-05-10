@@ -164,7 +164,7 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [x] 6.10 Verify all unit tests pass with `dotnet test tests/GroundUp.Tests.Unit`
     - _Checkpoint: Ensure all unit tests pass_
 
-- [ ]* 7. Property-Based Tests
+- [x]* 7. Property-Based Tests
   - [ ]* 7.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServicePropertyTests.cs`
     - **Property 1: Permission resolution produces the correct union of tenant and system role permissions**
     - Generate random permission graphs, mock repositories, compute expected permissions by graph traversal, verify service returns matching set
