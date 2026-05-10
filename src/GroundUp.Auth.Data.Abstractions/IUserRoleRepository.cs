@@ -19,4 +19,16 @@ public interface IUserRoleRepository : IBaseRepository<UserRoleDto>
     Task<OperationResult<List<UserRoleDto>>> GetByUserIdAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves all system-level role assignments for a user, bypassing tenant filtering.
+    /// Returns UserRole records where the associated Role has RoleType == System.
+    /// Includes the Role name for direct comparison without additional lookups.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of user-role DTOs for system roles, regardless of tenant context.</returns>
+    Task<OperationResult<List<UserRoleDto>>> GetSystemRolesForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

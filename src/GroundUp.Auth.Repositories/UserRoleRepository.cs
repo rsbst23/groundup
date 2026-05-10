@@ -1,5 +1,6 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
 using GroundUp.Core.Abstractions;
@@ -38,6 +39,27 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
             .ToListAsync(cancellationToken);
 
         var dtos = entities.Select(AuthUserRoleMapper.ToDto).ToList();
+        return OperationResult<List<UserRoleDto>>.Ok(dtos);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: This method intentionally queries the DbContext directly,
+    /// bypassing the tenant-filtered DbSet. This is required for resolving system-level
+    /// roles that transcend tenant boundaries. Includes the Role navigation property
+    /// to populate RoleName in the DTO projection.
+    /// </remarks>
+    public async Task<OperationResult<List<UserRoleDto>>> GetSystemRolesForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var dtos = await Context.Set<UserRole>()
+            .AsNoTracking()
+            .Include(ur => ur.Role)
+            .Where(ur => ur.UserId == userId && ur.Role.RoleType == RoleType.System)
+            .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name))
+            .ToListAsync(cancellationToken);
+
         return OperationResult<List<UserRoleDto>>.Ok(dtos);
     }
 }

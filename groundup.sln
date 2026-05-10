@@ -41,6 +41,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GroundUp.Auth.Repositories"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GroundUp.Auth.Data.Postgres", "src\GroundUp.Auth.Data.Postgres\GroundUp.Auth.Data.Postgres.csproj", "{EF97174E-D8E5-4EF2-8322-EFB40B989B8C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GroundUp.Auth.Services", "src\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj", "{C163D985-888E-4B4A-A8A3-625079930177}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -243,6 +245,18 @@ Global
 		{EF97174E-D8E5-4EF2-8322-EFB40B989B8C}.Release|x64.Build.0 = Release|Any CPU
 		{EF97174E-D8E5-4EF2-8322-EFB40B989B8C}.Release|x86.ActiveCfg = Release|Any CPU
 		{EF97174E-D8E5-4EF2-8322-EFB40B989B8C}.Release|x86.Build.0 = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|x64.Build.0 = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Debug|x86.Build.0 = Debug|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|x64.ActiveCfg = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|x64.Build.0 = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|x86.ActiveCfg = Release|Any CPU
+		{C163D985-888E-4B4A-A8A3-625079930177}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -264,5 +278,6 @@ Global
 		{60C34A6E-E942-4F92-BFE5-A9357E6F642E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{6E426D29-1CCF-437F-8227-5A72E36E704E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{EF97174E-D8E5-4EF2-8322-EFB40B989B8C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C163D985-888E-4B4A-A8A3-625079930177} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
