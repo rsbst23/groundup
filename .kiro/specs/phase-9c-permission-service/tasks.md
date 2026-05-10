@@ -204,33 +204,33 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [ ]* 7.10 Verify all property tests pass with `dotnet test tests/GroundUp.Tests.Unit --filter "Category=Property"`
     - _Checkpoint: Ensure all property-based tests pass_
 
-- [ ] 8. Integration Tests
-  - [ ] 8.1 Create `tests/GroundUp.Tests.Integration/Auth/Services/PermissionResolutionTests.cs`
+- [x] 8. Integration Tests
+  - [x] 8.1 Create `tests/GroundUp.Tests.Integration/Auth/Services/PermissionResolutionTests.cs`
     - Seed a full permission hierarchy (users, roles, policies, permissions, junction records)
     - Resolve permissions via PermissionService, verify correct set returned
     - Test with multiple roles granting overlapping permissions
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
-  - [ ] 8.2 Create `tests/GroundUp.Tests.Integration/Auth/Services/SystemRoleResolutionTests.cs`
+  - [x] 8.2 Create `tests/GroundUp.Tests.Integration/Auth/Services/SystemRoleResolutionTests.cs`
     - Seed system roles across tenants
     - Verify resolution in different tenant contexts includes system role permissions
     - Verify user with only system roles (no tenant membership) still gets system permissions
     - _Requirements: 1.5, 1.7, 1.8_
-  - [ ] 8.3 Create `tests/GroundUp.Tests.Integration/Auth/Services/CacheInvalidationTests.cs`
+  - [x] 8.3 Create `tests/GroundUp.Tests.Integration/Auth/Services/CacheInvalidationTests.cs`
     - Seed data, resolve permissions (populates cache)
     - Modify role assignments via repository, publish events
     - Verify cache is invalidated and re-resolution produces updated results
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
-  - [ ] 8.4 Create `tests/GroundUp.Tests.Integration/Auth/Repositories/UserRoleSystemRolesTests.cs`
+  - [x] 8.4 Create `tests/GroundUp.Tests.Integration/Auth/Repositories/UserRoleSystemRolesTests.cs`
     - Seed system and tenant-scoped roles
     - Verify GetSystemRolesForUserAsync returns only system roles regardless of tenant context
     - Verify RoleName is populated in the result
     - _Requirements: 15.1, 15.2, 15.3, 15.4_
-  - [ ] 8.5 Create `tests/GroundUp.Tests.Integration/Auth/Services/AuthorizationProxyIntegrationTests.cs`
+  - [x] 8.5 Create `tests/GroundUp.Tests.Integration/Auth/Services/AuthorizationProxyIntegrationTests.cs`
     - Register a test service with AddAuthorized, invoke through proxy
     - Verify enforcement works end-to-end with real permission resolution
     - Test both allowed and denied scenarios
     - _Requirements: 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 7.1, 7.2, 10.4_
-  - [ ] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
+  - [x] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
     - _Checkpoint: Ensure all integration tests pass_
 
 - [ ] 9. Sample App Integration
