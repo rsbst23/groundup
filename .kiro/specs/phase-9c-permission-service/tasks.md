@@ -111,8 +111,8 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [x] 5.5 Verify build passes with `dotnet build`
     - _Checkpoint: Ensure all auth services compile and wire together_
 
-- [ ] 6. Unit Tests
-  - [ ] 6.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServiceTests.cs`
+- [x] 6. Unit Tests
+  - [x] 6.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServiceTests.cs`
     - Test permission resolution calls repositories in correct order
     - Test cache is populated on first call and used on subsequent calls
     - Test cache key format is `permissions:{userId}:{tenantId}`
@@ -121,7 +121,7 @@ This plan implements the authorization service layer for the GroundUp framework.
     - Test system role permissions are included regardless of tenant
     - Test deduplication of overlapping permissions
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.1, 2.2, 2.3, 2.4, 2.5_
-  - [ ] 6.2 Create `tests/GroundUp.Tests.Unit/Auth/Services/AuthorizationInterceptorTests.cs`
+  - [x] 6.2 Create `tests/GroundUp.Tests.Unit/Auth/Services/AuthorizationInterceptorTests.cs`
     - Test Forbidden returned when user lacks required permissions (AND semantics)
     - Test method invoked when user has all required permissions
     - Test Forbidden returned when user lacks required system role (OR semantics)
@@ -133,38 +133,38 @@ This plan implements the authorization service layer for the GroundUp framework.
     - Test case-insensitive role comparison
     - Test Guid.Empty UserId returns Forbidden
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.1, 6.2, 6.3_
-  - [ ] 6.3 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtCurrentUserTests.cs`
+  - [x] 6.3 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtCurrentUserTests.cs`
     - Test returns Guid.Empty when no HttpContext
     - Test returns null for missing claims
     - Test extracts correct values from configured claim types
     - Test Guid.TryParse fallback for invalid UserId claim
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6_
-  - [ ] 6.4 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtTenantContextTests.cs`
+  - [x] 6.4 Create `tests/GroundUp.Tests.Unit/Auth/Identity/JwtTenantContextTests.cs`
     - Test returns Guid.Empty when no HttpContext or no tenant claim
     - Test extracts TenantId from configured claim type
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  - [ ] 6.5 Create `tests/GroundUp.Tests.Unit/Auth/Identity/SystemIdentityTests.cs`
+  - [x] 6.5 Create `tests/GroundUp.Tests.Unit/Auth/Identity/SystemIdentityTests.cs`
     - Test SystemCurrentUser exposes constructor values
     - Test SystemTenantContext exposes constructor value
     - _Requirements: 10.1, 10.2_
-  - [ ] 6.6 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/UserRoleChangedHandlerTests.cs`
+  - [x] 6.6 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/UserRoleChangedHandlerTests.cs`
     - Test evicts correct cache key on EntityCreatedEvent and EntityDeletedEvent
     - _Requirements: 3.1_
-  - [ ] 6.7 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/RolePolicyChangedHandlerTests.cs`
+  - [x] 6.7 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/RolePolicyChangedHandlerTests.cs`
     - Test queries affected users and evicts their cache entries
     - _Requirements: 3.2_
-  - [ ] 6.8 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/PolicyPermissionChangedHandlerTests.cs`
+  - [x] 6.8 Create `tests/GroundUp.Tests.Unit/Auth/EventHandlers/PolicyPermissionChangedHandlerTests.cs`
     - Test cascades through roles to find affected users and evicts their cache entries
     - _Requirements: 3.3_
-  - [ ] 6.9 Create `tests/GroundUp.Tests.Unit/Auth/DI/AuthServiceRegistrationTests.cs`
+  - [x] 6.9 Create `tests/GroundUp.Tests.Unit/Auth/DI/AuthServiceRegistrationTests.cs`
     - Test AddGroundUpAuth registers all expected services (IPermissionService, ICurrentUser, ITenantContext, event handlers)
     - Test AddAuthorized wraps service with proxy
     - Test standard AddScoped does not wrap with proxy
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 7.1, 7.2, 7.3, 7.4_
-  - [ ] 6.10 Verify all unit tests pass with `dotnet test tests/GroundUp.Tests.Unit`
+  - [x] 6.10 Verify all unit tests pass with `dotnet test tests/GroundUp.Tests.Unit`
     - _Checkpoint: Ensure all unit tests pass_
 
-- [ ]* 7. Property-Based Tests
+- [x]* 7. Property-Based Tests
   - [ ]* 7.1 Create `tests/GroundUp.Tests.Unit/Auth/Services/PermissionServicePropertyTests.cs`
     - **Property 1: Permission resolution produces the correct union of tenant and system role permissions**
     - Generate random permission graphs, mock repositories, compute expected permissions by graph traversal, verify service returns matching set
@@ -204,33 +204,33 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [ ]* 7.10 Verify all property tests pass with `dotnet test tests/GroundUp.Tests.Unit --filter "Category=Property"`
     - _Checkpoint: Ensure all property-based tests pass_
 
-- [ ] 8. Integration Tests
-  - [ ] 8.1 Create `tests/GroundUp.Tests.Integration/Auth/Services/PermissionResolutionTests.cs`
+- [x] 8. Integration Tests
+  - [x] 8.1 Create `tests/GroundUp.Tests.Integration/Auth/Services/PermissionResolutionTests.cs`
     - Seed a full permission hierarchy (users, roles, policies, permissions, junction records)
     - Resolve permissions via PermissionService, verify correct set returned
     - Test with multiple roles granting overlapping permissions
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
-  - [ ] 8.2 Create `tests/GroundUp.Tests.Integration/Auth/Services/SystemRoleResolutionTests.cs`
+  - [x] 8.2 Create `tests/GroundUp.Tests.Integration/Auth/Services/SystemRoleResolutionTests.cs`
     - Seed system roles across tenants
     - Verify resolution in different tenant contexts includes system role permissions
     - Verify user with only system roles (no tenant membership) still gets system permissions
     - _Requirements: 1.5, 1.7, 1.8_
-  - [ ] 8.3 Create `tests/GroundUp.Tests.Integration/Auth/Services/CacheInvalidationTests.cs`
+  - [x] 8.3 Create `tests/GroundUp.Tests.Integration/Auth/Services/CacheInvalidationTests.cs`
     - Seed data, resolve permissions (populates cache)
     - Modify role assignments via repository, publish events
     - Verify cache is invalidated and re-resolution produces updated results
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
-  - [ ] 8.4 Create `tests/GroundUp.Tests.Integration/Auth/Repositories/UserRoleSystemRolesTests.cs`
+  - [x] 8.4 Create `tests/GroundUp.Tests.Integration/Auth/Repositories/UserRoleSystemRolesTests.cs`
     - Seed system and tenant-scoped roles
     - Verify GetSystemRolesForUserAsync returns only system roles regardless of tenant context
     - Verify RoleName is populated in the result
     - _Requirements: 15.1, 15.2, 15.3, 15.4_
-  - [ ] 8.5 Create `tests/GroundUp.Tests.Integration/Auth/Services/AuthorizationProxyIntegrationTests.cs`
+  - [x] 8.5 Create `tests/GroundUp.Tests.Integration/Auth/Services/AuthorizationProxyIntegrationTests.cs`
     - Register a test service with AddAuthorized, invoke through proxy
     - Verify enforcement works end-to-end with real permission resolution
     - Test both allowed and denied scenarios
     - _Requirements: 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 7.1, 7.2, 10.4_
-  - [ ] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
+  - [x] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
     - _Checkpoint: Ensure all integration tests pass_
 
 - [ ] 9. Sample App Integration

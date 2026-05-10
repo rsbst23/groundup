@@ -11,6 +11,13 @@ namespace GroundUp.Auth.Repositories.Mappers;
 public static partial class AuthUserRoleMapper
 {
     /// <summary>Maps a UserRole entity to a UserRoleDto.</summary>
+    [MapperIgnoreSource(nameof(UserRole.Role))]
+    [MapperIgnoreSource(nameof(UserRole.User))]
+    [MapperIgnoreSource(nameof(UserRole.Tenant))]
+    [MapperIgnoreSource(nameof(UserRole.CreatedAt))]
+    [MapperIgnoreSource(nameof(UserRole.CreatedBy))]
+    [MapperIgnoreSource(nameof(UserRole.UpdatedAt))]
+    [MapperIgnoreSource(nameof(UserRole.UpdatedBy))]
     [MapperIgnoreTarget(nameof(UserRoleDto.RoleName))]
     public static partial UserRoleDto ToDto(UserRole entity);
 
