@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\GroundUp.Api\GroundUp.Api.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Auth.Repositories\GroundUp.Auth.Repositories.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
