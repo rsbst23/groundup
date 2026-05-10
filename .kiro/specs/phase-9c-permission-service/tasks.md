@@ -59,12 +59,12 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [x] 2.6 Verify build passes with `dotnet build`
     - _Checkpoint: Ensure identity implementations compile correctly_
 
-- [ ] 3. Permission Service
-  - [ ] 3.1 Create `src/GroundUp.Auth.Services/IPermissionService.cs`
+- [x] 3. Permission Service
+  - [x] 3.1 Create `src/GroundUp.Auth.Services/IPermissionService.cs`
     - Interface with methods: HasPermissionAsync, HasAnyPermissionAsync, GetUserPermissionsAsync, HasSystemRoleAsync, HasAnySystemRoleAsync
     - Full XML doc comments on interface and all methods
     - _Requirements: 1.1, 1.2, 1.3, 5.5_
-  - [ ] 3.2 Create `src/GroundUp.Auth.Services/PermissionService.cs`
+  - [x] 3.2 Create `src/GroundUp.Auth.Services/PermissionService.cs`
     - Sealed class implementing IPermissionService
     - Inject IUserRoleRepository, IRoleRepository, IPolicyRepository, ITenantContext, IMemoryCache, IOptions<AuthOptions>
     - Implement GetUserPermissionsAsync: resolve tenant-scoped roles (GetByUserIdAsync) + system roles (GetSystemRolesForUserAsync), traverse RolePolicies → Policies → PolicyPermissions → Permissions, union and deduplicate into HashSet<string>
@@ -73,42 +73,42 @@ This plan implements the authorization service layer for the GroundUp framework.
     - Implement HasAnyPermissionAsync: get cached permissions, check Overlaps
     - Implement HasSystemRoleAsync / HasAnySystemRoleAsync: query GetSystemRolesForUserAsync, case-insensitive comparison
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 2.1, 2.2, 2.3, 2.4, 2.5_
-  - [ ] 3.3 Verify build passes with `dotnet build`
+  - [x] 3.3 Verify build passes with `dotnet build`
     - _Checkpoint: Ensure permission service compiles_
 
-- [ ] 4. Authorization Proxy
-  - [ ] 4.1 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationInterceptor.cs`
+- [x] 4. Authorization Proxy
+  - [x] 4.1 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationInterceptor.cs`
     - Sealed class extending `DispatchProxy` with generic type parameter TInterface
     - Fields: _target (TInterface), _permissionService (IPermissionService), _currentUser (ICurrentUser)
     - Override Invoke: check return type (only intercept Task<OperationResult<T>> or Task<OperationResult>), read [RequiresPermission]/[RequiresRole] from interface method, enforce AND semantics for permissions, OR semantics for roles (case-insensitive, system roles only), return Forbidden() or delegate
     - Static Create factory method
     - Handle Guid.Empty UserId as unauthorized (return Forbidden)
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.1, 6.2, 6.3_
-  - [ ] 4.2 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationServiceCollectionExtensions.cs`
+  - [x] 4.2 Create `src/GroundUp.Auth.Services/Authorization/AuthorizationServiceCollectionExtensions.cs`
     - Static class with `AddAuthorized<TInterface, TImplementation>()` extension method
     - Register TImplementation as scoped, then register TInterface as scoped factory that creates the proxy
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
-  - [ ] 4.3 Verify build passes with `dotnet build`
+  - [x] 4.3 Verify build passes with `dotnet build`
     - _Checkpoint: Ensure proxy compiles_
 
-- [ ] 5. Cache Invalidation + DI Registration
-  - [ ] 5.1 Create `src/GroundUp.Auth.Services/EventHandlers/UserRoleChangedHandler.cs`
+- [x] 5. Cache Invalidation + DI Registration
+  - [x] 5.1 Create `src/GroundUp.Auth.Services/EventHandlers/UserRoleChangedHandler.cs`
     - Implement IEventHandler<EntityCreatedEvent<UserRoleDto>> and IEventHandler<EntityDeletedEvent<UserRoleDto>>
     - Evict cache key `permissions:{dto.UserId}:{dto.TenantId}`
     - _Requirements: 3.1, 3.5_
-  - [ ] 5.2 Create `src/GroundUp.Auth.Services/EventHandlers/RolePolicyChangedHandler.cs`
+  - [x] 5.2 Create `src/GroundUp.Auth.Services/EventHandlers/RolePolicyChangedHandler.cs`
     - Implement IEventHandler<EntityCreatedEvent<RolePolicyDto>> and IEventHandler<EntityDeletedEvent<RolePolicyDto>>
     - Query IUserRoleRepository for users holding the affected role, evict their cache entries
     - _Requirements: 3.2, 3.5_
-  - [ ] 5.3 Create `src/GroundUp.Auth.Services/EventHandlers/PolicyPermissionChangedHandler.cs`
+  - [x] 5.3 Create `src/GroundUp.Auth.Services/EventHandlers/PolicyPermissionChangedHandler.cs`
     - Implement IEventHandler<EntityCreatedEvent<PolicyPermissionDto>> and IEventHandler<EntityDeletedEvent<PolicyPermissionDto>>
     - Query IRoleRepository for roles containing the affected policy, then IUserRoleRepository for users holding those roles, evict their cache entries
     - _Requirements: 3.3, 3.5_
-  - [ ] 5.4 Create `src/GroundUp.Auth.Services/AuthServiceCollectionExtensions.cs`
+  - [x] 5.4 Create `src/GroundUp.Auth.Services/AuthServiceCollectionExtensions.cs`
     - `AddGroundUpAuth(IConfiguration configuration)` overload: bind AuthOptions from "GroundUp:Auth", AddMemoryCache, AddHttpContextAccessor, register IPermissionService, ICurrentUser (JwtCurrentUser), ITenantContext (JwtTenantContext), all event handlers
     - `AddGroundUpAuth(Action<AuthOptions> configure)` overload: same registrations with explicit configure action
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 11.6_
-  - [ ] 5.5 Verify build passes with `dotnet build`
+  - [x] 5.5 Verify build passes with `dotnet build`
     - _Checkpoint: Ensure all auth services compile and wire together_
 
 - [ ] 6. Unit Tests
