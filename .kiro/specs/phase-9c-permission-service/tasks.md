@@ -233,20 +233,20 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [x] 8.6 Verify all integration tests pass with `dotnet test tests/GroundUp.Tests.Integration`
     - _Checkpoint: Ensure all integration tests pass_
 
-- [ ] 9. Sample App Integration
-  - [ ] 9.1 Add project references to `samples/GroundUp.Sample/GroundUp.Sample.csproj`
+- [x] 9. Sample App Integration
+  - [x] 9.1 Add project references to `samples/GroundUp.Sample/GroundUp.Sample.csproj`
     - Reference GroundUp.Auth.Data.Postgres and GroundUp.Auth.Services
     - _Requirements: 13.1_
-  - [ ] 9.2 Update `samples/GroundUp.Sample/Program.cs`
+  - [x] 9.2 Update `samples/GroundUp.Sample/Program.cs`
     - Call `AddGroundUpAuthPostgres(connectionString)` and `AddGroundUpAuth(configuration)`
     - _Requirements: 13.2_
-  - [ ] 9.3 Add `[RequiresPermission]` to at least one service interface method and register via `AddAuthorized<TInterface, TImplementation>()`
+  - [x] 9.3 Add `[RequiresPermission]` to at least one service interface method and register via `AddAuthorized<TInterface, TImplementation>()`
     - Demonstrate permission enforcement on an existing or new sample service
     - _Requirements: 13.3_
-  - [ ] 9.4 Create a migration that applies the auth schema to the local Postgres database
+  - [x] 9.4 Create a migration that applies the auth schema to the local Postgres database
     - Run `dotnet ef migrations add AddAuthSchema` in the Sample project
     - _Requirements: 13.4_
-  - [ ] 9.5 Verify Sample app builds and starts without errors
+  - [x] 9.5 Verify Sample app builds and starts without errors
     - _Checkpoint: Ensure sample app compiles with auth wired in_
 
 - [ ] 10. Final checkpoint

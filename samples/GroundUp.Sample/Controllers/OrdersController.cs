@@ -9,9 +9,9 @@ namespace GroundUp.Sample.Controllers;
 
 public class OrdersController : BaseController
 {
-    private readonly OrderService _service;
+    private readonly IOrderService _service;
 
-    public OrdersController(OrderService service)
+    public OrdersController(IOrderService service)
     {
         _service = service;
     }

@@ -21,6 +21,8 @@
     <ProjectReference Include="..\..\src\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Services\GroundUp.Services.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Api\GroundUp.Api.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Auth.Data.Postgres\GroundUp.Auth.Data.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj" />
   </ItemGroup>
 
 </Project>

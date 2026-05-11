@@ -14,7 +14,7 @@ public sealed class AuthDbContextDesignTimeFactory : IDesignTimeDbContextFactory
     public AuthDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<AuthDbContext>();
-        optionsBuilder.UseNpgsql("Host=localhost;Database=groundup_auth;Username=groundup;Password=groundup_dev");
+        optionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=groundup;Username=groundup;Password=groundup_dev");
         return new AuthDbContext(optionsBuilder.Options);
     }
 }

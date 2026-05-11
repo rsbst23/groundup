@@ -7,7 +7,7 @@ using GroundUp.Services;
 
 namespace GroundUp.Sample.Services;
 
-public class OrderService : BaseService
+public class OrderService : BaseService, IOrderService
 {
     private readonly OrderRepository _repository;
 

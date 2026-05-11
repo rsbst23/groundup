@@ -1,4 +1,7 @@
 using GroundUp.Api;
+using GroundUp.Auth.Data.Postgres;
+using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Authorization;
 using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres;
 using GroundUp.Events;
@@ -21,6 +24,10 @@ builder.Services.AddGroundUpServices(typeof(Program).Assembly);
 builder.Services.AddGroundUpApi();
 builder.Services.AddGroundUpSettings();
 
+// GroundUp auth services
+builder.Services.AddGroundUpAuthPostgres(connectionString);
+builder.Services.AddGroundUpAuth(builder.Configuration);
+
 // Settings seeder
 builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();
 
@@ -32,10 +39,10 @@ builder.Services.AddScoped<TodoItemService>();
 builder.Services.AddScoped<IBaseRepository<CustomerDto>, CustomerRepository>();
 builder.Services.AddScoped<CustomerService>();
 
-// Order — complex pattern: register concrete repository + concrete service
+// Order — authorized pattern: register via AddAuthorized for permission enforcement
 builder.Services.AddScoped<OrderRepository>();
 builder.Services.AddScoped<IBaseRepository<OrderListDto>, OrderRepository>();
-builder.Services.AddScoped<OrderService>();
+builder.Services.AddAuthorized<IOrderService, OrderService>();
 
 // Project — tenant-scoped pattern: register repository interface + concrete service
 builder.Services.AddScoped<IBaseRepository<ProjectDto>, ProjectRepository>();
