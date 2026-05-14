@@ -140,7 +140,7 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - Skip on GET, skip on bearer auth, enforce on cookie + POST, reject missing token, reject invalid token
     - _Requirements: 11.1–11.6_
 
-- [ ] 7. Checkpoint — Ensure all tests pass
+- [x] 7. Checkpoint — Ensure all tests pass
   - Ensure all middleware compiles, pipeline is correct, and unit tests pass. Ask the user if questions arise.
 
 - [ ] 8. Integration tests and property tests
@@ -160,7 +160,7 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - CSRF: cookie-authenticated POST without CSRF token → 403
     - _Requirements: 7.4, 9.2, 11.5_
 
-- [ ] 9. Final checkpoint — Ensure all tests pass
+- [x] 9. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace GroundUp.Api.Middleware;
+namespace GroundUp.Auth.Api.Middleware;
 
 /// <summary>
 /// Resolves the tenant identity from the authenticated JWT <c>tid</c> claim

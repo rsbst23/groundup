@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace GroundUp.Api.Middleware;
+namespace GroundUp.Auth.Api.Middleware;
 
 /// <summary>
 /// Validates anti-forgery tokens on state-changing requests (POST, PUT, DELETE, PATCH)

@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 
-namespace GroundUp.Api.Middleware;
+namespace GroundUp.Auth.Api.Middleware;
 
 /// <summary>
 /// Validates GroundUp-issued JWT tokens from cookies or Authorization headers.
