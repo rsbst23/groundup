@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Services\GroundUp.Services.csproj" />
+    <ProjectReference Include="..\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj" />
   </ItemGroup>
 
 </Project>

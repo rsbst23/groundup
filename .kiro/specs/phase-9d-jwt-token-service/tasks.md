@@ -88,14 +88,14 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - Single tenant auto-select, multi-tenant list, explicit selection, forbidden on non-membership, refresh with re-validation, forbidden on expired membership
     - _Requirements: 3.1–3.3, 4.1–4.4, 5.1–5.3, 6.1–6.5_
 
-- [ ] 5. Checkpoint — Ensure all tests pass
+- [x] 5. Checkpoint — Ensure all tests pass
   - Ensure all service implementations compile and unit tests pass. Ask the user if questions arise.
 
-- [ ] 6. Middleware — JwtAuthenticationMiddleware, JwtTenantResolutionMiddleware, CsrfProtectionMiddleware
-  - [ ] 6.1 Add project reference from GroundUp.Api to GroundUp.Auth.Services
+- [x] 6. Middleware — JwtAuthenticationMiddleware, JwtTenantResolutionMiddleware, CsrfProtectionMiddleware
+  - [x] 6.1 Add project reference from GroundUp.Api to GroundUp.Auth.Services
     - Required for middleware to access ITokenService, IIdentityProviderService, AuthOptions
     - _Requirements: 18.1_
-  - [ ] 6.2 Create JwtAuthenticationMiddleware in GroundUp.Api/Middleware
+  - [x] 6.2 Create JwtAuthenticationMiddleware in GroundUp.Api/Middleware
     - Extract token from cookie (AuthOptions.CookieName) first, then Authorization: Bearer header
     - Cookie takes precedence over header
     - Validate via ITokenService.ValidateTokenAsync
@@ -105,27 +105,27 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - If JwtSigningKey not configured, skip all validation
     - Store auth source (cookie vs header) in HttpContext.Items for CSRF middleware
     - _Requirements: 7.1–7.6, 8.1–8.5, 10.1–10.5, 18.5_
-  - [ ] 6.3 Create JwtTenantResolutionMiddleware in GroundUp.Api/Middleware
+  - [x] 6.3 Create JwtTenantResolutionMiddleware in GroundUp.Api/Middleware
     - Read tid claim from HttpContext.User using AuthOptions.TenantIdClaimType
     - Hydrate scoped TenantContext.TenantId
     - Set Guid.Empty if unauthenticated or no tid claim
     - _Requirements: 9.1–9.6_
-  - [ ] 6.4 Create CsrfProtectionMiddleware in GroundUp.Api/Middleware
+  - [x] 6.4 Create CsrfProtectionMiddleware in GroundUp.Api/Middleware
     - Skip on GET/HEAD/OPTIONS (safe methods)
     - Skip if auth is bearer-based (not vulnerable to CSRF)
     - Enforce on cookie-auth + POST/PUT/DELETE: validate X-CSRF-Token header via IAntiforgery
     - Return 403 if missing or invalid
     - _Requirements: 11.1–11.6_
-  - [ ] 6.5 Update UseGroundUpMiddleware() pipeline ordering
+  - [x] 6.5 Update UseGroundUpMiddleware() pipeline ordering
     - New order: CorrelationId → JwtAuthentication → JwtTenantResolution → CsrfProtection → ExceptionHandling
     - Remove old TenantResolutionMiddleware from pipeline
     - Update XML doc comments
     - _Requirements: 18.1, 18.2, 18.3, 18.4_
-  - [ ] 6.6 Remove old TenantResolutionMiddleware
+  - [x] 6.6 Remove old TenantResolutionMiddleware
     - Delete `src/GroundUp.Api/Middleware/TenantResolutionMiddleware.cs`
     - Remove associated unit test file if it only tests the old middleware
     - _Requirements: 9.4, 18.4_
-  - [ ] 6.7 Verify TenantContext dual-registration pattern still works
+  - [x] 6.7 Verify TenantContext dual-registration pattern still works
     - Ensure AddGroundUpApi() still registers TenantContext + ITenantContext alias
     - Ensure JwtTenantResolutionMiddleware resolves the concrete TenantContext to set TenantId
     - Ensure AddGroundUpAuth() does not re-register ITenantContext (JwtTenantContext remains for SDK-only scenarios)

@@ -12,18 +12,23 @@ public static class GroundUpApplicationBuilderExtensions
     /// Registers GroundUp middleware in the correct order:
     /// <list type="number">
     /// <item><see cref="CorrelationIdMiddleware"/> — generates/reads correlation ID</item>
-    /// <item><see cref="TenantResolutionMiddleware"/> — parses X-Tenant-Id header and hydrates TenantContext</item>
+    /// <item><see cref="JwtAuthenticationMiddleware"/> — validates JWT from cookie or Authorization header</item>
+    /// <item><see cref="JwtTenantResolutionMiddleware"/> — resolves tenant from JWT tid claim</item>
+    /// <item><see cref="CsrfProtectionMiddleware"/> — validates CSRF token on cookie-auth state-changing requests</item>
     /// <item><see cref="ExceptionHandlingMiddleware"/> — catches unhandled exceptions with correlation ID</item>
     /// </list>
-    /// Tenant resolution runs before exception handling so that if a downstream
-    /// component throws, the tenant context is already populated for logging.
+    /// Authentication runs before tenant resolution so that <c>HttpContext.User</c> is
+    /// populated before the tenant claim is extracted. CSRF runs after authentication
+    /// so it can determine whether the request was cookie-authenticated.
     /// </summary>
     /// <param name="app">The application builder.</param>
     /// <returns>The <see cref="IApplicationBuilder"/> for method chaining.</returns>
     public static IApplicationBuilder UseGroundUpMiddleware(this IApplicationBuilder app)
     {
         app.UseMiddleware<CorrelationIdMiddleware>();
-        app.UseMiddleware<TenantResolutionMiddleware>();
+        app.UseMiddleware<JwtAuthenticationMiddleware>();
+        app.UseMiddleware<JwtTenantResolutionMiddleware>();
+        app.UseMiddleware<CsrfProtectionMiddleware>();
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         return app;
     }
