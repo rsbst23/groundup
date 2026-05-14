@@ -6,26 +6,26 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
 
 ## Tasks
 
-- [ ] 1. DTOs and AuthOptions extensions
-  - [ ] 1.1 Create SigningKeyInfo record in GroundUp.Auth.Core/Dtos
+- [x] 1. DTOs and AuthOptions extensions
+  - [x] 1.1 Create SigningKeyInfo record in GroundUp.Auth.Core/Dtos
     - `record SigningKeyInfo(string KeyId, byte[] KeyMaterial, string Algorithm = "HS256")`
     - _Requirements: 13.9, 16.7_
-  - [ ] 1.2 Create SetTenantRequestDto record in GroundUp.Auth.Core/Dtos
+  - [x] 1.2 Create SetTenantRequestDto record in GroundUp.Auth.Core/Dtos
     - `record SetTenantRequestDto(Guid? TenantId)`
     - _Requirements: 16.1_
-  - [ ] 1.3 Create SetTenantResponseDto record in GroundUp.Auth.Core/Dtos
+  - [x] 1.3 Create SetTenantResponseDto record in GroundUp.Auth.Core/Dtos
     - `record SetTenantResponseDto(bool SelectionRequired, List<TenantListItemDto>? AvailableTenants, string? Token)`
     - _Requirements: 16.2_
-  - [ ] 1.4 Create TenantListItemDto record in GroundUp.Auth.Core/Dtos
+  - [x] 1.4 Create TenantListItemDto record in GroundUp.Auth.Core/Dtos
     - `record TenantListItemDto(Guid Id, string Name, string? Description)`
     - _Requirements: 16.3_
-  - [ ] 1.5 Create TokenResponseDto record in GroundUp.Auth.Core/Dtos
+  - [x] 1.5 Create TokenResponseDto record in GroundUp.Auth.Core/Dtos
     - `record TokenResponseDto(string AccessToken, string? RefreshToken, int ExpiresIn, string? IdToken)`
     - _Requirements: 16.4_
-  - [ ] 1.6 Create ExternalUserInfo record in GroundUp.Auth.Core/Dtos
+  - [x] 1.6 Create ExternalUserInfo record in GroundUp.Auth.Core/Dtos
     - `record ExternalUserInfo(string ExternalUserId, string Email, string? DisplayName, IDictionary<string, string>? Attributes)`
     - _Requirements: 16.5_
-  - [ ] 1.7 Extend AuthOptions with JWT and cookie properties
+  - [x] 1.7 Extend AuthOptions with JWT and cookie properties
     - Add to existing `GroundUp.Auth.Services/Configuration/AuthOptions.cs`: JwtSigningKey, Issuer, Audience, TokenExpirationMinutes, CookieName, CookieSecure, CookieSameSite
     - All properties bindable from "GroundUp:Auth" configuration section
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
