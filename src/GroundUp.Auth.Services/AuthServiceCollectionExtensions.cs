@@ -2,10 +2,12 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Abstractions;
 using GroundUp.Events;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace GroundUp.Auth.Services;
 
@@ -57,6 +59,11 @@ public static class AuthServiceCollectionExtensions
 
         // Permission service
         services.AddScoped<IPermissionService, PermissionService>();
+
+        // Token and session services
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IAuthSessionService, AuthSessionService>();
+        services.TryAddScoped<ISigningKeyProvider, ConfigurationSigningKeyProvider>();
 
         // JWT-based identity (default for HTTP scenarios)
         services.AddScoped<ICurrentUser, JwtCurrentUser>();

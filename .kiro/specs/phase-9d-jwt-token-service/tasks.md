@@ -53,27 +53,27 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - `CreateUserAsync`, `DeleteUserAsync`, `CreateRealmAsync`, `ConfigureFederationAsync`
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
 
-- [ ] 3. Checkpoint — Ensure all tests pass
+- [x] 3. Checkpoint — Ensure all tests pass
   - Ensure the solution compiles cleanly with the new DTOs and interfaces. Ask the user if questions arise.
 
-- [ ] 4. Service implementations — ConfigurationSigningKeyProvider, TokenService, AuthSessionService
-  - [ ] 4.1 Create ConfigurationSigningKeyProvider in GroundUp.Auth.Services/Token
+- [x] 4. Service implementations — ConfigurationSigningKeyProvider, TokenService, AuthSessionService
+  - [x] 4.1 Create ConfigurationSigningKeyProvider in GroundUp.Auth.Services/Token
     - Default implementation using AuthOptions.JwtSigningKey for all tenants (single-key mode)
     - Returns "default" kid for all tenants
     - Resolves by kid on validation
     - _Requirements: 13.3, 13.4_
-  - [ ] 4.2 Add System.IdentityModel.Tokens.Jwt package reference to GroundUp.Auth.Services.csproj
+  - [x] 4.2 Add System.IdentityModel.Tokens.Jwt package reference to GroundUp.Auth.Services.csproj
     - Required for JWT generation and validation
     - _Requirements: 1.5_
-  - [ ] 4.3 Create TokenService in GroundUp.Auth.Services/Token
+  - [x] 4.3 Create TokenService in GroundUp.Auth.Services/Token
     - GenerateTokenAsync: resolve user, resolve tenant-scoped + system roles, get signing key, build claims (sub, tid, email, name, roles[]), set kid header, sign with HMAC-SHA256, set issuer/audience/expiration from AuthOptions
     - ValidateTokenAsync: read kid from header, resolve validation key, validate signature/issuer/audience/expiration, return ClaimsPrincipal or null — never throw
     - _Requirements: 1.1–1.11, 2.1–2.8_
-  - [ ] 4.4 Create AuthSessionService in GroundUp.Auth.Services/Token
+  - [x] 4.4 Create AuthSessionService in GroundUp.Auth.Services/Token
     - SetTenantAsync: query memberships, auto-select if single, return list if multiple, validate membership for explicit selection, return Forbidden if not a member
     - RefreshTokenAsync: re-validate membership, generate new token with fresh roles, return Forbidden if no longer a member
     - _Requirements: 3.1–3.3, 4.1–4.4, 5.1–5.3, 6.1–6.5_
-  - [ ] 4.5 Update AddGroundUpAuth() DI registration
+  - [x] 4.5 Update AddGroundUpAuth() DI registration
     - Register ITokenService → TokenService (scoped)
     - Register IAuthSessionService → AuthSessionService (scoped)
     - Register ISigningKeyProvider → ConfigurationSigningKeyProvider via TryAddScoped (allows consumer override)
