@@ -32,4 +32,17 @@ public interface ITenantRepository : IBaseRepository<TenantDto>
         Guid parentTenantId,
         FilterParams filterParams,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves multiple tenants by their IDs in a single query, bypassing the
+    /// ambient tenant-context visibility filter. Soft-deleted tenants are still excluded.
+    /// Used by the multi-tenant selection auth flow where a user needs to see all
+    /// their memberships' tenant details before they have selected a tenant context.
+    /// </summary>
+    /// <param name="tenantIds">The tenant identifiers to fetch.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of tenant DTOs matching the given IDs (excluding soft-deleted), in no particular order.</returns>
+    Task<OperationResult<List<TenantDto>>> GetByIdsBypassFilterAsync(
+        IEnumerable<Guid> tenantIds,
+        CancellationToken cancellationToken = default);
 }

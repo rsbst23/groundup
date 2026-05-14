@@ -100,6 +100,32 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
         return OperationResult<PaginatedData<TenantDto>>.Ok(paginatedData);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: Uses <c>IgnoreQueryFilters()</c> to bypass tenant-context visibility,
+    /// then explicitly excludes soft-deleted tenants. Required for multi-tenant sign-in
+    /// where the user must see their memberships' tenant details before selecting a tenant.
+    /// </remarks>
+    public async Task<OperationResult<List<TenantDto>>> GetByIdsBypassFilterAsync(
+        IEnumerable<Guid> tenantIds,
+        CancellationToken cancellationToken = default)
+    {
+        var idList = tenantIds.Distinct().ToList();
+        if (idList.Count == 0)
+        {
+            return OperationResult<List<TenantDto>>.Ok(new List<TenantDto>());
+        }
+
+        var entities = await Context.Set<Tenant>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(t => !t.IsDeleted && idList.Contains(t.Id))
+            .ToListAsync(cancellationToken);
+
+        var dtos = entities.Select(MapToDto).ToList();
+        return OperationResult<List<TenantDto>>.Ok(dtos);
+    }
+
     /// <summary>
     /// Builds a visibility queryShaper that restricts results to the current tenant
     /// and its direct children only.

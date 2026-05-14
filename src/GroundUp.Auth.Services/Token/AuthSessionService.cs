@@ -67,14 +67,18 @@ public sealed class AuthSessionService : IAuthSessionService
                 return OperationResult<SetTenantResponseDto>.Ok(response);
             }
 
-            // Multiple memberships — return tenant list
+            // Multiple memberships — return tenant list (single batch query, bypassing tenant filter)
+            var membershipTenantIds = memberships.Select(m => m.TenantId).ToList();
+            var tenantsResult = await _tenantRepository.GetByIdsBypassFilterAsync(membershipTenantIds);
+            var tenantsById = tenantsResult.Success && tenantsResult.Data is not null
+                ? tenantsResult.Data.ToDictionary(t => t.Id)
+                : new Dictionary<Guid, TenantDto>();
+
             var tenantList = new List<TenantListItemDto>();
             foreach (var membership in memberships)
             {
-                var tenantResult = await _tenantRepository.GetByIdAsync(membership.TenantId);
-                if (tenantResult.Success && tenantResult.Data is not null)
+                if (tenantsById.TryGetValue(membership.TenantId, out var tenant))
                 {
-                    var tenant = tenantResult.Data;
                     tenantList.Add(new TenantListItemDto(tenant.Id, tenant.Name, null));
                 }
             }

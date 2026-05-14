@@ -45,8 +45,13 @@ public sealed class AuthServiceRegistrationTests
     }
 
     [Fact]
-    public void AddGroundUpAuth_RegistersITenantContext_AsJwtTenantContext()
+    public void AddGroundUpAuth_DoesNotReRegisterITenantContext()
     {
+        // ITenantContext is owned by AddGroundUpApi (concrete TenantContext + interface alias).
+        // AddGroundUpAuth must NOT re-register it; the JwtTenantResolutionMiddleware hydrates
+        // the concrete TenantContext from the JWT 'tid' claim. Re-registering here would
+        // silently break multi-tenancy when both modules are used together.
+
         // Arrange & Act
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder()
@@ -54,10 +59,9 @@ public sealed class AuthServiceRegistrationTests
             .Build();
         services.AddGroundUpAuth(configuration);
 
-        // Assert
+        // Assert — auth should not register ITenantContext
         var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(ITenantContext));
-        Assert.NotNull(descriptor);
-        Assert.Equal(typeof(JwtTenantContext), descriptor.ImplementationType);
+        Assert.Null(descriptor);
     }
 
     [Fact]
@@ -111,9 +115,18 @@ public sealed class AuthServiceRegistrationTests
         // Arrange
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // 32+ bytes UTF-8 — required by AuthOptions validation
+                ["GroundUp:Auth:JwtSigningKey"] = "test-signing-key-must-be-at-least-32-bytes-long-12345"
+            })
             .Build();
         services.AddGroundUpAuth(configuration);
+
+        // Register TenantContext (normally provided by AddGroundUpApi).
+        // The auth module relies on ITenantContext but does not register it.
+        services.AddScoped<GroundUp.Core.TenantContext>();
+        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<GroundUp.Core.TenantContext>());
 
         // Register mock repositories needed by PermissionService
         services.AddScoped<GroundUp.Auth.Data.Abstractions.IUserRoleRepository>(_ =>

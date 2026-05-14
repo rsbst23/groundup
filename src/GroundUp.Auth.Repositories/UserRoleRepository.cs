@@ -44,6 +44,27 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
 
     /// <inheritdoc />
     /// <remarks>
+    /// SYSTEM BYPASS: Queries the DbContext directly with an explicit tenant filter,
+    /// bypassing the tenant-scoped DbSet. Includes the Role navigation property to
+    /// populate RoleName in the DTO projection.
+    /// </remarks>
+    public async Task<OperationResult<List<UserRoleDto>>> GetByUserIdForTenantAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var dtos = await Context.Set<UserRole>()
+            .AsNoTracking()
+            .Include(ur => ur.Role)
+            .Where(ur => ur.UserId == userId && ur.TenantId == tenantId)
+            .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name))
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<UserRoleDto>>.Ok(dtos);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
     /// SYSTEM BYPASS: This method intentionally queries the DbContext directly,
     /// bypassing the tenant-filtered DbSet. This is required for resolving system-level
     /// roles that transcend tenant boundaries. Includes the Role navigation property

@@ -29,6 +29,7 @@ public static class AuthServiceCollectionExtensions
     public static IServiceCollection AddGroundUpAuth(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AuthOptions>(configuration.GetSection("GroundUp:Auth"));
+        AddOptionsValidation(services);
 
         RegisterCoreServices(services);
 
@@ -45,10 +46,33 @@ public static class AuthServiceCollectionExtensions
     public static IServiceCollection AddGroundUpAuth(this IServiceCollection services, Action<AuthOptions> configure)
     {
         services.Configure(configure);
+        AddOptionsValidation(services);
 
         RegisterCoreServices(services);
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers data-annotation–free validation rules for <see cref="AuthOptions"/>.
+    /// Validation fires on first access to <see cref="IOptions{TOptions}.Value"/>
+    /// (typically when <see cref="ConfigurationSigningKeyProvider"/> is constructed).
+    /// </summary>
+    private static void AddOptionsValidation(IServiceCollection services)
+    {
+        services.AddOptions<AuthOptions>()
+            .Validate(options =>
+            {
+                if (string.IsNullOrWhiteSpace(options.JwtSigningKey))
+                {
+                    return false;
+                }
+
+                // HMAC-SHA256 requires at least 256 bits (32 bytes) per RFC 4868
+                var keyByteCount = System.Text.Encoding.UTF8.GetByteCount(options.JwtSigningKey);
+                return keyByteCount >= 32;
+            },
+            "AuthOptions.JwtSigningKey must be configured and at least 32 bytes (256 bits) when UTF-8 encoded for HMAC-SHA256.");
     }
 
     private static void RegisterCoreServices(IServiceCollection services)
@@ -65,9 +89,14 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IAuthSessionService, AuthSessionService>();
         services.TryAddScoped<ISigningKeyProvider, ConfigurationSigningKeyProvider>();
 
-        // JWT-based identity (default for HTTP scenarios)
+        // JWT-based identity for HTTP scenarios.
+        // ICurrentUser: registered here as JwtCurrentUser (claims-based).
+        // ITenantContext: NOT registered here — it is owned by AddGroundUpApi() which registers
+        //   the concrete TenantContext + ITenantContext alias. The JwtTenantResolutionMiddleware
+        //   hydrates the concrete TenantContext from the JWT 'tid' claim, so repositories
+        //   reading ITenantContext see the same instance. SDK-only consumers (no HTTP) can
+        //   register JwtTenantContext or SystemTenantContext explicitly.
         services.AddScoped<ICurrentUser, JwtCurrentUser>();
-        services.AddScoped<ITenantContext, JwtTenantContext>();
 
         // Cache invalidation event handlers
         services.AddScoped<IEventHandler<EntityCreatedEvent<UserRoleDto>>, UserRoleChangedHandler>();

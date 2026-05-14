@@ -51,8 +51,9 @@ public sealed class TokenService : ITokenService
 
         var user = userResult.Data;
 
-        // 2. Resolve tenant-scoped roles
-        var tenantRolesResult = await _userRoleRepository.GetByUserIdAsync(userId);
+        // 2. Resolve tenant-scoped roles (uses explicit tenantId — bypasses ambient context
+        //    because at sign-in / cross-tenant refresh the ambient context may not match)
+        var tenantRolesResult = await _userRoleRepository.GetByUserIdForTenantAsync(userId, tenantId);
         var tenantRoles = tenantRolesResult.Success && tenantRolesResult.Data is not null
             ? tenantRolesResult.Data
             : new List<UserRoleDto>();
