@@ -30,25 +30,25 @@ This plan implements the JWT token lifecycle (generate, validate, refresh), auth
     - All properties bindable from "GroundUp:Auth" configuration section
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
 
-- [ ] 2. Interfaces — ISigningKeyProvider, ITokenService, IAuthSessionService
-  - [ ] 2.1 Create ISigningKeyProvider interface in GroundUp.Auth.Services
+- [x] 2. Interfaces — ISigningKeyProvider, ITokenService, IAuthSessionService
+  - [x] 2.1 Create ISigningKeyProvider interface in GroundUp.Auth.Services
     - `GetSigningKeyAsync(Guid tenantId)` → `Task<SigningKeyInfo>`
     - `GetValidationKeyAsync(string kid)` → `Task<SigningKeyInfo?>`
     - Internal infrastructure, never exposed via API
     - _Requirements: 13.1, 13.2, 13.7_
-  - [ ] 2.2 Create ITokenService interface in GroundUp.Auth.Services
+  - [x] 2.2 Create ITokenService interface in GroundUp.Auth.Services
     - `GenerateTokenAsync(Guid userId, Guid tenantId, IEnumerable<Claim>? additionalClaims = null)` → `Task<string?>`
     - `ValidateTokenAsync(string token)` → `Task<ClaimsPrincipal?>`
     - _Requirements: 19.1, 19.2, 19.3_
-  - [ ] 2.3 Create IAuthSessionService interface in GroundUp.Auth.Services
+  - [x] 2.3 Create IAuthSessionService interface in GroundUp.Auth.Services
     - `SetTenantAsync(Guid userId, Guid? tenantId)` → `Task<OperationResult<SetTenantResponseDto>>`
     - `RefreshTokenAsync(Guid userId, Guid tenantId)` → `Task<OperationResult<string>>`
     - _Requirements: 20.1, 20.2, 20.3_
-  - [ ] 2.4 Create IIdentityProviderService interface in GroundUp.Auth.Services
+  - [x] 2.4 Create IIdentityProviderService interface in GroundUp.Auth.Services
     - Stub interface only — Phase 10 implements against Keycloak
     - `ExchangeCodeForTokensAsync`, `ValidateTokenAsync`, `GetUserInfoAsync`
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
-  - [ ] 2.5 Create IIdentityProviderAdminService interface in GroundUp.Auth.Services
+  - [x] 2.5 Create IIdentityProviderAdminService interface in GroundUp.Auth.Services
     - Stub interface only — Phase 10 implements against Keycloak
     - `CreateUserAsync`, `DeleteUserAsync`, `CreateRealmAsync`, `ConfigureFederationAsync`
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5_
