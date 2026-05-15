@@ -42,7 +42,7 @@ public sealed class TokenService : ITokenService
     /// <inheritdoc />
     public async Task<string?> GenerateTokenAsync(Guid userId, Guid tenantId, IEnumerable<Claim>? additionalClaims = null)
     {
-        // 1. Resolve user — return null if not found
+        // 1. Resolve user — return null if not found or inactive
         var userResult = await _userRepository.GetByIdAsync(userId);
         if (!userResult.Success || userResult.Data is null)
         {
@@ -50,6 +50,10 @@ public sealed class TokenService : ITokenService
         }
 
         var user = userResult.Data;
+        if (!user.IsActive)
+        {
+            return null;
+        }
 
         // 2. Resolve tenant-scoped roles (uses explicit tenantId — bypasses ambient context
         //    because at sign-in / cross-tenant refresh the ambient context may not match)
@@ -128,7 +132,12 @@ public sealed class TokenService : ITokenService
 
         try
         {
-            var tokenHandler = new JwtSecurityTokenHandler();
+            // Disable inbound claim mapping so that "sub", "tid", "email", "role"
+            // remain as the original short claim types after validation.
+            // Without this, JwtSecurityTokenHandler maps standard JWT claims to long
+            // URI forms (e.g. "sub" → ClaimTypes.NameIdentifier), which breaks
+            // downstream consumers that look up claims by their JWT names.
+            var tokenHandler = new JwtSecurityTokenHandler { MapInboundClaims = false };
 
             // 2. Read the JWT header to extract kid (without full validation)
             var jwtToken = tokenHandler.ReadJwtToken(token);

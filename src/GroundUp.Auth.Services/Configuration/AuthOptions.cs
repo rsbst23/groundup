@@ -29,9 +29,9 @@ public sealed class AuthOptions
     public string DisplayNameClaimType { get; set; } = "name";
 
     /// <summary>
-    /// JWT claim type used to extract the tenant identifier. Default: "tenant_id".
+    /// JWT claim type used to extract the tenant identifier. Default: "tid".
     /// </summary>
-    public string TenantIdClaimType { get; set; } = "tenant_id";
+    public string TenantIdClaimType { get; set; } = "tid";
 
     /// <summary>
     /// The signing key used for JWT token generation and validation.

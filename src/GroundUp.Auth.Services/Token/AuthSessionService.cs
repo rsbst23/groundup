@@ -34,16 +34,17 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <inheritdoc />
     public async Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId)
     {
-        // 1. Query all tenant memberships for user
+        // 1. Query all tenant memberships for user, then filter to active memberships only.
+        //    An inactive (soft-disabled) membership must not be selectable for sign-in.
         var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId);
         if (!membershipsResult.Success || membershipsResult.Data is null)
         {
             return OperationResult<SetTenantResponseDto>.Forbidden("User does not belong to any tenant");
         }
 
-        var memberships = membershipsResult.Data;
+        var memberships = membershipsResult.Data.Where(m => m.IsActive).ToList();
 
-        // 2. If no memberships → return Forbidden
+        // 2. If no active memberships → return Forbidden
         if (memberships.Count == 0)
         {
             return OperationResult<SetTenantResponseDto>.Forbidden("User does not belong to any tenant");
@@ -67,12 +68,18 @@ public sealed class AuthSessionService : IAuthSessionService
                 return OperationResult<SetTenantResponseDto>.Ok(response);
             }
 
-            // Multiple memberships — return tenant list (single batch query, bypassing tenant filter)
+            // Multiple memberships — return tenant list (single batch query, bypassing tenant filter).
+            // If the lookup fails outright, surface the error rather than silently returning
+            // a selection-required response with an empty list (which would be a confusing UX).
             var membershipTenantIds = memberships.Select(m => m.TenantId).ToList();
             var tenantsResult = await _tenantRepository.GetByIdsBypassFilterAsync(membershipTenantIds);
-            var tenantsById = tenantsResult.Success && tenantsResult.Data is not null
-                ? tenantsResult.Data.ToDictionary(t => t.Id)
-                : new Dictionary<Guid, TenantDto>();
+            if (!tenantsResult.Success || tenantsResult.Data is null)
+            {
+                return OperationResult<SetTenantResponseDto>.Fail(
+                    "Unable to load tenant details", 500);
+            }
+
+            var tenantsById = tenantsResult.Data.ToDictionary(t => t.Id);
 
             var tenantList = new List<TenantListItemDto>();
             foreach (var membership in memberships)
@@ -87,7 +94,7 @@ public sealed class AuthSessionService : IAuthSessionService
             return OperationResult<SetTenantResponseDto>.Ok(multiResponse);
         }
 
-        // 4. If tenantId specified → validate membership and issue token
+        // 4. If tenantId specified → validate active membership and issue token
         var belongsToTenant = memberships.Any(m => m.TenantId == tenantId.Value);
         if (!belongsToTenant)
         {
@@ -107,14 +114,15 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <inheritdoc />
     public async Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId)
     {
-        // 1. Re-validate user still belongs to tenant
+        // 1. Re-validate user still has an active membership in the tenant.
+        //    An inactive membership must not be refreshable.
         var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId);
         if (!membershipsResult.Success || membershipsResult.Data is null)
         {
             return OperationResult<string>.Forbidden("User no longer belongs to the specified tenant");
         }
 
-        var belongsToTenant = membershipsResult.Data.Any(m => m.TenantId == tenantId);
+        var belongsToTenant = membershipsResult.Data.Any(m => m.TenantId == tenantId && m.IsActive);
         if (!belongsToTenant)
         {
             return OperationResult<string>.Forbidden("User no longer belongs to the specified tenant");
