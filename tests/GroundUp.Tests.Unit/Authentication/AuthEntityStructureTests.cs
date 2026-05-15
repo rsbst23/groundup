@@ -74,6 +74,7 @@ public sealed class AuthEntityStructureTests
     [InlineData(typeof(Role))]
     [InlineData(typeof(Policy))]
     [InlineData(typeof(UserRole))]
+    [InlineData(typeof(UserTenant))]
     public void Entity_ImplementsITenantEntity(Type entityType)
     {
         entityType.Should().Implement<ITenantEntity>($"{entityType.Name} should implement ITenantEntity");
@@ -82,7 +83,6 @@ public sealed class AuthEntityStructureTests
     [Theory]
     [InlineData(typeof(User))]
     [InlineData(typeof(Tenant))]
-    [InlineData(typeof(UserTenant))]
     [InlineData(typeof(Permission))]
     [InlineData(typeof(RolePolicy))]
     [InlineData(typeof(PolicyPermission))]
