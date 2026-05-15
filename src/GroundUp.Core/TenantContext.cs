@@ -7,7 +7,7 @@ namespace GroundUp.Core;
 /// through the <see cref="Abstractions.ITenantContext"/> interface.
 /// <para>
 /// This class has no HTTP dependency — it works in any hosting context.
-/// In HTTP scenarios, TenantResolutionMiddleware hydrates it from the request.
+/// In HTTP scenarios, JwtTenantResolutionMiddleware hydrates it from the request.
 /// </para>
 /// </summary>
 public sealed class TenantContext : Abstractions.ITenantContext

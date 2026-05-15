@@ -1,4 +1,5 @@
 using GroundUp.Api;
+using GroundUp.Auth.Api;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Authorization;
@@ -61,6 +62,7 @@ var app = builder.Build();
 
 // Middleware pipeline
 app.UseGroundUpMiddleware();
+app.UseGroundUpAuth();
 
 if (app.Environment.IsDevelopment())
 {

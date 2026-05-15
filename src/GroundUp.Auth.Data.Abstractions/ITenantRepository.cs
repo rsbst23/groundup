@@ -32,4 +32,22 @@ public interface ITenantRepository : IBaseRepository<TenantDto>
         Guid parentTenantId,
         FilterParams filterParams,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves multiple tenants by their IDs in a single query, bypassing the
+    /// ambient tenant-context visibility filter. Soft-deleted tenants are still excluded.
+    /// </summary>
+    /// <remarks>
+    /// <b>SECURITY:</b> This method bypasses tenant visibility enforcement. Callers MUST
+    /// validate that the requested tenant IDs are authorized for the current user before
+    /// invoking this method. The only intended consumer is <c>AuthSessionService.SetTenantAsync</c>,
+    /// which validates membership via <c>IUserTenantRepository.GetAllMembershipsForUserAsync</c>
+    /// before calling this method with the user's own membership tenant IDs.
+    /// </remarks>
+    /// <param name="tenantIds">The tenant identifiers to fetch.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of tenant DTOs matching the given IDs (excluding soft-deleted), in no particular order.</returns>
+    Task<OperationResult<List<TenantDto>>> GetByIdsBypassFilterAsync(
+        IEnumerable<Guid> tenantIds,
+        CancellationToken cancellationToken = default);
 }

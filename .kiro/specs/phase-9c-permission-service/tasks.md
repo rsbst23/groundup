@@ -249,7 +249,7 @@ This plan implements the authorization service layer for the GroundUp framework.
   - [x] 9.5 Verify Sample app builds and starts without errors
     - _Checkpoint: Ensure sample app compiles with auth wired in_
 
-- [ ] 10. Final checkpoint
+- [x] 10. Final checkpoint
   - Ensure all tests pass (`dotnet test`), ask the user if questions arise.
 
 ## Notes

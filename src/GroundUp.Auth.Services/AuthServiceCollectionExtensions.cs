@@ -2,10 +2,12 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Abstractions;
 using GroundUp.Events;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace GroundUp.Auth.Services;
 
@@ -27,6 +29,7 @@ public static class AuthServiceCollectionExtensions
     public static IServiceCollection AddGroundUpAuth(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AuthOptions>(configuration.GetSection("GroundUp:Auth"));
+        AddOptionsValidation(services);
 
         RegisterCoreServices(services);
 
@@ -43,10 +46,34 @@ public static class AuthServiceCollectionExtensions
     public static IServiceCollection AddGroundUpAuth(this IServiceCollection services, Action<AuthOptions> configure)
     {
         services.Configure(configure);
+        AddOptionsValidation(services);
 
         RegisterCoreServices(services);
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers data-annotation–free validation rules for <see cref="AuthOptions"/>.
+    /// Validation fires during host startup via <c>ValidateOnStart</c>, so missing or
+    /// undersized signing keys fail fast at boot rather than on the first request.
+    /// </summary>
+    private static void AddOptionsValidation(IServiceCollection services)
+    {
+        services.AddOptions<AuthOptions>()
+            .Validate(options =>
+            {
+                if (string.IsNullOrWhiteSpace(options.JwtSigningKey))
+                {
+                    return false;
+                }
+
+                // HMAC-SHA256 requires at least 256 bits per RFC 4868
+                var keyByteCount = System.Text.Encoding.UTF8.GetByteCount(options.JwtSigningKey);
+                return keyByteCount >= ConfigurationSigningKeyProvider.MinimumKeyBytes;
+            },
+            $"AuthOptions.JwtSigningKey must be configured and at least {ConfigurationSigningKeyProvider.MinimumKeyBytes} bytes ({ConfigurationSigningKeyProvider.MinimumKeyBytes * 8} bits) when UTF-8 encoded for HMAC-SHA256.")
+            .ValidateOnStart();
     }
 
     private static void RegisterCoreServices(IServiceCollection services)
@@ -58,9 +85,19 @@ public static class AuthServiceCollectionExtensions
         // Permission service
         services.AddScoped<IPermissionService, PermissionService>();
 
-        // JWT-based identity (default for HTTP scenarios)
+        // Token and session services
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IAuthSessionService, AuthSessionService>();
+        services.TryAddScoped<ISigningKeyProvider, ConfigurationSigningKeyProvider>();
+
+        // JWT-based identity for HTTP scenarios.
+        // ICurrentUser: registered here as JwtCurrentUser (claims-based).
+        // ITenantContext: NOT registered here — it is owned by AddGroundUpApi() which registers
+        //   the concrete TenantContext + ITenantContext alias. The JwtTenantResolutionMiddleware
+        //   hydrates the concrete TenantContext from the JWT 'tid' claim, so repositories
+        //   reading ITenantContext see the same instance. SDK-only consumers (no HTTP) can
+        //   register JwtTenantContext or SystemTenantContext explicitly.
         services.AddScoped<ICurrentUser, JwtCurrentUser>();
-        services.AddScoped<ITenantContext, JwtTenantContext>();
 
         // Cache invalidation event handlers
         services.AddScoped<IEventHandler<EntityCreatedEvent<UserRoleDto>>, UserRoleChangedHandler>();

@@ -40,7 +40,7 @@ public sealed class JwtTenantContextTests
         var expectedTenantId = Guid.NewGuid();
         var accessor = CreateAccessorWithClaims(
             new Claim("sub", Guid.NewGuid().ToString()),
-            new Claim("tenant_id", expectedTenantId.ToString()));
+            new Claim("tid", expectedTenantId.ToString()));
         var sut = CreateSut(accessor);
 
         // Act & Assert
@@ -53,7 +53,7 @@ public sealed class JwtTenantContextTests
         // Arrange
         var accessor = CreateAccessorWithClaims(
             new Claim("sub", Guid.NewGuid().ToString()),
-            new Claim("tenant_id", "not-a-guid"));
+            new Claim("tid", "not-a-guid"));
         var sut = CreateSut(accessor);
 
         // Act & Assert
