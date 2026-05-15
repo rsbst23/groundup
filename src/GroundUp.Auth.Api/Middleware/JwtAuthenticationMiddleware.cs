@@ -113,6 +113,22 @@ public class JwtAuthenticationMiddleware
 
     private static ClaimsPrincipal BuildClaimsPrincipal(ExternalUserInfo userInfo, AuthOptions options)
     {
+        // Reserved claim types that MUST come from the framework, not from external attributes.
+        // An external IdP injecting these would let an attacker control authorization context
+        // (e.g., set 'tid' to a tenant the user does not belong to, or grant arbitrary roles).
+        var reservedClaimTypes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // Standard JWT registered claim names
+            "sub", "iss", "aud", "exp", "nbf", "iat", "jti",
+            // GroundUp-specific authorization claims
+            "tid", "role",
+            // Configurable claim types — block whichever names the consumer chose
+            options.UserIdClaimType,
+            options.TenantIdClaimType,
+            options.EmailClaimType,
+            options.DisplayNameClaimType
+        };
+
         var claims = new List<Claim>
         {
             new(options.UserIdClaimType, userInfo.ExternalUserId),
@@ -128,6 +144,11 @@ public class JwtAuthenticationMiddleware
         {
             foreach (var (key, value) in userInfo.Attributes)
             {
+                // Block reserved claim types — protects against IdP-injected authorization claims
+                if (reservedClaimTypes.Contains(key))
+                {
+                    continue;
+                }
                 claims.Add(new Claim(key, value));
             }
         }

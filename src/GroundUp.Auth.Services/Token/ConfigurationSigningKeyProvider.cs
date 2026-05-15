@@ -15,7 +15,7 @@ public sealed class ConfigurationSigningKeyProvider : ISigningKeyProvider
     /// <summary>
     /// Minimum key length in bytes for HMAC-SHA256 (256 bits) per RFC 4868.
     /// </summary>
-    private const int MinimumKeyBytes = 32;
+    public const int MinimumKeyBytes = 32;
 
     /// <summary>
     /// The well-known key identifier emitted by this single-key provider.

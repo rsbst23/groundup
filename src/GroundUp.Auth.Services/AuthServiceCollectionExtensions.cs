@@ -55,8 +55,8 @@ public static class AuthServiceCollectionExtensions
 
     /// <summary>
     /// Registers data-annotation–free validation rules for <see cref="AuthOptions"/>.
-    /// Validation fires on first access to <see cref="IOptions{TOptions}.Value"/>
-    /// (typically when <see cref="ConfigurationSigningKeyProvider"/> is constructed).
+    /// Validation fires during host startup via <c>ValidateOnStart</c>, so missing or
+    /// undersized signing keys fail fast at boot rather than on the first request.
     /// </summary>
     private static void AddOptionsValidation(IServiceCollection services)
     {
@@ -68,11 +68,12 @@ public static class AuthServiceCollectionExtensions
                     return false;
                 }
 
-                // HMAC-SHA256 requires at least 256 bits (32 bytes) per RFC 4868
+                // HMAC-SHA256 requires at least 256 bits per RFC 4868
                 var keyByteCount = System.Text.Encoding.UTF8.GetByteCount(options.JwtSigningKey);
-                return keyByteCount >= 32;
+                return keyByteCount >= ConfigurationSigningKeyProvider.MinimumKeyBytes;
             },
-            "AuthOptions.JwtSigningKey must be configured and at least 32 bytes (256 bits) when UTF-8 encoded for HMAC-SHA256.");
+            $"AuthOptions.JwtSigningKey must be configured and at least {ConfigurationSigningKeyProvider.MinimumKeyBytes} bytes ({ConfigurationSigningKeyProvider.MinimumKeyBytes * 8} bits) when UTF-8 encoded for HMAC-SHA256.")
+            .ValidateOnStart();
     }
 
     private static void RegisterCoreServices(IServiceCollection services)
