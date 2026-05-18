@@ -1,6 +1,8 @@
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Data.Postgres.Seeders;
 using GroundUp.Auth.Repositories;
 using GroundUp.Core.Abstractions;
+using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres.Interceptors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -71,6 +73,10 @@ public static class AuthServiceCollectionExtensions
             new UserRoleRepository(
                 sp.GetRequiredService<AuthDbContext>(),
                 sp.GetRequiredService<ITenantContext>()));
+
+        // Auth data seeders — discovered and run by DataSeederRunner on startup
+        services.AddScoped<IDataSeeder, DefaultPermissionSeeder>();
+        services.AddScoped<IDataSeeder, DefaultSystemRoleSeeder>();
 
         return services;
     }
