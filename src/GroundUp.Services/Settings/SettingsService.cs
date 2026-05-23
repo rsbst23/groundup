@@ -446,68 +446,94 @@ public sealed class SettingsService : ISettingsService
             return OperationResult<SettingDefinitionDto>.Ok(MapToDto(existing));
         }
 
-        // Ensure group exists
-        var group = await _dbContext.Set<SettingGroup>()
-            .FirstOrDefaultAsync(g => g.Key == request.GroupKey, cancellationToken);
+        // Use a transaction to ensure atomicity of group + definition + level associations
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        if (group is null)
+        try
         {
-            group = new SettingGroup
+            // Ensure group exists
+            var group = await _dbContext.Set<SettingGroup>()
+                .FirstOrDefaultAsync(g => g.Key == request.GroupKey, cancellationToken);
+
+            if (group is null)
             {
-                Key = request.GroupKey,
-                DisplayName = request.GroupDisplayName,
+                group = new SettingGroup
+                {
+                    Key = request.GroupKey,
+                    DisplayName = request.GroupDisplayName,
+                    DisplayOrder = 0
+                };
+                _dbContext.Set<SettingGroup>().Add(group);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            // Resolve level IDs from names
+            var levels = await _dbContext.Set<SettingLevel>()
+                .AsNoTracking()
+                .Where(l => request.AllowedLevelNames.Contains(l.Name))
+                .ToListAsync(cancellationToken);
+
+            // Create the definition
+            var definition = new SettingDefinition
+            {
+                Key = request.Key,
+                DataType = request.DataType,
+                DefaultValue = request.DefaultValue,
+                DisplayName = request.DisplayName,
+                Description = request.Description,
+                Category = request.Category,
+                GroupId = group.Id,
+                RegexPattern = request.RegexPattern,
+                ValidationMessage = request.ValidationMessage,
+                IsRequired = request.IsRequired,
+                IsSecret = request.IsSecret,
+                IsEncrypted = request.IsEncrypted,
+                IsVisible = true,
+                IsReadOnly = false,
+                AllowMultiple = false,
                 DisplayOrder = 0
             };
-            _dbContext.Set<SettingGroup>().Add(group);
+
+            _dbContext.Set<SettingDefinition>().Add(definition);
             await _dbContext.SaveChangesAsync(cancellationToken);
-        }
 
-        // Resolve level IDs from names
-        var levels = await _dbContext.Set<SettingLevel>()
-            .AsNoTracking()
-            .Where(l => request.AllowedLevelNames.Contains(l.Name))
-            .ToListAsync(cancellationToken);
-
-        // Create the definition
-        var definition = new SettingDefinition
-        {
-            Key = request.Key,
-            DataType = request.DataType,
-            DefaultValue = request.DefaultValue,
-            DisplayName = request.DisplayName,
-            Description = request.Description,
-            Category = request.Category,
-            GroupId = group.Id,
-            RegexPattern = request.RegexPattern,
-            ValidationMessage = request.ValidationMessage,
-            IsRequired = request.IsRequired,
-            IsSecret = request.IsSecret,
-            IsEncrypted = request.IsEncrypted,
-            IsVisible = true,
-            IsReadOnly = false,
-            AllowMultiple = false,
-            DisplayOrder = 0
-        };
-
-        _dbContext.Set<SettingDefinition>().Add(definition);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        // Create level associations
-        foreach (var level in levels)
-        {
-            _dbContext.Set<SettingDefinitionLevel>().Add(new SettingDefinitionLevel
+            // Create level associations
+            foreach (var level in levels)
             {
-                SettingDefinitionId = definition.Id,
-                SettingLevelId = level.Id
-            });
-        }
+                _dbContext.Set<SettingDefinitionLevel>().Add(new SettingDefinitionLevel
+                {
+                    SettingDefinitionId = definition.Id,
+                    SettingLevelId = level.Id
+                });
+            }
 
-        if (levels.Count > 0)
+            if (levels.Count > 0)
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return OperationResult<SettingDefinitionDto>.Ok(MapToDto(definition));
+        }
+        catch (DbUpdateException)
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
+            await transaction.RollbackAsync(cancellationToken);
 
-        return OperationResult<SettingDefinitionDto>.Ok(MapToDto(definition));
+            // Race condition: another instance created the definition concurrently.
+            // Re-fetch and return the existing one.
+            var raceWinner = await _dbContext.Set<SettingDefinition>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.Key == request.Key, cancellationToken);
+
+            if (raceWinner is not null)
+            {
+                return OperationResult<SettingDefinitionDto>.Ok(MapToDto(raceWinner));
+            }
+
+            // Unexpected error — not a race condition
+            return OperationResult<SettingDefinitionDto>.Fail(
+                $"Failed to create setting definition '{request.Key}'", 500);
+        }
     }
 
     #region Private Helpers

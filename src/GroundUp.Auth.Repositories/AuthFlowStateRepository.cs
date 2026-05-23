@@ -45,7 +45,15 @@ public sealed class AuthFlowStateRepository : BaseRepository<AuthFlowState, Auth
         {
             // Reload the consumed row
             var entity = await DbSet.AsNoTracking()
-                .FirstAsync(x => x.Id == id, cancellationToken);
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+            if (entity is null)
+            {
+                // Extremely rare: row was deleted between UPDATE and reload (e.g., sweeper with RetentionDays=0)
+                return OperationResult<AuthFlowStateDto>.NotFound(
+                    $"AuthFlowState '{id}' was consumed but could not be reloaded");
+            }
+
             return OperationResult<AuthFlowStateDto>.Ok(AuthFlowStateMapper.ToDto(entity));
         }
 
@@ -102,7 +110,6 @@ public sealed class AuthFlowStateRepository : BaseRepository<AuthFlowState, Auth
         entity.Status = FlowStatus.Failed;
         entity.FailureReason = reason;
         entity.TerminatedAt = DateTime.UtcNow;
-        entity.UpdatedAt = DateTime.UtcNow;
 
         await Context.SaveChangesAsync(cancellationToken);
 

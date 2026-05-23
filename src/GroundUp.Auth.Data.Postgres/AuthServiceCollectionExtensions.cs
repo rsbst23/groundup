@@ -74,6 +74,10 @@ public static class AuthServiceCollectionExtensions
                 sp.GetRequiredService<AuthDbContext>(),
                 sp.GetRequiredService<ITenantContext>()));
 
+        // AuthFlowState repository (not tenant-scoped)
+        services.AddScoped<IAuthFlowStateRepository>(sp =>
+            new AuthFlowStateRepository(sp.GetRequiredService<AuthDbContext>()));
+
         // Auth data seeders — discovered and run by DataSeederRunner on startup
         services.AddScoped<IDataSeeder, DefaultPermissionSeeder>();
         services.AddScoped<IDataSeeder, DefaultSystemRoleSeeder>();

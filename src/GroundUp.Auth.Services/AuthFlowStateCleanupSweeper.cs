@@ -15,36 +15,35 @@ namespace GroundUp.Auth.Services;
 public sealed class AuthFlowStateCleanupSweeper : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IOptions<AuthOptions> _options;
+    private readonly IOptionsMonitor<AuthOptions> _optionsMonitor;
     private readonly ILogger<AuthFlowStateCleanupSweeper> _logger;
 
     /// <summary>
     /// Initializes a new instance of <see cref="AuthFlowStateCleanupSweeper"/>.
     /// </summary>
     /// <param name="scopeFactory">Factory for creating DI scopes per sweep cycle.</param>
-    /// <param name="options">Auth options containing sweep interval and retention settings.</param>
+    /// <param name="optionsMonitor">Auth options monitor for live-reloadable sweep settings.</param>
     /// <param name="logger">Logger for structured sweep reporting.</param>
     public AuthFlowStateCleanupSweeper(
         IServiceScopeFactory scopeFactory,
-        IOptions<AuthOptions> options,
+        IOptionsMonitor<AuthOptions> optionsMonitor,
         ILogger<AuthFlowStateCleanupSweeper> logger)
     {
         _scopeFactory = scopeFactory;
-        _options = options;
+        _optionsMonitor = optionsMonitor;
         _logger = logger;
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var interval = TimeSpan.FromMinutes(_options.Value.CleanupIntervalMinutes);
-        using var timer = new PeriodicTimer(interval);
-
         while (!stoppingToken.IsCancellationRequested)
         {
+            var interval = TimeSpan.FromMinutes(_optionsMonitor.CurrentValue.CleanupIntervalMinutes);
+
             try
             {
-                await timer.WaitForNextTickAsync(stoppingToken);
+                await Task.Delay(interval, stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -62,7 +61,8 @@ public sealed class AuthFlowStateCleanupSweeper : BackgroundService
                 var expiredCount = expiredResult.Success ? expiredResult.Data : 0;
 
                 // Step 2: Delete terminal rows past retention
-                var retentionCutoff = DateTime.UtcNow - TimeSpan.FromDays(_options.Value.RetentionDays);
+                var retentionDays = _optionsMonitor.CurrentValue.RetentionDays;
+                var retentionCutoff = DateTime.UtcNow - TimeSpan.FromDays(retentionDays);
                 var deletedResult = await repository.DeleteTerminalOlderThanAsync(
                     retentionCutoff, stoppingToken);
                 var deletedCount = deletedResult.Success ? deletedResult.Data : 0;
