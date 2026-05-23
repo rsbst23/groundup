@@ -131,8 +131,8 @@ public sealed class AuthSessionServiceTests
             new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
         });
         SetupTenants(
-            new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true),
-            new TenantDto(_tenantId2, "Tenant Two", "tenant-two", TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true)
+            new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true),
+            new TenantDto(_tenantId2, "Tenant Two", "tenant-two", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true)
         );
 
         // Act
@@ -156,8 +156,8 @@ public sealed class AuthSessionServiceTests
             new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
         });
         SetupTenants(
-            new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true),
-            new TenantDto(_tenantId2, "Tenant Two", "tenant-two", TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true)
+            new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true),
+            new TenantDto(_tenantId2, "Tenant Two", "tenant-two", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true)
         );
 
         // Act
@@ -405,7 +405,7 @@ public sealed class AuthSessionServiceTests
         _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<TenantDto>>.Ok(new List<TenantDto>
             {
-                new(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true)
+                new(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true)
             }));
 
         // Act

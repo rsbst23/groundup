@@ -15,7 +15,7 @@ public sealed class AuthTenantMapperPropertyTests
     /// <summary>
     /// Property 1: Mapper round-trip preserves entity fields.
     /// For any Tenant with valid field values, ToDto(entity) produces a TenantDto with matching
-    /// Id, Name, Slug, TenantType, OnboardingMode, ParentTenantId, RealmName, CustomDomain, IsActive.
+    /// Id, Name, Slug, TenantType, OnboardingMode, ParentTenantId, RealmName, IsActive.
     /// Then ToEntity(dto) produces a Tenant with matching fields.
     /// **Validates: Requirements 13.2**
     /// </summary>
@@ -28,7 +28,6 @@ public sealed class AuthTenantMapperPropertyTests
         OnboardingMode onboardingMode,
         Guid? parentTenantId,
         string? realmName,
-        string? customDomain,
         bool isActive)
     {
         var entity = new Tenant
@@ -40,7 +39,6 @@ public sealed class AuthTenantMapperPropertyTests
             OnboardingMode = onboardingMode,
             ParentTenantId = parentTenantId,
             RealmName = realmName,
-            CustomDomain = customDomain,
             IsActive = isActive
         };
 
@@ -54,7 +52,6 @@ public sealed class AuthTenantMapperPropertyTests
             && dto.OnboardingMode == onboardingMode
             && dto.ParentTenantId == parentTenantId
             && dto.RealmName == realmName
-            && dto.CustomDomain == customDomain
             && dto.IsActive == isActive
             && roundTripped.Id == id
             && roundTripped.Name == name.Get
@@ -63,7 +60,6 @@ public sealed class AuthTenantMapperPropertyTests
             && roundTripped.OnboardingMode == onboardingMode
             && roundTripped.ParentTenantId == parentTenantId
             && roundTripped.RealmName == realmName
-            && roundTripped.CustomDomain == customDomain
             && roundTripped.IsActive == isActive)
             .ToProperty();
     }

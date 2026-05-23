@@ -1,0 +1,28 @@
+# Keycloak identity provider for the GroundUp auth module.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up
+services:
+  postgres:
+    volumes:
+      - ./keycloak/postgres-init.sql:/docker-entrypoint-initdb.d/01-create-keycloak-db.sql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: groundup
+      KC_DB_PASSWORD: groundup_dev
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json
+      - kcdata:/opt/keycloak/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  kcdata:

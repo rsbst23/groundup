@@ -10,7 +10,6 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="TenantType">The type of tenant (Standard or Enterprise).</param>
 /// <param name="OnboardingMode">How users join this tenant.</param>
 /// <param name="RealmName">The IdP realm name for enterprise SSO routing.</param>
-/// <param name="CustomDomain">The tenant-specific custom domain.</param>
 /// <param name="IsActive">Whether the tenant is active.</param>
 public record UpdateTenantDto(
     string Name,
@@ -18,5 +17,4 @@ public record UpdateTenantDto(
     TenantType TenantType,
     OnboardingMode OnboardingMode,
     string? RealmName,
-    string? CustomDomain,
     bool IsActive);

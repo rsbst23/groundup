@@ -28,9 +28,6 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(e => e.RealmName)
             .HasMaxLength(200);
 
-        builder.Property(e => e.CustomDomain)
-            .HasMaxLength(500);
-
         builder.Property(e => e.TenantType)
             .HasConversion<int>();
 
