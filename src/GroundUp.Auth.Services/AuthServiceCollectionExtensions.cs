@@ -1,4 +1,7 @@
+using FluentValidation;
 using GroundUp.Auth.Core.Dtos;
+using GroundUp.Auth.Core.Validators;
+using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
@@ -73,6 +76,10 @@ public static class AuthServiceCollectionExtensions
                 return keyByteCount >= ConfigurationSigningKeyProvider.MinimumKeyBytes;
             },
             $"AuthOptions.JwtSigningKey must be configured and at least {ConfigurationSigningKeyProvider.MinimumKeyBytes} bytes ({ConfigurationSigningKeyProvider.MinimumKeyBytes * 8} bits) when UTF-8 encoded for HMAC-SHA256.")
+            .Validate(options => options.CleanupIntervalMinutes > 0,
+                "AuthOptions.CleanupIntervalMinutes must be greater than 0.")
+            .Validate(options => options.RetentionDays >= 0,
+                "AuthOptions.RetentionDays must be 0 or greater.")
             .ValidateOnStart();
     }
 
@@ -106,5 +113,12 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IEventHandler<EntityDeletedEvent<RolePolicyDto>>, RolePolicyChangedHandler>();
         services.AddScoped<IEventHandler<EntityCreatedEvent<PolicyPermissionDto>>, PolicyPermissionChangedHandler>();
         services.AddScoped<IEventHandler<EntityDeletedEvent<PolicyPermissionDto>>, PolicyPermissionChangedHandler>();
+
+        // AuthFlowState services
+        services.AddScoped<IAuthFlowStateService, AuthFlowStateService>();
+        services.AddScoped<IValidator<InitiateAuthFlowRequest>, InitiateAuthFlowRequestValidator>();
+
+        // Cleanup sweeper (hosted service)
+        services.AddHostedService<AuthFlowStateCleanupSweeper>();
     }
 }

@@ -68,4 +68,16 @@ public sealed class AuthOptions
     /// The SameSite mode for the authentication cookie. Default: Strict.
     /// </summary>
     public SameSiteMode CookieSameSite { get; set; } = SameSiteMode.Strict;
+
+    /// <summary>
+    /// Interval in minutes between AuthFlowState cleanup sweeper cycles. Default: 5.
+    /// Must be greater than 0; validated on startup.
+    /// </summary>
+    public int CleanupIntervalMinutes { get; set; } = 5;
+
+    /// <summary>
+    /// Number of days to retain terminal AuthFlowState rows before hard deletion. Default: 7.
+    /// Must be 0 or greater; validated on startup. 0 = delete immediately after termination.
+    /// </summary>
+    public int RetentionDays { get; set; } = 7;
 }

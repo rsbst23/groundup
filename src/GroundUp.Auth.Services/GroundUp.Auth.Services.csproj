@@ -8,7 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.*" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.*" />
     <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.*" />
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.*" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.*" />

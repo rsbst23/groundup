@@ -77,6 +77,7 @@ public static class AuthServiceCollectionExtensions
         // Auth data seeders — discovered and run by DataSeederRunner on startup
         services.AddScoped<IDataSeeder, DefaultPermissionSeeder>();
         services.AddScoped<IDataSeeder, DefaultSystemRoleSeeder>();
+        services.AddScoped<IDataSeeder, DefaultAuthSettingsSeeder>();
 
         return services;
     }
