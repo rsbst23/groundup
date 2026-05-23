@@ -159,4 +159,20 @@ public interface ISettingsService
     Task<OperationResult<object?>> GetTypedValueAsync(
         string key,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Idempotently ensures a setting definition exists. If a definition with the
+    /// same <see cref="EnsureSettingDefinitionRequest.Key"/> already exists, returns
+    /// it unchanged. Otherwise creates the definition, its group (if needed), and
+    /// level associations.
+    /// </summary>
+    /// <param name="request">The definition to ensure.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// An <see cref="OperationResult{T}"/> containing the existing or newly created
+    /// <see cref="SettingDefinitionDto"/>.
+    /// </returns>
+    Task<OperationResult<SettingDefinitionDto>> EnsureDefinitionAsync(
+        EnsureSettingDefinitionRequest request,
+        CancellationToken cancellationToken = default);
 }

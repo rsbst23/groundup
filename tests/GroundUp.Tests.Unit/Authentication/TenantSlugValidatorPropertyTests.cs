@@ -29,8 +29,7 @@ public sealed class TenantSlugValidatorPropertyTests
             TenantType: TenantType.Standard,
             OnboardingMode: OnboardingMode.InviteOnly,
             ParentTenantId: null,
-            RealmName: null,
-            CustomDomain: null);
+            RealmName: null);
 
         var result = CreateValidator.Validate(dto);
 
@@ -50,7 +49,6 @@ public sealed class TenantSlugValidatorPropertyTests
             TenantType: TenantType.Standard,
             OnboardingMode: OnboardingMode.InviteOnly,
             RealmName: null,
-            CustomDomain: null,
             IsActive: true);
 
         var result = UpdateValidator.Validate(dto);
@@ -71,8 +69,7 @@ public sealed class TenantSlugValidatorPropertyTests
             TenantType: TenantType.Standard,
             OnboardingMode: OnboardingMode.InviteOnly,
             ParentTenantId: null,
-            RealmName: null,
-            CustomDomain: null);
+            RealmName: null);
 
         var result = CreateValidator.Validate(dto);
         var slugErrors = result.Errors.Where(e => e.PropertyName == "Slug").ToList();
@@ -93,7 +90,6 @@ public sealed class TenantSlugValidatorPropertyTests
             TenantType: TenantType.Standard,
             OnboardingMode: OnboardingMode.InviteOnly,
             RealmName: null,
-            CustomDomain: null,
             IsActive: true);
 
         var result = UpdateValidator.Validate(dto);

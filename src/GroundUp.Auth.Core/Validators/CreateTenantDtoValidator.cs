@@ -20,6 +20,5 @@ public sealed class CreateTenantDtoValidator : AbstractValidator<CreateTenantDto
         RuleFor(x => x.TenantType).IsInEnum();
         RuleFor(x => x.OnboardingMode).IsInEnum();
         RuleFor(x => x.RealmName).MaximumLength(200).When(x => x.RealmName is not null);
-        RuleFor(x => x.CustomDomain).MaximumLength(500).When(x => x.CustomDomain is not null);
     }
 }

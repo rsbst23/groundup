@@ -125,7 +125,7 @@ public sealed class TenantVisibilityTests : AuthIntegrationTestBase
 
         var updatedDto = new TenantDto(
             tenantCId, "Hacked", $"hacked-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, null, null, true);
 
         // Act
         var result = await repo.UpdateAsync(tenantCId, updatedDto);
@@ -162,7 +162,7 @@ public sealed class TenantVisibilityTests : AuthIntegrationTestBase
         // Try to create a child under Tenant C while operating as Tenant A
         var newChildDto = new TenantDto(
             Guid.Empty, "Sneaky Child", $"sneaky-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, tenantCId, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, tenantCId, null, true);
 
         // Act
         var result = await repo.AddAsync(newChildDto);
@@ -181,7 +181,7 @@ public sealed class TenantVisibilityTests : AuthIntegrationTestBase
 
         var newChildDto = new TenantDto(
             Guid.Empty, "Legit Child", $"legit-child-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, true);
 
         // Act
         var result = await repo.AddAsync(newChildDto);

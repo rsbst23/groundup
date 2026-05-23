@@ -162,7 +162,7 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 
         var updatedDto = new TenantDto(
             tenantAId, "Updated Name", $"tenant-a-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, null, null, true);
 
         // Act
         var result = await repo.UpdateAsync(tenantAId, updatedDto);
@@ -182,7 +182,7 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 
         var updatedDto = new TenantDto(
             childId, "Updated Child", $"child-updated-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, true);
 
         // Act
         var result = await repo.UpdateAsync(childId, updatedDto);
@@ -202,7 +202,7 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 
         var updatedDto = new TenantDto(
             tenantBId, "Hacked", $"hacked-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, null, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, null, null, true);
 
         // Act
         var result = await repo.UpdateAsync(tenantBId, updatedDto);
@@ -256,7 +256,7 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 
         var newChildDto = new TenantDto(
             Guid.Empty, "New Child", $"new-child-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, tenantAId, null, true);
 
         // Act
         var result = await repo.AddAsync(newChildDto);
@@ -277,7 +277,7 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 
         var newChildDto = new TenantDto(
             Guid.Empty, "Sneaky Child", $"sneaky-{Guid.NewGuid():N}",
-            TenantType.Standard, OnboardingMode.InviteOnly, tenantBId, null, null, true);
+            TenantType.Standard, OnboardingMode.InviteOnly, tenantBId, null, true);
 
         // Act
         var result = await repo.AddAsync(newChildDto);

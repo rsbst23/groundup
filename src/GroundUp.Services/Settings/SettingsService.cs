@@ -431,6 +431,85 @@ public sealed class SettingsService : ISettingsService
         return OperationResult<object?>.Ok(result.Data);
     }
 
+    /// <inheritdoc />
+    public async Task<OperationResult<SettingDefinitionDto>> EnsureDefinitionAsync(
+        EnsureSettingDefinitionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        // Check if definition already exists by key
+        var existing = await _dbContext.Set<SettingDefinition>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Key == request.Key, cancellationToken);
+
+        if (existing is not null)
+        {
+            return OperationResult<SettingDefinitionDto>.Ok(MapToDto(existing));
+        }
+
+        // Ensure group exists
+        var group = await _dbContext.Set<SettingGroup>()
+            .FirstOrDefaultAsync(g => g.Key == request.GroupKey, cancellationToken);
+
+        if (group is null)
+        {
+            group = new SettingGroup
+            {
+                Key = request.GroupKey,
+                DisplayName = request.GroupDisplayName,
+                DisplayOrder = 0
+            };
+            _dbContext.Set<SettingGroup>().Add(group);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        // Resolve level IDs from names
+        var levels = await _dbContext.Set<SettingLevel>()
+            .AsNoTracking()
+            .Where(l => request.AllowedLevelNames.Contains(l.Name))
+            .ToListAsync(cancellationToken);
+
+        // Create the definition
+        var definition = new SettingDefinition
+        {
+            Key = request.Key,
+            DataType = request.DataType,
+            DefaultValue = request.DefaultValue,
+            DisplayName = request.DisplayName,
+            Description = request.Description,
+            Category = request.Category,
+            GroupId = group.Id,
+            RegexPattern = request.RegexPattern,
+            ValidationMessage = request.ValidationMessage,
+            IsRequired = request.IsRequired,
+            IsSecret = request.IsSecret,
+            IsEncrypted = request.IsEncrypted,
+            IsVisible = true,
+            IsReadOnly = false,
+            AllowMultiple = false,
+            DisplayOrder = 0
+        };
+
+        _dbContext.Set<SettingDefinition>().Add(definition);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Create level associations
+        foreach (var level in levels)
+        {
+            _dbContext.Set<SettingDefinitionLevel>().Add(new SettingDefinitionLevel
+            {
+                SettingDefinitionId = definition.Id,
+                SettingLevelId = level.Id
+            });
+        }
+
+        if (levels.Count > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return OperationResult<SettingDefinitionDto>.Ok(MapToDto(definition));
+    }
+
     #region Private Helpers
 
     /// <summary>

@@ -50,11 +50,6 @@ public sealed class Tenant : BaseEntity, IAuditable, ISoftDeletable
     public string? RealmName { get; set; }
 
     /// <summary>
-    /// Optional custom domain for tenant-specific access.
-    /// </summary>
-    public string? CustomDomain { get; set; }
-
-    /// <summary>
     /// Whether the tenant is active. Defaults to true.
     /// </summary>
     public bool IsActive { get; set; } = true;
