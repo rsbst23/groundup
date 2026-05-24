@@ -324,10 +324,10 @@ public sealed class SettingsServiceSetAsyncTests : IDisposable
         // Act
         var result = await service.SetAsync("OptionalMinLen", "", levelId, null);
 
-        // Assert
+        // Assert — per Req 3.2, empty values are persisted as null
         result.Success.Should().BeTrue();
         result.Data.Should().NotBeNull();
-        result.Data!.Value.Should().Be("");
+        result.Data!.Value.Should().BeNull();
     }
 
     public void Dispose() => _fixture.Dispose();

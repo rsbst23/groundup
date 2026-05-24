@@ -12,6 +12,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
+// ReSharper disable ConvertToPrimaryConstructor
+
 namespace GroundUp.Services.Settings;
 
 /// <summary>
@@ -26,12 +28,13 @@ public sealed class SettingsService : ISettingsService
     private readonly GroundUpDbContext _dbContext;
     private readonly IEventBus _eventBus;
     private readonly ISettingEncryptionProvider? _encryptionProvider;
+    private readonly ISecretResolver? _secretResolver;
     private readonly IScopeChainProvider _scopeChainProvider;
     private readonly IMemoryCache _cache;
     private readonly SettingsCacheOptions _cacheOptions;
     private readonly SettingsCacheKeyTracker _cacheKeyTracker;
 
-    private const string SecretMask = "••••••••";
+    private const string SecretMask = "***REDACTED***";
 
     /// <summary>
     /// Initializes a new instance of <see cref="SettingsService"/>.
@@ -46,6 +49,10 @@ public sealed class SettingsService : ISettingsService
     /// Optional encryption provider. When null, the service works for non-encrypted settings
     /// and fails with a clear error only when an encrypted setting is actually accessed.
     /// </param>
+    /// <param name="secretResolver">
+    /// Optional secret resolver. When null, secretref:// values are returned verbatim.
+    /// When registered, secretref:// values are resolved via a single-pass call.
+    /// </param>
     public SettingsService(
         GroundUpDbContext dbContext,
         IEventBus eventBus,
@@ -53,7 +60,8 @@ public sealed class SettingsService : ISettingsService
         IMemoryCache cache,
         IOptions<SettingsCacheOptions> cacheOptions,
         SettingsCacheKeyTracker cacheKeyTracker,
-        ISettingEncryptionProvider? encryptionProvider = null)
+        ISettingEncryptionProvider? encryptionProvider = null,
+        ISecretResolver? secretResolver = null)
     {
         _dbContext = dbContext;
         _eventBus = eventBus;
@@ -62,6 +70,7 @@ public sealed class SettingsService : ISettingsService
         _cacheOptions = cacheOptions.Value;
         _cacheKeyTracker = cacheKeyTracker;
         _encryptionProvider = encryptionProvider;
+        _secretResolver = secretResolver;
     }
 
     /// <inheritdoc />
@@ -174,9 +183,15 @@ public sealed class SettingsService : ISettingsService
             }
         }
 
-        // Encryption
+        // Encryption: short-circuit null/empty/whitespace (Req 3.2)
         var valueToStore = value;
-        if (definition.IsEncrypted)
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            // Persist null without calling Encrypt — the provider's contract
+            // throws on null/empty/whitespace, so we short-circuit here.
+            valueToStore = null;
+        }
+        else if (definition.IsEncrypted)
         {
             if (_encryptionProvider is null)
             {
@@ -589,7 +604,8 @@ public sealed class SettingsService : ISettingsService
 
         effectiveValue ??= definition.DefaultValue;
 
-        if (definition.IsEncrypted && effectiveValue is not null)
+        // Req 3.4: short-circuit null/empty/whitespace before calling Decrypt
+        if (definition.IsEncrypted && !string.IsNullOrWhiteSpace(effectiveValue))
         {
             if (_encryptionProvider is null)
             {
@@ -598,6 +614,24 @@ public sealed class SettingsService : ISettingsService
             }
 
             effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+        }
+
+        // Req 4.2–4.8: single-pass secret reference resolution on read path
+        if (effectiveValue is not null && effectiveValue.StartsWith("secretref://", StringComparison.Ordinal))
+        {
+            if (_secretResolver is not null)
+            {
+                var resolved = await _secretResolver.ResolveAsync(effectiveValue, cancellationToken);
+                if (resolved is null)
+                {
+                    return OperationResult<T>.Fail(
+                        $"Secret reference could not be resolved for setting '{key}'", 500);
+                }
+
+                // Return resolved verbatim — even if it itself begins with "secretref://" (single-pass, Req 4.8)
+                effectiveValue = resolved;
+            }
+            // No resolver registered → literal pass-through (Req 4.3)
         }
 
         return SettingValueConverter.Convert<T>(effectiveValue, definition.DataType, definition.AllowMultiple, key);
@@ -629,9 +663,36 @@ public sealed class SettingsService : ISettingsService
             var resolved = ResolveEffectiveValue(definition, allValues, scopeChain);
             var effectiveValue = resolved.Value;
 
-            if (definition.IsEncrypted && effectiveValue is not null && _encryptionProvider is not null)
+            // Req 3.4: short-circuit null/empty/whitespace before calling Decrypt
+            if (definition.IsEncrypted && !string.IsNullOrWhiteSpace(effectiveValue))
             {
-                effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+                if (_encryptionProvider is null)
+                {
+                    // Skip this setting — cannot decrypt without provider
+                    effectiveValue = null;
+                }
+                else
+                {
+                    effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+                }
+            }
+
+            // Req 4.2–4.8: single-pass secret reference resolution on read path
+            if (effectiveValue is not null && effectiveValue.StartsWith("secretref://", StringComparison.Ordinal))
+            {
+                if (_secretResolver is not null)
+                {
+                    var resolvedSecret = await _secretResolver.ResolveAsync(effectiveValue, cancellationToken);
+                    if (resolvedSecret is not null)
+                    {
+                        effectiveValue = resolvedSecret;
+                    }
+                    else
+                    {
+                        effectiveValue = null;
+                    }
+                }
+                // No resolver registered → literal pass-through (Req 4.3)
             }
 
             if (definition.IsSecret && effectiveValue is not null)
@@ -689,9 +750,36 @@ public sealed class SettingsService : ISettingsService
             var resolved = ResolveEffectiveValue(definition, allValues, scopeChain);
             var effectiveValue = resolved.Value;
 
-            if (definition.IsEncrypted && effectiveValue is not null && _encryptionProvider is not null)
+            // Req 3.4: short-circuit null/empty/whitespace before calling Decrypt
+            if (definition.IsEncrypted && !string.IsNullOrWhiteSpace(effectiveValue))
             {
-                effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+                if (_encryptionProvider is null)
+                {
+                    // Skip this setting — cannot decrypt without provider
+                    effectiveValue = null;
+                }
+                else
+                {
+                    effectiveValue = _encryptionProvider.Decrypt(effectiveValue);
+                }
+            }
+
+            // Req 4.2–4.8: single-pass secret reference resolution on read path
+            if (effectiveValue is not null && effectiveValue.StartsWith("secretref://", StringComparison.Ordinal))
+            {
+                if (_secretResolver is not null)
+                {
+                    var resolvedSecret = await _secretResolver.ResolveAsync(effectiveValue, cancellationToken);
+                    if (resolvedSecret is not null)
+                    {
+                        effectiveValue = resolvedSecret;
+                    }
+                    else
+                    {
+                        effectiveValue = null;
+                    }
+                }
+                // No resolver registered → literal pass-through (Req 4.3)
             }
 
             if (definition.IsSecret && effectiveValue is not null)
