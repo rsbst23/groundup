@@ -23,6 +23,7 @@
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Auth.Data.Abstractions\GroundUp.Auth.Data.Abstractions.csproj" />
+    <ProjectReference Include="..\GroundUp.Auth.Data.Postgres\GroundUp.Auth.Data.Postgres.csproj" />
     <ProjectReference Include="..\GroundUp.Services\GroundUp.Services.csproj" />
     <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
   </ItemGroup>
