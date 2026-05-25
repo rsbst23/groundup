@@ -1,4 +1,5 @@
 using FluentValidation;
+using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Validators;
 using GroundUp.Auth.Data.Abstractions;

@@ -1,14 +1,3 @@
-namespace GroundUp.Auth.Services.Bootstrap;
-
-/// <summary>
-/// Request to provision the first SuperAdmin user in the GroundUp database.
-/// </summary>
-/// <param name="Email">The email address for the admin user.</param>
-/// <param name="DisplayName">The display name for the admin user.</param>
-/// <param name="ExternalUserId">The Keycloak-assigned external user ID.</param>
-/// <param name="TenantId">The system tenant ID to assign the user to.</param>
-public sealed record ProvisionFirstSuperAdminRequest(
-    string Email,
-    string DisplayName,
-    string ExternalUserId,
-    Guid TenantId);
+// This DTO has been moved to GroundUp.Auth.Core.Dtos.
+// This file re-exports it for backward compatibility within GroundUp.Auth.Services.
+global using ProvisionFirstSuperAdminRequest = GroundUp.Auth.Core.Dtos.ProvisionFirstSuperAdminRequest;

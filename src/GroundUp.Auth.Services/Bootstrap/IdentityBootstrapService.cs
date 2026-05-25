@@ -1,3 +1,6 @@
+using GroundUp.Auth.Core;
+using GroundUp.Auth.Core.Abstractions;
+using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Core;
@@ -183,6 +186,22 @@ public sealed class IdentityBootstrapService : IIdentityBootstrapService
         return await _dbContext.UserRoles
             .AsNoTracking()
             .AnyAsync(ur => ur.Role.Name == "SuperAdmin", cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HasSystemTenantAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Tenants
+            .AsNoTracking()
+            .AnyAsync(t => t.Id == AuthRoleNames.SystemTenantId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HasSuperAdminRoleAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Roles
+            .AsNoTracking()
+            .AnyAsync(r => r.Name == "SuperAdmin", cancellationToken);
     }
 
     /// <summary>
