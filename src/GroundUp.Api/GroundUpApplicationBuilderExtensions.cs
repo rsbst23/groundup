@@ -30,4 +30,16 @@ public static class GroundUpApplicationBuilderExtensions
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         return app;
     }
+
+    /// <summary>
+    /// Registers the BootstrapModeMiddleware that gates non-setup traffic during bootstrap.
+    /// Should be called AFTER UseRateLimiter() and BEFORE UseAuthentication().
+    /// </summary>
+    /// <param name="app">The application builder.</param>
+    /// <returns>The <see cref="IApplicationBuilder"/> for method chaining.</returns>
+    public static IApplicationBuilder UseGroundUpBootstrapMode(this IApplicationBuilder app)
+    {
+        app.UseMiddleware<BootstrapModeMiddleware>();
+        return app;
+    }
 }
