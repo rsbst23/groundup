@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace GroundUp.Api.Setup;
+namespace GroundUp.Services.Setup.Keycloak;
 
 /// <summary>
 /// Typed, named HttpClient for the one-shot Keycloak admin bootstrap call.

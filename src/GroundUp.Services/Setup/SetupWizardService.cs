@@ -1,5 +1,6 @@
 namespace GroundUp.Services.Setup;
 
+using System.Net;
 using System.Text.RegularExpressions;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Configuration;
@@ -9,15 +10,15 @@ using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
+using GroundUp.Services.Setup.Keycloak;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Orchestrates setup wizard steps. This partial implementation covers the
-/// app-identity and identity-provider steps. Remaining steps (keycloak-bootstrap,
-/// first-admin, complete, status, transaction-log, recover) will be added in
-/// subsequent tasks when their dependencies are available.
+/// Orchestrates setup wizard steps. Covers app-identity, identity-provider,
+/// and keycloak-bootstrap steps. Remaining steps (first-admin, complete, status,
+/// transaction-log, recover) will be added in subsequent tasks.
 /// </summary>
 internal sealed class SetupWizardService : ISetupWizardService
 {
@@ -30,6 +31,8 @@ internal sealed class SetupWizardService : ISetupWizardService
     private readonly IBootstrapStateService _bootstrapStateService;
     private readonly GroundUpDbContext _dbContext;
     private readonly IOptions<SetupTransactionLogOptions> _transactionLogOptions;
+    private readonly KeycloakAdminHttpClient _keycloakClient;
+    private readonly IOptions<BootstrapOptions> _bootstrapOptions;
     private readonly ILogger<SetupWizardService> _logger;
 
     public SetupWizardService(
@@ -37,12 +40,16 @@ internal sealed class SetupWizardService : ISetupWizardService
         IBootstrapStateService bootstrapStateService,
         GroundUpDbContext dbContext,
         IOptions<SetupTransactionLogOptions> transactionLogOptions,
+        KeycloakAdminHttpClient keycloakClient,
+        IOptions<BootstrapOptions> bootstrapOptions,
         ILogger<SetupWizardService> logger)
     {
         _settingsService = settingsService;
         _bootstrapStateService = bootstrapStateService;
         _dbContext = dbContext;
         _transactionLogOptions = transactionLogOptions;
+        _keycloakClient = keycloakClient;
+        _bootstrapOptions = bootstrapOptions;
         _logger = logger;
     }
 
@@ -158,11 +165,130 @@ internal sealed class SetupWizardService : ISetupWizardService
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<KeycloakBootstrapResultDto>> BootstrapKeycloakAsync(
+    public async Task<OperationResult<KeycloakBootstrapResultDto>> BootstrapKeycloakAsync(
         KeycloakBootstrapRequest request, string? operatorIp, CancellationToken ct = default)
     {
-        // Will be implemented in Task 20 when KeycloakAdminHttpClient is available
-        throw new NotImplementedException("BootstrapKeycloakAsync will be implemented in a subsequent task.");
+        // 1. Precondition checks — app-identity AND identity-provider must be completed
+        var appIdentityError = await SetupPreconditions.CheckAppIdentityAsync(_settingsService, ct);
+        if (appIdentityError is not null)
+            return OperationResult<KeycloakBootstrapResultDto>.Fail(appIdentityError, 412, "precondition_step_missing");
+
+        var idpError = await SetupPreconditions.CheckIdentityProviderAsync(_settingsService, ct);
+        if (idpError is not null)
+            return OperationResult<KeycloakBootstrapResultDto>.Fail(idpError, 412, "precondition_step_missing");
+
+        // 2. Resolve credentials from request body OR config fallback
+        var username = request.MasterAdminUsername?.Trim();
+        var password = request.MasterAdminPassword?.Trim();
+
+        if (string.IsNullOrEmpty(username))
+            username = _bootstrapOptions.Value.Keycloak.BootstrapAdminUsername;
+        if (string.IsNullOrEmpty(password))
+            password = _bootstrapOptions.Value.Keycloak.BootstrapAdminPassword;
+
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            return OperationResult<KeycloakBootstrapResultDto>.BadRequest(
+                "Keycloak master admin credentials are required for bootstrap.");
+
+        // 3. Read settings for base URL and realm
+        var baseUrlResult = await _settingsService.GetAsync<string>("auth.keycloak.public-base-url", ct);
+        var baseUrl = baseUrlResult.Data!;
+
+        var realmResult = await _settingsService.GetAsync<string>("auth.keycloak.shared-realm-name", ct);
+        var realm = realmResult.Data!;
+
+        try
+        {
+            // 4. Acquire admin token
+            var tokenResponse = await _keycloakClient.AcquireAdminTokenAsync(baseUrl, username, password, ct);
+            var accessToken = tokenResponse.AccessToken;
+
+            // 5. Check if client already exists
+            const string adminClientId = "groundup-admin-client";
+            var existingClient = await _keycloakClient.GetClientByClientIdAsync(
+                baseUrl, realm, accessToken, adminClientId, ct);
+
+            KeycloakClientRepresentation client;
+            if (existingClient is not null)
+            {
+                _logger.LogDebug("Client {ClientId} already exists in realm {Realm}; reusing", adminClientId, realm);
+                client = existingClient;
+            }
+            else
+            {
+                _logger.LogInformation("Creating service-account client {ClientId} in realm {Realm}", adminClientId, realm);
+                client = await _keycloakClient.CreateServiceAccountClientAsync(
+                    baseUrl, realm, accessToken, adminClientId, ct);
+            }
+
+            // 6. Validate and fix role mappings (idempotent — always re-check)
+            var currentRoles = await _keycloakClient.GetServiceAccountRolesAsync(
+                baseUrl, realm, accessToken, client.Id, ct);
+
+            var missingRoles = KeycloakAdminHttpClient.RequiredRealmManagementRoles
+                .Except(currentRoles, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (missingRoles.Count > 0)
+            {
+                _logger.LogInformation("Adding {Count} missing realm-management roles to {ClientId}: {Roles}",
+                    missingRoles.Count, adminClientId, string.Join(", ", missingRoles));
+                await _keycloakClient.AddServiceAccountRolesAsync(
+                    baseUrl, realm, accessToken, client.Id, missingRoles, ct);
+            }
+
+            // 7. Retrieve client secret
+            var clientSecret = await _keycloakClient.GetClientSecretAsync(
+                baseUrl, realm, accessToken, client.Id, ct);
+
+            // 8. Ensure setting definitions and persist values
+            await EnsureKeycloakBootstrapDefinitionsAsync(ct);
+
+            var systemLevelId = await GetSystemLevelIdAsync(ct);
+
+            var clientIdResult = await _settingsService.SetAsync(
+                "auth.keycloak.admin-client-id", adminClientId, systemLevelId, null, ct);
+            if (!clientIdResult.Success)
+                return OperationResult<KeycloakBootstrapResultDto>.Fail(clientIdResult.Message, clientIdResult.StatusCode);
+
+            var secretSetResult = await _settingsService.SetAsync(
+                "auth.keycloak.admin-client-secret", clientSecret, systemLevelId, null, ct);
+            if (!secretSetResult.Success)
+                return OperationResult<KeycloakBootstrapResultDto>.Fail(secretSetResult.Message, secretSetResult.StatusCode);
+
+            _logger.LogInformation("Keycloak bootstrap step completed: clientId={ClientId}", adminClientId);
+
+            return OperationResult<KeycloakBootstrapResultDto>.Ok(
+                new KeycloakBootstrapResultDto("keycloak-bootstrap", true, adminClientId));
+        }
+        catch (HttpRequestException ex) when (
+            ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _logger.LogError(ex, "Keycloak master admin credentials were rejected (HTTP {StatusCode})", (int?)ex.StatusCode);
+            return OperationResult<KeycloakBootstrapResultDto>.Fail(
+                "Keycloak master admin credentials were rejected by Keycloak.", 400, "keycloak_credentials_rejected");
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Keycloak responded with an error during bootstrap (HTTP {StatusCode})", (int?)ex.StatusCode);
+            return OperationResult<KeycloakBootstrapResultDto>.Fail(
+                "Keycloak responded with an error during bootstrap.", 502, "keycloak_error");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Unexpected error during Keycloak bootstrap");
+            return OperationResult<KeycloakBootstrapResultDto>.Fail(
+                "Keycloak responded with an error during bootstrap.", 502, "keycloak_error");
+        }
+        finally
+        {
+            // Scrub credentials from memory
+            if (password is not null)
+            {
+                var pwBytes = System.Text.Encoding.UTF8.GetBytes(password);
+                Array.Clear(pwBytes, 0, pwBytes.Length);
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -291,5 +417,36 @@ internal sealed class SetupWizardService : ISetupWizardService
             IsRequired: true,
             IsSecret: false,
             IsEncrypted: false), ct);
+    }
+
+    private async Task EnsureKeycloakBootstrapDefinitionsAsync(CancellationToken ct)
+    {
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: "auth.keycloak.admin-client-id",
+            DataType: SettingDataType.String,
+            DefaultValue: null!,
+            DisplayName: "Keycloak Admin Client ID",
+            Description: "The clientId of the Keycloak service-account client used for admin API access.",
+            Category: null,
+            GroupKey: "groundup.setup",
+            GroupDisplayName: "Setup",
+            AllowedLevelNames: new[] { "system" },
+            IsRequired: true,
+            IsSecret: false,
+            IsEncrypted: false), ct);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: "auth.keycloak.admin-client-secret",
+            DataType: SettingDataType.String,
+            DefaultValue: null!,
+            DisplayName: "Keycloak Admin Client Secret",
+            Description: "The client secret for the Keycloak service-account client. Encrypted at rest.",
+            Category: null,
+            GroupKey: "groundup.setup",
+            GroupDisplayName: "Setup",
+            AllowedLevelNames: new[] { "system" },
+            IsRequired: true,
+            IsSecret: true,
+            IsEncrypted: true), ct);
     }
 }

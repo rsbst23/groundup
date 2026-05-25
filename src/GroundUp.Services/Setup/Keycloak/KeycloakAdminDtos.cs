@@ -1,4 +1,4 @@
-namespace GroundUp.Api.Setup;
+namespace GroundUp.Services.Setup.Keycloak;
 
 /// <summary>Token response from Keycloak's token endpoint.</summary>
 public sealed record KeycloakTokenResponse(
