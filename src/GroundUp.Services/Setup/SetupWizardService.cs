@@ -487,24 +487,112 @@ internal sealed class SetupWizardService : ISetupWizardService
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<StepResultDto>> CompleteSetupAsync(CancellationToken ct = default)
+    public async Task<OperationResult<StepResultDto>> CompleteSetupAsync(CancellationToken ct = default)
     {
-        // Will be implemented in a subsequent task
-        throw new NotImplementedException("CompleteSetupAsync will be implemented in a subsequent task.");
+        // 1. Check if already complete
+        var isComplete = await _bootstrapStateService.IsCompleteAsync(ct);
+        if (isComplete)
+            return OperationResult<StepResultDto>.Fail("Setup is already complete.", 409, "conflict");
+
+        // 2. Precondition checks — all steps must pass
+        var appIdentityError = await SetupPreconditions.CheckAppIdentityAsync(_settingsService, ct);
+        if (appIdentityError is not null)
+            return OperationResult<StepResultDto>.Fail(appIdentityError, 412, "precondition_step_missing");
+
+        var idpError = await SetupPreconditions.CheckIdentityProviderAsync(_settingsService, ct);
+        if (idpError is not null)
+            return OperationResult<StepResultDto>.Fail(idpError, 412, "precondition_step_missing");
+
+        var kcError = await SetupPreconditions.CheckKeycloakBootstrapAsync(_settingsService, ct);
+        if (kcError is not null)
+            return OperationResult<StepResultDto>.Fail(kcError, 412, "precondition_step_missing");
+
+        if (!await _identityBootstrapService.HasSuperAdminAsync(ct))
+            return OperationResult<StepResultDto>.Fail(
+                "First super admin must be created before completing setup.", 412, "precondition_step_missing");
+
+        // Check for pending transaction log rows
+        var hasPending = await _dbContext.SetupTransactionLogs
+            .AnyAsync(l => l.Operation == "first-admin-create"
+                        && (l.Stage == "keycloak-pending" || l.Stage == "db-pending" || l.Stage == "failed"), ct);
+
+        if (hasPending)
+            return OperationResult<StepResultDto>.Fail(
+                "First admin creation has unresolved pending state. Call /setup/recover/{id} first.",
+                412, "precondition_step_missing");
+
+        // 3. Get the super admin user ID
+        var superAdminUserId = await _identityBootstrapService.GetSuperAdminUserIdAsync(ct);
+        if (superAdminUserId is null)
+            return OperationResult<StepResultDto>.Fail(
+                "First super admin must be created before completing setup.", 412, "precondition_step_missing");
+
+        // 4. Complete setup
+        var completeResult = await _bootstrapStateService.CompleteSetupAsync(superAdminUserId.Value, ct);
+        if (!completeResult.Success)
+            return OperationResult<StepResultDto>.Fail(completeResult.Message, 409, "conflict");
+
+        _logger.LogInformation("Setup completed by user {UserId}", superAdminUserId.Value);
+
+        // 5. Return success
+        return OperationResult<StepResultDto>.Ok(new StepResultDto("complete", true));
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<SetupStatusDto>> GetStatusAsync(CancellationToken ct = default)
+    public async Task<OperationResult<SetupStatusDto>> GetStatusAsync(CancellationToken ct = default)
     {
-        // Will be implemented in a subsequent task
-        throw new NotImplementedException("GetStatusAsync will be implemented in a subsequent task.");
+        var isComplete = await _bootstrapStateService.IsCompleteAsync(ct);
+
+        // Check each step's completion status
+        var appIdentityError = await SetupPreconditions.CheckAppIdentityAsync(_settingsService, ct);
+        var appIdentityCompleted = appIdentityError is null;
+
+        var idpError = await SetupPreconditions.CheckIdentityProviderAsync(_settingsService, ct);
+        var identityProviderCompleted = idpError is null;
+
+        var kcError = await SetupPreconditions.CheckKeycloakBootstrapAsync(_settingsService, ct);
+        var keycloakBootstrapCompleted = kcError is null;
+
+        var hasSuperAdmin = await _identityBootstrapService.HasSuperAdminAsync(ct);
+
+        // Check for pending transaction log rows
+        var pendingRow = await _dbContext.SetupTransactionLogs
+            .Where(l => l.Operation == "first-admin-create"
+                     && (l.Stage == "keycloak-pending" || l.Stage == "db-pending" || l.Stage == "failed"))
+            .OrderByDescending(l => l.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        var firstAdminCompleted = hasSuperAdmin && pendingRow is null;
+        var firstAdminPending = pendingRow is not null;
+        var firstAdminPendingTransactionLogId = pendingRow?.Id.ToString();
+
+        // Determine current step
+        var currentStep = isComplete ? "done"
+            : !appIdentityCompleted ? "app-identity"
+            : !identityProviderCompleted ? "identity-provider"
+            : !keycloakBootstrapCompleted ? "keycloak-bootstrap"
+            : !firstAdminCompleted ? "first-admin"
+            : "complete";
+
+        return OperationResult<SetupStatusDto>.Ok(new SetupStatusDto(
+            isComplete, currentStep,
+            appIdentityCompleted, identityProviderCompleted, keycloakBootstrapCompleted,
+            firstAdminCompleted, firstAdminPending, firstAdminPendingTransactionLogId));
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<IReadOnlyList<SetupTransactionLogDto>>> GetTransactionLogAsync(CancellationToken ct = default)
+    public async Task<OperationResult<IReadOnlyList<SetupTransactionLogDto>>> GetTransactionLogAsync(CancellationToken ct = default)
     {
-        // Will be implemented in a subsequent task
-        throw new NotImplementedException("GetTransactionLogAsync will be implemented in a subsequent task.");
+        var rows = await _dbContext.SetupTransactionLogs
+            .AsNoTracking()
+            .OrderByDescending(l => l.CreatedAt)
+            .Take(20)
+            .Select(l => new SetupTransactionLogDto(
+                l.Id, l.Operation, l.Stage, l.CorrelationId,
+                l.ExternalUserId, l.Email, l.ErrorMessage, l.CreatedAt))
+            .ToListAsync(ct);
+
+        return OperationResult<IReadOnlyList<SetupTransactionLogDto>>.Ok(rows);
     }
 
     /// <inheritdoc />

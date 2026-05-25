@@ -27,6 +27,12 @@ public interface IIdentityBootstrapService
     Task<bool> HasSuperAdminAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the user ID of the first user with the SuperAdmin role, or null if none exists.
+    /// Used by the setup wizard's CompleteSetupAsync to pass the completing user's ID to the bootstrap state service.
+    /// </summary>
+    Task<Guid?> GetSuperAdminUserIdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns true if the system tenant exists in the auth database.
     /// Used by the setup wizard to validate preconditions before first-admin creation.
     /// </summary>

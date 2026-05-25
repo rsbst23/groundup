@@ -189,6 +189,19 @@ public sealed class IdentityBootstrapService : IIdentityBootstrapService
     }
 
     /// <inheritdoc />
+    public async Task<Guid?> GetSuperAdminUserIdAsync(CancellationToken cancellationToken = default)
+    {
+        var userRole = await _dbContext.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.Role.Name == "SuperAdmin")
+            .OrderBy(ur => ur.UserId)
+            .Select(ur => new { ur.UserId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return userRole?.UserId;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> HasSystemTenantAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Tenants
