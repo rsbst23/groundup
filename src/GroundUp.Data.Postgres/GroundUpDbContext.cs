@@ -25,6 +25,16 @@ public abstract class GroundUpDbContext : DbContext
     protected GroundUpDbContext(DbContextOptions options) : base(options) { }
 
     /// <summary>
+    /// The singleton bootstrap state row tracking whether first-run setup is complete.
+    /// </summary>
+    public DbSet<BootstrapState> BootstrapStates => Set<BootstrapState>();
+
+    /// <summary>
+    /// Transaction log entries for the setup wizard, enabling partial-failure recovery.
+    /// </summary>
+    public DbSet<SetupTransactionLog> SetupTransactionLogs => Set<SetupTransactionLog>();
+
+    /// <summary>
     /// Configures framework conventions: UUID v7 value generation for BaseEntity.Id
     /// and global query filters for ISoftDeletable entities.
     /// Calls base.OnModelCreating first so derived context configurations register first.

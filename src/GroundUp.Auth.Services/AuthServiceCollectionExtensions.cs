@@ -1,7 +1,9 @@
 using FluentValidation;
+using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Validators;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Bootstrap;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
@@ -117,6 +119,9 @@ public static class AuthServiceCollectionExtensions
         // AuthFlowState services
         services.AddScoped<IAuthFlowStateService, AuthFlowStateService>();
         services.AddScoped<IValidator<InitiateAuthFlowRequest>, InitiateAuthFlowRequestValidator>();
+
+        // Bootstrap services
+        services.AddScoped<IIdentityBootstrapService, IdentityBootstrapService>();
 
         // Cleanup sweeper (hosted service)
         services.AddHostedService<AuthFlowStateCleanupSweeper>();

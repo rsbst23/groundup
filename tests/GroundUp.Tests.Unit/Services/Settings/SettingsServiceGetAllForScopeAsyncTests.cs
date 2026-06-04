@@ -133,7 +133,7 @@ public sealed class SettingsServiceGetAllForScopeAsyncTests : IDisposable
         // Assert
         result.Success.Should().BeTrue();
         var resolved = result.Data!.First(r => r.Definition.Key == "SecretSetting");
-        resolved.EffectiveValue.Should().Be("••••••••");
+        resolved.EffectiveValue.Should().Be("***REDACTED***");
     }
 
     public void Dispose() => _fixture.Dispose();

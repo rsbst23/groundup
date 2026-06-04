@@ -1,4 +1,5 @@
 using GroundUp.Core.Abstractions;
+using GroundUp.Core.Constants;
 using GroundUp.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -35,7 +36,9 @@ public sealed class AuditableInterceptor : SaveChangesInterceptor
 
         using var scope = _serviceProvider.CreateScope();
         var currentUser = scope.ServiceProvider.GetService<ICurrentUser>();
-        var userId = currentUser?.UserId.ToString();
+        var userId = currentUser?.UserId == BootstrapConstants.SetupSentinelUserId
+            ? BootstrapConstants.SetupWizardSentinel
+            : currentUser?.UserId.ToString();
         var utcNow = DateTime.UtcNow;
 
         foreach (var entry in eventData.Context.ChangeTracker.Entries<IAuditable>())

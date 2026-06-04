@@ -691,50 +691,169 @@ git push
 ## Phase 10: Keycloak Integration & Auth Flows
 
 ### Goal
-Integrate with Keycloak and implement all the auth flows from the existing GroundUp implementation.
+Integrate with Keycloak and implement all 7 auth flows from the existing GroundUp implementation: New Organization, Invitation, Join Link, Enterprise First Admin, Enterprise SSO Auto-Join, Multi-Tenant Selection, Token Refresh.
 
-### What to Build
+### Cross-cutting decisions for Phase 10
 
-**10.1 — Keycloak Docker setup**
-- Add Keycloak to docker-compose.yml
-- Configure default realm, client, and redirect URIs
+These decisions span all sub-phases and should be referenced when writing each spec.
 
-**10.2 — GroundUp.Authentication.Keycloak project**
-- IIdentityProviderService implementation
-- IIdentityProviderAdminService implementation
-- Realm CRUD, client management, user provisioning, token exchange
+**Multi-tenancy framing.** GroundUp is multi-tenant by default. A single-tenant app is a multi-tenant app with one tenant — typically the seeded system tenant. There is no separate code path. A deployment can run with only standard tenants, only enterprise tenants, or both.
 
-**10.3 — Auth flows**
-- Port AuthFlowService from existing codebase
-- Port AuthUrlBuilderService, EnterpriseSignupService
-- All 7 flows: New Org, Invitation, Join Link, Enterprise First Admin, Enterprise SSO Auto-Join, Multi-Tenant Selection, Token Refresh
-- Update invitation flow to use Notifications module for sending invitation emails
+**State parameter is stateful.** OAuth `state` is an opaque GUID id pointing to an `AuthFlowState` row. Provides one-shot replay protection (`ConsumedAt`), revocation visibility, audit trail, and bounded payload size. Cleaner alternative to a signed JWT state because invitations and join links already live in the DB — keeping flow context there is consistent.
 
-**10.4 — Auth controllers**
-- AuthController (callback, login, register, set-tenant, me)
-- InvitationController, JoinLinkController, TenantController
+**Notifications and BackgroundJobs are stubbed.** Phases 7 and 8 (Notifications, BackgroundJobs) were not built before Phase 10. Phase 10 ships with `IInvitationEmailSender` (default: `LoggingInvitationEmailSender`) and an `IHostedService`-based `AuthFlowState` cleanup sweeper. GU-64 tracks the future swap to Notifications + BackgroundJobs.
 
-### Manual Verification
-Follow the test scenarios from the existing "Copilot New Thread Instructions.md":
-1. Standard tenant creation + first user signup via Keycloak
-2. Invitation flow — invite a user, accept via Keycloak
-3. Enterprise tenant provisioning — create realm, first admin registers
-4. Enterprise invitation — invite into enterprise realm
-5. SSO auto-join — domain allowlist
-6. Multi-tenant selection — user with multiple memberships switches tenants
+**Keycloak is reset.** The existing `docker-compose.yml` Keycloak entry is replaced from scratch — pinned version, dedicated `keycloak` Postgres database, realm import on first boot. No data carried over.
+
+**Default tenant for single-tenant deployments.** A configurable default tenant (resolves to the system tenant if not set) makes single-tenant apps Just Work without ever showing the picker.
+
+**Application domain is a system-only setting.** `auth.application.default-domain` is seeded at the system level. Tenant-specific routing uses `Tenant.Slug` as a subdomain — no cascading needed. The unused `Tenant.CustomDomain` column from Phase 9 is dropped in the 10a migration since enterprise customers wanting their own registrable domain self-deploy a single-tenant instance instead of being served from the shared deployment.
+
+**Login behavior by host (CRITICAL).** If `IHostTenantResolver` returns a tenant, the auth flow is **locked to that tenant** — skip the multi-tenant picker, skip auto-select, skip multi-tenant logic.
+
+| Host | Realm | Picker shown? |
+|---|---|---|
+| `sampleapp.com` (no resolved tenant) | General realm | Yes if user has 2+ memberships; auto-select if 1; deny if 0 |
+| `acme.sampleapp.com` (standard tenant on subdomain) | General realm, flow pinned to acme | No. Non-member of acme is denied. |
+| `bigco.sampleapp.com` (enterprise tenant on subdomain) | `Tenant.RealmName` | No. Single tenant context by definition. |
+
+**Authentication state across hosts.** The shared GroundUp deployment serves all tenants under subdomains of a single registrable domain (the configured `auth.application.default-domain`). The cookie writer derives the cookie's `Domain` attribute from that setting — when configured, cookies are scoped to `.{default-domain}` so they share across all tenant subdomains; when empty (single-host single-tenant deployment), cookies are host-only. Cross-registrable-domain handoff is **explicitly out of scope**: enterprise customers who want their own registrable domain self-deploy a single-tenant instance instead of being served from the shared deployment.
+
+**`auth.roles.assign-system` lives in `IUserRoleService`.** All role-assignment writes — including via invitations and join links — route through this single service. No bypassing.
+
+**Settings are operational source of truth; secrets are encrypted in the DB.** GroundUp follows a WordPress-style "configure from the UI" model. The only file/env config is the irreducible bootstrap: database connection string, master encryption key, and a one-time bootstrap admin token. Everything else lives in the settings table. Sensitive settings (`IsSecret=true`) are AES-GCM encrypted at rest using the master key. An optional `ISecretResolver` interface routes `secretref://` values through Azure Key Vault, AWS Secrets Manager, or HSM (no implementations ship in Phase 10). The substrate lands in 10ab; 10b is the first phase that uses it for an actual sensitive value (the Keycloak admin client secret).
+
+**First-run setup wizard.** When `BootstrapState.IsComplete=false`, all routes redirect to `/setup/*` and a one-time bootstrap admin token is the only authentication mechanism. Wizard steps capture app identity, identity-provider URLs, and Keycloak admin bootstrap (Path B: master admin creds passed once, used to provision a service-account client, never persisted), then create the first super admin and exit setup mode. Cannot be re-entered without database manipulation.
+
+### Sub-phase breakdown
+
+Phase 10 is split into six sub-phases with separate specs and PRs. Each sub-phase ships independently and keeps PRs at ~10–15 files. Tracked in Jira under epic GU-9.
+
+| Sub-phase | Title | Jira |
+|---|---|---|
+| 10a | Keycloak infra, IdP admin contract, AuthFlowState | GU-37 |
+| 10ab | Initial Setup & Secrets Foundation | GU-70 |
+| 10b | `GroundUp.Auth.Keycloak` provider implementation | GU-38 |
+| 10c | Auth dispatcher, host resolver, cookie writer, basic flows | GU-67 |
+| 10d | Invitations, Join Links, `IUserRoleService` | GU-68 |
+| 10e | Enterprise flows: realm provisioning, first admin, SSO auto-join | GU-69 |
+
+#### Phase 10a — Keycloak infra, IdP admin contract, AuthFlowState (GU-37)
+
+Foundation. No flow logic yet.
+
+- Replace `docker-compose.yml` Keycloak entry: pin version (target 26.x), add a dedicated `keycloak` Postgres database, mount `keycloak/realm.json` import on first boot with default `groundup` realm, client, and redirect URIs.
+- Add `IIdentityProviderAdminService` interface to `GroundUp.Auth.Services` (realm CRUD, client management, user provisioning). Interface only.
+- Add `AuthFlowState` entity, EF configuration, repository, service interface across `GroundUp.Auth.*` (Core / Data.Abstractions / Repositories / Data.Postgres / Services). Captures FlowType, optional TenantId/InvitationId/JoinLinkId, ReturnUrl, Realm, Nonce, Status (Pending/Consumed/Expired/Failed), CreatedByIp, CreatedByUserAgent, FailureReason. 15-min default expiry, replay-protection via `ConsumedAt`.
+- Add `IAuthCookieWriter` abstraction in `GroundUp.Auth.Services` (deferred from Phase 9). Interface only. Cookie writer derives the cookie's `Domain` attribute from `auth.application.default-domain` (no separate config knob).
+- Add system-only setting `auth.application.default-domain` to `DefaultAuthSettingsSeeder`.
+- Drop the unused `Tenant.CustomDomain` column as part of the 10a migration.
+- `IHostedService`-based `AuthFlowState` cleanup sweeper. Migrates to BackgroundJobs in Phase 8 / GU-64.
+
+Verification: Keycloak starts via Docker with realm imported, all interfaces compile, `AuthFlowState` round-trips through repository integration tests, cleanup sweeper deletes expired Pending rows.
+
+#### Phase 10ab — Initial Setup & Secrets Foundation (GU-70)
+
+Bridges 10a and 10b. Lands the secret-management substrate, master-key abstraction, encrypted-at-rest settings, and the WordPress-style first-run setup wizard. Required before 10b ships any sensitive configuration.
+
+- `IMasterKeyProvider` abstraction with default implementation auto-detecting from `GroundUp:MasterKeyPath` (file) → `GroundUp:MasterKey` (env) → fail-fast at startup. 256-bit minimum, validated at boot.
+- `IsSecret` column on the settings value table. `ISettingsService` transparently AES-GCM encrypts on save, decrypts on load. Encrypted form is `aes-gcm-v1:{nonce}:{ciphertext}:{tag}` for future rotation.
+- API endpoints return redacted markers for secret settings — never plaintext. Plaintext access is service-layer-internal.
+- `ISecretResolver` interface for Azure Key Vault / AWS Secrets Manager / HSM routing via `secretref://` prefix. No implementations in 10ab.
+- `BootstrapState` entity (singleton row). Bootstrap-mode middleware redirects all non-setup routes to `/setup/*` until setup completes.
+- Setup wizard with one-time bootstrap admin token: app identity → identity-provider URLs → Keycloak realm bootstrap (Path B auto-provision) → first super admin. Master admin creds never persist. Token rejected after completion.
+- Configuration schema: `GroundUp:DatabaseConnection`, `GroundUp:MasterKey`/`MasterKeyPath`, `GroundUp:BootstrapAdminToken`, optional `GroundUp:Keycloak:BootstrapAdminUsername`/`Password`.
+
+Verification: app refuses to start without a valid master key; settings round-trip through encryption verified by direct DB inspection; bootstrap-mode middleware blocks all non-setup routes; setup wizard provisions Keycloak admin client and stores credentials encrypted; bootstrap token rejected after completion.
+
+#### Phase 10b — `GroundUp.Auth.Keycloak` provider (GU-38)
+
+Implement both identity-provider interfaces. Self-contained — no flow logic. **Depends on 10ab** (KeycloakOptions reads sensitive values from `IsSecret` settings).
+
+- New project `GroundUp.Auth.Keycloak` (referenced from Sample app, NOT from `GroundUp.Auth.Services`).
+- Implement `IIdentityProviderService`: code-for-token exchange, token validation, userinfo. HttpClient with Polly retries.
+- Implement `IIdentityProviderAdminService`: admin token via the realm-management client (provisioned during 10ab setup), realm CRUD, client CRUD, user provisioning, role extraction from `resource_access` claims.
+- `KeycloakOptions` resolved entirely from settings (NOT `appsettings.json`): public-base-url, shared-realm-name, internal-base-url, admin-client-id, admin-client-secret (`IsSecret=true`).
+- `KeycloakAdminLinkBuilder` service returning realm-specific deep-link URLs. Hard-coded URL pattern.
+- `AddGroundUpAuthKeycloak()` extension method.
+- Integration tests against a Testcontainers Keycloak instance.
+
+Verification: code-for-token exchange works against a running Keycloak; realm CRUD round-trips; user provisioning creates a Keycloak user with correct attributes; role extraction reads `resource_access` correctly; admin link builder returns correct URLs for shared and per-tenant realms.
+
+#### Phase 10c — Auth dispatcher, host resolver, cookie writer, basic flows (GU-67)
+
+First user-facing slice. Three of the seven flows go end-to-end.
+
+- `IAuthCookieWriter` implementation honoring `AuthOptions.CookieName/Secure/SameSite` and deriving the cookie's `Domain` attribute from `auth.application.default-domain` (parent-domain cookie when set, host-only when empty).
+- `IHostTenantResolver` interface + `HostTenantResolver` implementation in `GroundUp.Auth.Api`. Resolution: incoming Host → if matches `*.{auth.application.default-domain}` strip subdomain and look up by `Tenant.Slug`; otherwise no tenant (general app or unknown host).
+- Pre-auth tenant resolution middleware so generic controllers can know the tenant context for non-flow paths.
+- `AuthUrlBuilderService` — builds Keycloak authorize URLs with `state` referencing `AuthFlowState` rows.
+- `AuthFlowService` — initiates flows (creates `AuthFlowState` rows) and dispatches callbacks based on `FlowType`. Reads host-resolved tenant; if a tenant is resolved, the flow is pinned to it (no picker, no auto-select).
+- Flow handlers: New Organization, Multi-Tenant Selection, Token Refresh.
+- Cross-subdomain authentication state via parent-domain cookie. (Cross-registrable-domain handoff is out of scope — enterprise customers wanting their own registrable domain self-deploy a single-tenant instance.)
+- `AuthController` endpoints: `GET /auth/login`, `GET /auth/register`, `GET /auth/callback`, `GET /auth/me`, `POST /auth/set-tenant`, `POST /auth/refresh`, `POST /auth/logout`.
+- Sliding refresh: token reissued and cookie rewritten when past halfway point of lifetime.
+- Sample app wiring (minimum: JSON endpoints; HTML/SPA decided collaboratively when this lands).
+
+Verification: new-org flow end-to-end; multi-tenant picker shown only on the general app; standard subdomain pins flow and denies non-members; cross-subdomain cookie sharing works on the same registrable domain; replay attack on consumed `AuthFlowState` returns 410.
+
+#### Phase 10d — Invitations, Join Links, `IUserRoleService` (GU-68)
+
+Adds two more flows. Brings `TenantInvitation` and `TenantJoinLink` into existence (carried over from Phase 9 scope).
+
+- Entities: `TenantInvitation` (Pending/Accepted/Expired/Revoked, expiry, role assignment, invited email, token, audit, soft-delete) and `TenantJoinLink` (token, status, optional expiry, optional max uses, role assignment, audit, soft-delete).
+- EF configurations, migrations, repositories.
+- `IInvitationService`, `IJoinLinkService` in `GroundUp.Auth.Services`. Membership creation and role assignment on acceptance.
+- `IUserRoleService` (lean) — encapsulates role-assignment writes, enforces `auth.roles.assign-system`. Invitation/join-link acceptance routes through this service.
+- `IInvitationEmailSender` interface with default `LoggingInvitationEmailSender` implementation. Future swap to Notifications module tracked by GU-64.
+- Flow handlers: Invitation, Join Link.
+- Controllers: `InvitationController`, `JoinLinkController`.
+
+Verification: invitation acceptance creates membership with correct role; revoked or expired invitations/links return 410; non-SuperAdmin cannot assign SuperAdmin via any path; invitation email-match enforced.
+
+#### Phase 10e — Enterprise flows: realm provisioning, first admin, SSO auto-join (GU-69)
+
+Riskiest sub-phase. Closes out all 7 flows.
+
+- `EnterpriseSignupService` orchestrates: enterprise tenant creation, Keycloak realm creation, client configuration, optional default identity provider/SSO config.
+- First-admin guard: realm registration disabled after first admin signs up. Idempotent — second attempt returns 409.
+- SSO auto-join: enterprise realm callback → auto-create `UserTenant` membership with the tenant's configured default role. The realm itself is the access boundary; the realm admin controls who can authenticate (via federated IdP, manual provisioning). No email-domain allowlist needed.
+- Flow handlers: Enterprise First Admin, Enterprise SSO Auto-Join.
+- Tenant default-role configuration (likely `Tenant.DefaultRoleId`).
+- Login on enterprise tenant subdomain hits `Tenant.RealmName`, never the general realm. No picker shown.
+- Sample app demo wiring (revisited collaboratively).
+- Full integration test sweep across all 7 flows.
+
+Verification: enterprise tenant provisioning creates a working Keycloak realm + client; first-admin guard blocks second attempt; first-time SSO login auto-joins the user with the tenant's default role; subsequent logins do not create duplicate memberships.
+
+### Manual Verification (full suite, validated in 10e)
+1. Standard tenant creation + first user signup via Keycloak (10c)
+2. Invitation flow — invite a user, accept via Keycloak (10d)
+3. Join link flow — share a link, accept via Keycloak (10d)
+4. Enterprise tenant provisioning — create realm, first admin registers (10e)
+5. Enterprise invitation — invite into enterprise realm (10d + 10e)
+6. SSO auto-join — first-time login against enterprise realm auto-creates membership with tenant's default role (10e)
+7. Multi-tenant selection — user with multiple memberships switches tenants on the general app (10c)
+8. Token refresh — sliding expiration at halfway point (10c)
+9. Standard tenant subdomain — login pinned to tenant, no picker even when user has multiple memberships (10c)
+10. Cross-subdomain authentication — login on `acme.sampleapp.com` and access at `sampleapp.com` (parent-domain cookie travels naturally between subdomains of the configured app domain). (10c)
 
 ### Success Criteria
-- [ ] Keycloak starts via Docker and is reachable
+- [ ] Keycloak starts via Docker against pinned version with realm imported
 - [ ] All 7 auth flows work end-to-end
-- [ ] Invitation emails sent via Notifications module
+- [ ] Login behavior matches the host-based table above (general app, standard subdomain, enterprise subdomain)
+- [ ] `IHostTenantResolver` correctly resolves subdomain → `Tenant.Slug`; unknown host → no tenant
+- [ ] `AuthFlowState` rows are one-shot (consumed rows reject replay with 410)
+- [ ] Invitation emails go through `IInvitationEmailSender` stub (logging-only); GU-64 tracks the swap to Notifications
 - [ ] Tokens issued correctly with tenant/user claims
 - [ ] Cookie-based and header-based auth both work
+- [ ] Cross-subdomain cookie sharing works (parent-domain cookie travels between subdomains of the configured app domain)
+- [ ] `auth.roles.assign-system` enforced through `IUserRoleService` for every role-assignment path
 
 ### Commit
+Each sub-phase ships its own PR. The umbrella commit message after all five merge:
 ```powershell
-git add -A
-git commit -m "Phase 10: Keycloak integration and auth flows"
-git push
+git commit -m "Phase 10: Keycloak integration and auth flows (10a–10e)"
 ```
 
 ---

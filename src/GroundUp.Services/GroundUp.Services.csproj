@@ -14,12 +14,17 @@
     <PackageReference Include="FluentValidation" Version="11.*" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.*" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
+    <ProjectReference Include="..\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
     <ProjectReference Include="..\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
     <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
