@@ -43,59 +43,59 @@ This plan implements the encryption substrate, bootstrap state machine, and firs
     - Add `DbSet<BootstrapState>` and `DbSet<SetupTransactionLog>` properties
     - _Requirements: 5.7_
 
-- [ ] 3. EF migration
-  - [ ] 3.1 Create migration `AddBootstrapStateAndSetupTransactionLog`
+- [x] 3. EF migration
+  - [x] 3.1 Create migration `AddBootstrapStateAndSetupTransactionLog`
     - Create both tables, seed singleton BootstrapState row with `IsComplete=false`
     - _Requirements: 5.3, 5.8, 13.2_
 
-- [ ] 4. AesGcmSettingEncryptionProvider implementation
-  - [ ] 4.1 Create `AesGcmSettingEncryptionProvider` in `GroundUp.Services/Security/`
+- [x] 4. AesGcmSettingEncryptionProvider implementation
+  - [x] 4.1 Create `AesGcmSettingEncryptionProvider` in `GroundUp.Services/Security/`
     - Implement `ISettingEncryptionProvider.Encrypt` with fresh 12-byte nonce, AES-256-GCM, self-describing format
     - Implement `ISettingEncryptionProvider.Decrypt` with prefix validation, base64 parsing, auth-tag verification
     - Throw `ArgumentException` on null/empty/whitespace input for both methods
     - Throw `EncryptionException` on unsupported prefix, malformed format, or tag failure
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-- [ ] 5. EnvironmentFileMasterKeyProvider implementation
-  - [ ] 5.1 Create `EnvironmentFileMasterKeyProvider` in `GroundUp.Services/Security/`
+- [x] 5. EnvironmentFileMasterKeyProvider implementation
+  - [x] 5.1 Create `EnvironmentFileMasterKeyProvider` in `GroundUp.Services/Security/`
     - File-first priority resolution with double-checked locking cache
     - Validate: file exists, non-empty, valid base64, decoded >= 32 bytes
     - Log warning when both sources configured; log warning on Unix permissive file mode
     - Throw `InvalidOperationException` with descriptive messages for each failure case
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12_
 
-- [ ] 6. SettingsService updates
-  - [ ] 6.1 Update `SettingsService` to short-circuit null/empty/whitespace before encryption
+- [x] 6. SettingsService updates
+  - [x] 6.1 Update `SettingsService` to short-circuit null/empty/whitespace before encryption
     - On `SetAsync`: persist null without calling `Encrypt` when value is null/empty/whitespace
     - On `GetAsync`: return default-value fallback without calling `Decrypt` when stored value is null/empty/whitespace
     - _Requirements: 3.1, 3.2, 3.3, 3.4_
-  - [ ] 6.2 Update `SettingsService` to integrate `ISettingEncryptionProvider` for `IsEncrypted=true` settings
+  - [x] 6.2 Update `SettingsService` to integrate `ISettingEncryptionProvider` for `IsEncrypted=true` settings
     - Encrypt on write, decrypt on read; fail with clear error if provider not registered
     - _Requirements: 3.5, 3.6, 3.9, 3.10_
-  - [ ] 6.3 Update `SettingsService` to integrate `ISecretResolver` for `secretref://` values
+  - [x] 6.3 Update `SettingsService` to integrate `ISecretResolver` for `secretref://` values
     - Single-pass resolution on read paths only; literal pass-through when no resolver registered
     - _Requirements: 4.2, 4.3, 4.4, 4.6, 4.7, 4.8_
-  - [ ] 6.4 Update `SecretMask` constant from `"••••••••"` to `"***REDACTED***"`
+  - [x] 6.4 Update `SecretMask` constant from `"••••••••"` to `"***REDACTED***"`
     - Update any Phase 6 unit tests asserting on the old mask value
     - _Requirements: 3.7_
 
-- [ ] 7. BootstrapStateService implementation
-  - [ ] 7.1 Create `BootstrapStateService` in `GroundUp.Services/Bootstrap/`
+- [x] 7. BootstrapStateService implementation
+  - [x] 7.1 Create `BootstrapStateService` in `GroundUp.Services/Bootstrap/`
     - `IsCompleteAsync`: IMemoryCache with 60s TTL, read from DB on miss, throw if row missing
     - `CompleteSetupAsync`: update row, xmin concurrency check, invalidate cache on success
     - `InvalidateCache`: evict cache key
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 8. SetupCurrentUser and AuditableInterceptor adjustment
-  - [ ] 8.1 Create `SetupCurrentUser` in `GroundUp.Services/Bootstrap/`
+- [x] 8. SetupCurrentUser and AuditableInterceptor adjustment
+  - [x] 8.1 Create `SetupCurrentUser` in `GroundUp.Services/Bootstrap/`
     - Implement `ICurrentUser` with sentinel Guid and `"setup-wizard"` display name
     - _Requirements: Cross-Cutting 8_
-  - [ ] 8.2 Update `AuditableInterceptor` to recognize `SetupCurrentUser.SetupSentinelUserId`
+  - [x] 8.2 Update `AuditableInterceptor` to recognize `SetupCurrentUser.SetupSentinelUserId`
     - Write literal `"setup-wizard"` string to `CreatedBy`/`UpdatedBy` when sentinel Guid detected
     - _Requirements: Cross-Cutting 8_
 
-- [ ] 9. BootstrapModeMiddleware
-  - [ ] 9.1 Create `BootstrapModeMiddleware` in `GroundUp.Api/Middleware/`
+- [x] 9. BootstrapModeMiddleware
+  - [x] 9.1 Create `BootstrapModeMiddleware` in `GroundUp.Api/Middleware/`
     - Check `IBootstrapStateService.IsCompleteAsync`; pass through if complete
     - Allowed-path matching with `StartsWithSegments` (segment-aware, case-insensitive)
     - JSON clients get 503 (`setup_required`); others get 302 redirect to `/setup`
@@ -103,91 +103,91 @@ This plan implements the encryption substrate, bootstrap state machine, and firs
     - Log first setup-mode observation at Information; subsequent at Debug
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 5.4, 5.10_
 
-- [ ] 10. BootstrapAdminTokenAuthenticationHandler
-  - [ ] 10.1 Create `BootstrapAdminTokenAuthenticationHandler` in `GroundUp.Api/Authentication/`
+- [x] 10. BootstrapAdminTokenAuthenticationHandler
+  - [x] 10.1 Create `BootstrapAdminTokenAuthenticationHandler` in `GroundUp.Api/Authentication/`
     - Validate Bearer token with constant-time comparison (`CryptographicOperations.FixedTimeEquals`)
     - Reject all requests when `IsCompleteAsync=true`
     - Fail with descriptive reasons for missing header, invalid token, unconfigured token
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.8, 8.9_
 
-- [ ] 11. Startup hosted services
-  - [ ] 11.1 Create `MigrationStartupHostedService` in `GroundUp.Services/Bootstrap/`
+- [x] 11. Startup hosted services
+  - [x] 11.1 Create `MigrationStartupHostedService` in `GroundUp.Services/Bootstrap/`
     - Run `dbContext.Database.MigrateAsync` during `StartAsync`
     - _Requirements: 5.9_
-  - [ ] 11.2 Create `BootstrapTokenStartupValidator` in `GroundUp.Services/Bootstrap/`
+  - [x] 11.2 Create `BootstrapTokenStartupValidator` in `GroundUp.Services/Bootstrap/`
     - Check `IsCompleteAsync`; if incomplete, throw if `BootstrapAdminToken` not configured
     - _Requirements: 8.6, 8.7, 8.9_
 
-- [ ] 12. Options validators
-  - [ ] 12.1 Create `BootstrapOptionsValidator` in `GroundUp.Services/Configuration/`
+- [x] 12. Options validators
+  - [x] 12.1 Create `BootstrapOptionsValidator` in `GroundUp.Services/Configuration/`
     - Validate `DatabaseConnection` required, at least one master key source, token min 32 chars if present
     - _Requirements: 18.1, 18.2, 8.7_
-  - [ ] 12.2 Create `SetupOptionsValidator` in `GroundUp.Services/Configuration/`
+  - [x] 12.2 Create `SetupOptionsValidator` in `GroundUp.Services/Configuration/`
     - Clamp `MaxRequestBodyBytes` to 4096-byte floor
     - _Requirements: 18.5_
 
-- [ ] 13. Setup DTOs
-  - [ ] 13.1 Create request DTOs in `GroundUp.Core/Dtos/Setup/`
+- [x] 13. Setup DTOs
+  - [x] 13.1 Create request DTOs in `GroundUp.Core/Dtos/Setup/`
     - `SetAppIdentityRequest`, `SetIdentityProviderRequest`, `KeycloakBootstrapRequest`, `CreateFirstAdminRequest`
     - _Requirements: 9.1, 10.1, 11.1, 12.1_
-  - [ ] 13.2 Create response DTOs in `GroundUp.Core/Dtos/Setup/`
+  - [x] 13.2 Create response DTOs in `GroundUp.Core/Dtos/Setup/`
     - `StepResultDto`, `KeycloakBootstrapResultDto`, `FirstAdminResultDto`, `RecoverResultDto`, `SetupTransactionLogDto`, `SetupStatusDto`
     - _Requirements: 9.9, 10.11, 11.17, 12.22, 13.3, 15.3_
 
-- [ ] 14. Checkpoint — Ensure all tests pass
+- [x] 14. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 15. IIdentityBootstrapService interface and DTOs (auth module)
-  - [ ] 15.1 Create `IIdentityBootstrapService` interface in `GroundUp.Auth.Services/Bootstrap/`
+- [x] 15. IIdentityBootstrapService interface and DTOs (auth module)
+  - [x] 15.1 Create `IIdentityBootstrapService` interface in `GroundUp.Auth.Services/Bootstrap/`
     - `ProvisionFirstSuperAdminAsync` and `HasSuperAdminAsync` methods
     - _Requirements: 12.23_
-  - [ ] 15.2 Create `ProvisionFirstSuperAdminRequest` record in `GroundUp.Auth.Services/Bootstrap/`
+  - [x] 15.2 Create `ProvisionFirstSuperAdminRequest` record in `GroundUp.Auth.Services/Bootstrap/`
     - Properties: `Email`, `DisplayName`, `ExternalUserId`, `TenantId`
     - _Requirements: 12.23_
-  - [ ] 15.3 Create `BootstrapAdminResultDto` record in `GroundUp.Auth.Services/Bootstrap/`
+  - [x] 15.3 Create `BootstrapAdminResultDto` record in `GroundUp.Auth.Services/Bootstrap/`
     - Properties: `UserId`, `Email`, `AlreadyExisted`
     - _Requirements: 12.23_
 
-- [ ] 16. IdentityBootstrapService implementation
-  - [ ] 16.1 Create `IdentityBootstrapService` in `GroundUp.Auth.Services/Bootstrap/`
+- [x] 16. IdentityBootstrapService implementation
+  - [x] 16.1 Create `IdentityBootstrapService` in `GroundUp.Auth.Services/Bootstrap/`
     - Implement `ProvisionFirstSuperAdminAsync` with single transaction, explicit existence checks
     - User + UserTenant + SuperAdmin role assignment; idempotent retry support
     - Translate unique-violation to Conflict result; conflict on attribute mismatch
     - Implement `HasSuperAdminAsync` query
     - _Requirements: 12.21, 12.23, 12.24, 12.26_
-  - [ ] 16.2 Register `IdentityBootstrapService` in auth module's `AddGroundUpAuth()` extension
+  - [x] 16.2 Register `IdentityBootstrapService` in auth module's `AddGroundUpAuth()` extension
     - Scoped registration of `IIdentityBootstrapService`
     - _Requirements: 12.23_
 
-- [ ] 17. KeycloakAdminHttpClient (typed HTTP client)
-  - [ ] 17.1 Create `KeycloakAdminHttpClient` in `GroundUp.Api/Setup/`
+- [x] 17. KeycloakAdminHttpClient (typed HTTP client)
+  - [x] 17.1 Create `KeycloakAdminHttpClient` in `GroundUp.Api/Setup/`
     - Methods: `AcquireAdminTokenAsync`, `GetExistingClientAsync`, `CreateAdminClientAsync`
     - Methods: `GetServiceAccountRoleNamesAsync`, `AddServiceAccountRolesAsync`, `GetClientSecretAsync`
     - Static `RequiredRealmManagementRoles` array
     - _Requirements: 11.7, 11.12, 11.13_
-  - [ ] 17.2 Create supporting DTOs for Keycloak responses in `GroundUp.Api/Setup/`
+  - [x] 17.2 Create supporting DTOs for Keycloak responses in `GroundUp.Api/Setup/`
     - `KeycloakAdminTokenResponse`, `KeycloakClientLookupResult`, `KeycloakClientCreateResult`
     - _Requirements: 11.7_
 
-- [ ] 18. ISetupWizardService interface
-  - [ ] 18.1 Create `ISetupWizardService` interface in `GroundUp.Services/Setup/`
+- [x] 18. ISetupWizardService interface
+  - [x] 18.1 Create `ISetupWizardService` interface in `GroundUp.Services/Setup/`
     - All wizard method signatures: `GetStatusAsync`, `SetAppIdentityAsync`, `SetIdentityProviderAsync`, `BootstrapKeycloakAsync`, `CreateFirstAdminAsync`, `CompleteSetupAsync`, `GetTransactionLogAsync`, `RecoverAsync`
     - _Requirements: 9, 10, 11, 12, 13, 14, 15_
-  - [ ] 18.2 Create `SetupPreconditions` static helper in `GroundUp.Services/Setup/`
+  - [x] 18.2 Create `SetupPreconditions` static helper in `GroundUp.Services/Setup/`
     - Shared precondition checks for step ordering enforcement
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 19. SetupWizardService — app-identity + identity-provider steps
-  - [ ] 19.1 Create `SetupWizardService` class in `GroundUp.Services/Setup/` (partial — app-identity step)
+- [x] 19. SetupWizardService — app-identity + identity-provider steps
+  - [x] 19.1 Create `SetupWizardService` class in `GroundUp.Services/Setup/` (partial — app-identity step)
     - `SetAppIdentityAsync`: trim, validate, `EnsureDefinitionAsync`, `SetAsync` for both keys
     - _Requirements: 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 17.1_
-  - [ ] 19.2 Implement `SetIdentityProviderAsync` in `SetupWizardService`
+  - [x] 19.2 Implement `SetIdentityProviderAsync` in `SetupWizardService`
     - Trim, validate URLs via `Uri.TryCreate`, default `internalBaseUrl` to `publicBaseUrl` when empty
     - `EnsureDefinitionAsync` + `SetAsync` for three keys; precondition check
     - _Requirements: 10.1, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 10.10, 10.11, 16.1, 17.2_
 
-- [ ] 20. SetupWizardService — keycloak-bootstrap step
-  - [ ] 20.1 Implement `BootstrapKeycloakAsync` in `SetupWizardService`
+- [x] 20. SetupWizardService — keycloak-bootstrap step
+  - [x] 20.1 Implement `BootstrapKeycloakAsync` in `SetupWizardService`
     - Precondition checks (app-identity + identity-provider completed)
     - Resolve credentials from request body or config fallback
     - Call `KeycloakAdminHttpClient` methods: acquire token, get/create client, validate roles, get secret
@@ -195,221 +195,221 @@ This plan implements the encryption substrate, bootstrap state machine, and firs
     - Scrub credentials in `finally` block
     - _Requirements: 11.1–11.17, 16.2, 17.3_
 
-- [ ] 21. SetupWizardService — first-admin step + transaction log rotation
-  - [ ] 21.1 Implement `CreateFirstAdminAsync` in `SetupWizardService`
+- [x] 21. SetupWizardService — first-admin step + transaction log rotation
+  - [x] 21.1 Implement `CreateFirstAdminAsync` in `SetupWizardService`
     - Precondition checks (all prior steps completed, system tenant + SuperAdmin role exist)
     - Input validation: email RFC-5322, displayName, password complexity (Lu/Ll/Nd/non-alnum)
     - Idempotency check via `IIdentityBootstrapService.HasSuperAdminAsync`
     - Transaction log: insert `keycloak-pending` → call `IIdentityProviderAdminService.ProvisionUserAsync` → update `db-pending` → call `IIdentityBootstrapService.ProvisionFirstSuperAdminAsync` → update `completed`
     - _Requirements: 12.1–12.26, 16.3_
-  - [ ] 21.2 Implement `InsertWithRotationAsync` private helper
+  - [x] 21.2 Implement `InsertWithRotationAsync` private helper
     - Bounded rotation respecting `MaxRowCount`; skip pending-stage rows; warn when all candidates are pending
     - _Requirements: 13.10_
-  - [ ] 21.3 Implement `RecoverAsync` in `SetupWizardService`
+  - [x] 21.3 Implement `RecoverAsync` in `SetupWizardService`
     - Handle `db-pending` recovery via `IIdentityBootstrapService`; reject `completed` and `keycloak-pending`
     - _Requirements: 13.4, 13.5, 13.6, 13.7, 13.8_
 
-- [ ] 22. SetupWizardService — complete step + status + GET /setup landing
-  - [ ] 22.1 Implement `CompleteSetupAsync` in `SetupWizardService`
+- [x] 22. SetupWizardService — complete step + status + GET /setup landing
+  - [x] 22.1 Implement `CompleteSetupAsync` in `SetupWizardService`
     - Precondition checks (all steps completed); call `IBootstrapStateService.CompleteSetupAsync`
     - _Requirements: 14.1–14.8, 16.4_
-  - [ ] 22.2 Implement `GetStatusAsync` in `SetupWizardService`
+  - [x] 22.2 Implement `GetStatusAsync` in `SetupWizardService`
     - Compute all flags, `currentStep`, `firstAdminPending` detection
     - _Requirements: 15.1–15.9_
-  - [ ] 22.3 Implement `GetTransactionLogAsync` in `SetupWizardService`
+  - [x] 22.3 Implement `GetTransactionLogAsync` in `SetupWizardService`
     - Return most recent 20 rows ordered by `CreatedAt DESC`
     - _Requirements: 13.3_
 
-- [ ] 23. Checkpoint — Ensure all tests pass
+- [x] 23. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 24. SetupController
-  - [ ] 24.1 Create `SetupController` in `GroundUp.Api/Controllers/Setup/`
+- [x] 24. SetupController
+  - [x] 24.1 Create `SetupController` in `GroundUp.Api/Controllers/Setup/`
     - All endpoints: `GetSetupLanding`, `GetStatus`, `SetAppIdentity`, `SetIdentityProvider`, `BootstrapKeycloak`, `CreateFirstAdmin`, `CompleteSetup`, `GetTransactionLog`, `Recover`
     - Thin HTTP adapter mapping `OperationResult` to `IActionResult`
     - `[Authorize(AuthenticationSchemes = BootstrapAdminTokenAuthenticationHandler.SchemeName)]` on protected endpoints
     - `[AllowAnonymous]` on `GET /setup` landing
     - _Requirements: 9.1, 10.1, 11.1, 12.1, 13.3, 13.4, 14.1, 15.1_
 
-- [ ] 25. Rate limiting + body size filter
-  - [ ] 25.1 Create `SetupBodySizeFilter` in `GroundUp.Api/Setup/`
+- [x] 25. Rate limiting + body size filter
+  - [x] 25.1 Create `SetupBodySizeFilter` in `GroundUp.Api/Setup/`
     - Endpoint filter checking `ContentLength` against `SetupOptions.MaxRequestBodyBytes`
     - Return 413 with `payload_too_large` error shape
     - _Requirements: 18.5_
-  - [ ] 25.2 Configure rate limiter policy `SetupRateLimit` in `AddGroundUpSetup()`
+  - [x] 25.2 Configure rate limiter policy `SetupRateLimit` in `AddGroundUpSetup()`
     - Fixed-window per IP; bypass loopback in Development; disabled when `IsComplete=true`
     - 429 response with `Retry-After` header and `rate_limited` error shape
     - _Requirements: 18.4_
 
-- [ ] 26. Health checks
-  - [ ] 26.1 Create `MasterKeyHealthCheck` in `GroundUp.Api/HealthChecks/`
+- [x] 26. Health checks
+  - [x] 26.1 Create `MasterKeyHealthCheck` in `GroundUp.Api/HealthChecks/`
     - Verify `IMasterKeyProvider.GetKey()` succeeds and returns >= 32 bytes
     - _Requirements: 7.7_
-  - [ ] 26.2 Create `BootstrapStateAwareHealthCheck` in `GroundUp.Api/HealthChecks/`
+  - [x] 26.2 Create `BootstrapStateAwareHealthCheck` in `GroundUp.Api/HealthChecks/`
     - Wrapper that returns Healthy in setup mode without executing inner check
     - _Requirements: 7.7_
-  - [ ] 26.3 Create `AddGroundUpHealthChecks()` extension in `GroundUp.Api/`
+  - [x] 26.3 Create `AddGroundUpHealthChecks()` extension in `GroundUp.Api/`
     - Register `MasterKeyHealthCheck` and `DbContextCheck`; custom `/ready` response writer with `setupMode` flag
     - _Requirements: 7.7_
 
-- [ ] 27. Module registration extensions
-  - [ ] 27.1 Create `AddGroundUpBootstrap()` extension in `GroundUp.Services/`
+- [x] 27. Module registration extensions
+  - [x] 27.1 Create `AddGroundUpBootstrap()` extension in `GroundUp.Services/`
     - Register: `IMasterKeyProvider`, `IBootstrapStateService`, `ISettingEncryptionProvider`, `ICurrentUser` factory, hosted services, options + validators, `IMemoryCache`
     - _Requirements: 1.12, 2.8, 2.9, 6.7, 5.9, 8.6, 18.1_
-  - [ ] 27.2 Create `AddGroundUpSetup()` extension in `GroundUp.Api/`
+  - [x] 27.2 Create `AddGroundUpSetup()` extension in `GroundUp.Api/`
     - Register: `SetupOptions` + validator, authentication scheme, `ISetupWizardService`, `KeycloakAdminHttpClient` with Polly retry, rate limiter policy
     - _Requirements: 18.4, 18.5, 8.1_
-  - [ ] 27.3 Create `UseGroundUpBootstrapMode()` extension in `GroundUp.Api/`
+  - [x] 27.3 Create `UseGroundUpBootstrapMode()` extension in `GroundUp.Api/`
     - Register `BootstrapModeMiddleware` in the pipeline
     - _Requirements: 7.1, 7.5_
 
-- [ ] 28. Checkpoint — Ensure all tests pass
+- [x] 28. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 29. Property-based tests — encryption (Properties 1–4)
-  - [ ]* 29.1 Create `AesGcmEncryptionPropertyTests` in `GroundUp.Tests.Unit/Security/`
+- [x] 29. Property-based tests — encryption (Properties 1–4)
+  - [x]* 29.1 Create `AesGcmEncryptionPropertyTests` in `GroundUp.Tests.Unit/Security/`
     - **Property 1: Encryption Round-Trip Integrity** — For any non-whitespace UTF-8 string, encrypt then decrypt produces the original
     - **Validates: Requirements 2.2, 2.3, 3.1, 3.3**
-  - [ ]* 29.2 Add property test for tagged fresh ciphertext
+  - [x]* 29.2 Add property test for tagged fresh ciphertext
     - **Property 2: Encryption Produces Tagged, Fresh Ciphertext** — Two encryptions of same value differ, both start with `aes-gcm-v1:`, parse into 4 colon-delimited base64 segments
     - **Validates: Requirements 2.2, 2.7**
-  - [ ]* 29.3 Add property test for decryption failures
+  - [x]* 29.3 Add property test for decryption failures
     - **Property 3: Decryption Fails on Wrong Key, Tampering, or Unsupported Prefix** — Wrong key throws, mutated byte throws, missing prefix throws (all `EncryptionException`)
     - **Validates: Requirements 2.4, 2.5**
-  - [ ]* 29.4 Add property test for whitespace rejection
+  - [x]* 29.4 Add property test for whitespace rejection
     - **Property 4: Provider Rejects Null/Empty/Whitespace with ArgumentException** — Null, empty, whitespace-only inputs throw `ArgumentException` naming the parameter
     - **Validates: Requirements 2.6**
 
-- [ ] 30. Property-based tests — bootstrap + service (Properties 5–10)
-  - [ ]* 30.1 Create `SettingsServiceEncryptionPropertyTests` in `GroundUp.Tests.Unit/Services/Settings/`
+- [x] 30. Property-based tests — bootstrap + service (Properties 5–10)
+  - [x]* 30.1 Create `SettingsServiceEncryptionPropertyTests` in `GroundUp.Tests.Unit/Services/Settings/`
     - **Property 5: SettingsService Short-Circuits Whitespace Before Calling Provider** — Null/empty/whitespace persists null without calling Encrypt; non-whitespace calls Encrypt exactly once
     - **Validates: Requirements 3.1, 3.2, 3.3, 3.4**
-  - [ ]* 30.2 Create `SecretResolverPropertyTests` in `GroundUp.Tests.Unit/Services/Settings/`
+  - [x]* 30.2 Create `SecretResolverPropertyTests` in `GroundUp.Tests.Unit/Services/Settings/`
     - **Property 6: Single-Pass Secret Reference Resolution** — Resolver called exactly once; result returned verbatim even if it starts with `secretref://`; write paths persist literal
     - **Validates: Requirements 4.6, 4.8**
-  - [ ]* 30.3 Create `BootstrapStatePropertyTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
+  - [x]* 30.3 Create `BootstrapStatePropertyTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
     - **Property 7: Bootstrap One-Shot Completion Under Concurrency** — Exactly one of N concurrent calls succeeds; rest return Conflict
     - **Validates: Requirements 6.3, 6.4**
-  - [ ]* 30.4 Create `BootstrapMiddlewarePropertyTests` in `GroundUp.Tests.Unit/Api/Middleware/`
+  - [x]* 30.4 Create `BootstrapMiddlewarePropertyTests` in `GroundUp.Tests.Unit/Api/Middleware/`
     - **Property 8: Bootstrap Middleware Path Partition** — Allowed paths pass through; non-allowed paths get 503/302; all paths pass when complete
     - **Validates: Requirements 7.2, 7.3, 7.4, 7.6**
-  - [ ]* 30.5 Create `BootstrapTokenAuthPropertyTests` in `GroundUp.Tests.Unit/Api/Authentication/`
+  - [x]* 30.5 Create `BootstrapTokenAuthPropertyTests` in `GroundUp.Tests.Unit/Api/Authentication/`
     - **Property 9: Bootstrap Token Authentication Correctness** — Succeeds iff `isComplete=false` AND token bytes match (constant-time)
     - **Validates: Requirements 8.2, 8.3, 8.4, 8.5, 8.8**
-  - [ ]* 30.6 Create `WizardIdempotencyAndRotationPropertyTests` in `GroundUp.Tests.Unit/Services/Setup/`
+  - [x]* 30.6 Create `WizardIdempotencyAndRotationPropertyTests` in `GroundUp.Tests.Unit/Services/Setup/`
     - **Property 10: Wizard Idempotency and Transaction Log Rotation** — Repeated calls produce same state; rotation respects MaxRowCount and pending-row protection
     - **Validates: Requirements 9.8, 10.10, 12.20, 13.10**
 
-- [ ] 31. Unit tests — master key provider + AES-GCM provider
-  - [ ]* 31.1 Create `EnvironmentFileMasterKeyProviderTests` in `GroundUp.Tests.Unit/Services/Security/`
+- [x] 31. Unit tests — master key provider + AES-GCM provider
+  - [x]* 31.1 Create `EnvironmentFileMasterKeyProviderTests` in `GroundUp.Tests.Unit/Services/Security/`
     - Test: file not found throws, empty file throws, invalid base64 throws, short key throws, caching works, both-sources warning logged
     - _Requirements: 1.1–1.12_
-  - [ ]* 31.2 Create `AesGcmSettingEncryptionProviderTests` in `GroundUp.Tests.Unit/Services/Security/`
+  - [x]* 31.2 Create `AesGcmSettingEncryptionProviderTests` in `GroundUp.Tests.Unit/Services/Security/`
     - Test: ArgumentException on whitespace, format validation of output, tampered ciphertext throws EncryptionException, unsupported prefix throws
     - _Requirements: 2.1–2.9_
 
-- [ ] 32. Unit tests — SettingsService encryption + secret resolver
-  - [ ]* 32.1 Create `SettingsServiceEncryptionTests` in `GroundUp.Tests.Unit/Services/Settings/`
+- [x] 32. Unit tests — SettingsService encryption + secret resolver
+  - [x]* 32.1 Create `SettingsServiceEncryptionTests` in `GroundUp.Tests.Unit/Services/Settings/`
     - Test: encrypt on set, decrypt on get, missing-provider error, mask `***REDACTED***`, IsSecret+IsEncrypted combo
     - _Requirements: 3.1–3.10_
-  - [ ]* 32.2 Create `SettingsServiceSecretResolverTests` in `GroundUp.Tests.Unit/Services/Settings/`
+  - [x]* 32.2 Create `SettingsServiceSecretResolverTests` in `GroundUp.Tests.Unit/Services/Settings/`
     - Test: resolve on read, verbatim without resolver, null resolution failure, single-pass behavior
     - _Requirements: 4.1–4.8_
-  - [ ]* 32.3 Update existing Phase 6 `SettingsServiceMaskTests` for new mask constant
+  - [x]* 32.3 Update existing Phase 6 `SettingsServiceMaskTests` for new mask constant
     - Change assertions from `"••••••••"` to `"***REDACTED***"`
     - _Requirements: 3.7_
 
-- [ ] 33. Unit tests — BootstrapStateService + middleware + auth handler
-  - [ ]* 33.1 Create `BootstrapStateServiceTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
+- [x] 33. Unit tests — BootstrapStateService + middleware + auth handler
+  - [x]* 33.1 Create `BootstrapStateServiceTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
     - Test: cache hit/miss, complete success, already-complete conflict, xmin concurrency
     - _Requirements: 6.1–6.8_
-  - [ ]* 33.2 Create `BootstrapModeMiddlewareTests` in `GroundUp.Tests.Unit/Api/Middleware/`
+  - [x]* 33.2 Create `BootstrapModeMiddlewareTests` in `GroundUp.Tests.Unit/Api/Middleware/`
     - Test: allowed paths pass, redirect for non-allowed, JSON 503, health passthrough, Accept header parsing
     - _Requirements: 7.1–7.8_
-  - [ ]* 33.3 Create `BootstrapAdminTokenAuthHandlerTests` in `GroundUp.Tests.Unit/Api/Authentication/`
+  - [x]* 33.3 Create `BootstrapAdminTokenAuthHandlerTests` in `GroundUp.Tests.Unit/Api/Authentication/`
     - Test: valid token succeeds, invalid token fails, missing header fails, post-setup rejection
     - _Requirements: 8.1–8.9_
 
-- [ ] 34. Unit tests — SetupWizardService + preconditions + status
-  - [ ]* 34.1 Create `SetupWizardServiceTests` in `GroundUp.Tests.Unit/Services/Setup/`
+- [x] 34. Unit tests — SetupWizardService + preconditions + status
+  - [x]* 34.1 Create `SetupWizardServiceTests` in `GroundUp.Tests.Unit/Services/Setup/`
     - Test: each step validation, precondition enforcement, idempotency, password complexity
     - _Requirements: 9–14, 16_
-  - [ ]* 34.2 Create `SetupPreconditionsTests` in `GroundUp.Tests.Unit/Services/Setup/`
+  - [x]* 34.2 Create `SetupPreconditionsTests` in `GroundUp.Tests.Unit/Services/Setup/`
     - Test: each ordering rule returns correct error when predecessor incomplete
     - _Requirements: 16.1–16.5_
-  - [ ]* 34.3 Create `SetupStatusComputationTests` in `GroundUp.Tests.Unit/Services/Setup/`
+  - [x]* 34.3 Create `SetupStatusComputationTests` in `GroundUp.Tests.Unit/Services/Setup/`
     - Test: all flag combinations, currentStep transitions, firstAdminPending detection
     - _Requirements: 15.3–15.9_
 
-- [ ] 35. Unit tests — IdentityBootstrapService + transaction log rotation + options validators
-  - [ ]* 35.1 Create `IdentityBootstrapServiceTests` in `GroundUp.Tests.Unit/Auth/Services/Bootstrap/`
+- [x] 35. Unit tests — IdentityBootstrapService + transaction log rotation + options validators
+  - [x]* 35.1 Create `IdentityBootstrapServiceTests` in `GroundUp.Tests.Unit/Auth/Services/Bootstrap/`
     - Test: existence checks, transactional User+UserTenant+SuperAdmin, idempotent retry, conflict on attribute mismatch, HasSuperAdminAsync
     - _Requirements: 12.21, 12.23, 12.26_
-  - [ ]* 35.2 Create `TransactionLogRotationTests` in `GroundUp.Tests.Unit/Services/Setup/`
+  - [x]* 35.2 Create `TransactionLogRotationTests` in `GroundUp.Tests.Unit/Services/Setup/`
     - Test: pending rows skipped, all-pending warning, rotation disabled when MaxRowCount ≤ 0
     - _Requirements: 13.10_
-  - [ ]* 35.3 Create `BootstrapOptionsValidatorTests` in `GroundUp.Tests.Unit/Services/Configuration/`
+  - [x]* 35.3 Create `BootstrapOptionsValidatorTests` in `GroundUp.Tests.Unit/Services/Configuration/`
     - Test: each validation rule (missing DB connection, missing master key, short token)
     - _Requirements: 18.1, 18.2_
-  - [ ]* 35.4 Create `SetupOptionsValidatorTests` in `GroundUp.Tests.Unit/Services/Configuration/`
+  - [x]* 35.4 Create `SetupOptionsValidatorTests` in `GroundUp.Tests.Unit/Services/Configuration/`
     - Test: body-size 4096 floor clamp
     - _Requirements: 18.5_
-  - [ ]* 35.5 Create `MasterKeyHealthCheckTests` and `BootstrapStateAwareHealthCheckTests` in `GroundUp.Tests.Unit/Api/HealthChecks/`
+  - [x]* 35.5 Create `MasterKeyHealthCheckTests` and `BootstrapStateAwareHealthCheckTests` in `GroundUp.Tests.Unit/Api/HealthChecks/`
     - Test: setup-mode returns Healthy without inner check; complete-mode runs inner check
     - _Requirements: 7.7_
 
-- [ ] 36. Unit tests — hosted services + ICurrentUser switching + GET /setup landing
-  - [ ]* 36.1 Create `MigrationStartupHostedServiceTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
+- [x] 36. Unit tests — hosted services + ICurrentUser switching + GET /setup landing
+  - [x]* 36.1 Create `MigrationStartupHostedServiceTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
     - Test: migrations run during StartAsync
     - _Requirements: 5.9_
-  - [ ]* 36.2 Create `BootstrapTokenStartupValidatorTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
+  - [x]* 36.2 Create `BootstrapTokenStartupValidatorTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
     - Test: throws when token missing and incomplete; no-op when complete
     - _Requirements: 8.6, 8.9_
-  - [ ]* 36.3 Create `SetupCurrentUserTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
+  - [x]* 36.3 Create `SetupCurrentUserTests` in `GroundUp.Tests.Unit/Services/Bootstrap/`
     - Test: setup-mode produces `"setup-wizard"` sentinel via interceptor; complete-mode produces JwtCurrentUser
     - _Requirements: Cross-Cutting 8_
-  - [ ]* 36.4 Create `SetupLandingTests` in `GroundUp.Tests.Unit/Api/Controllers/Setup/`
+  - [x]* 36.4 Create `SetupLandingTests` in `GroundUp.Tests.Unit/Api/Controllers/Setup/`
     - Test: 200 in setup mode, 404 after complete, Cache-Control: no-store header
     - _Requirements: 15.1_
 
-- [ ] 37. Checkpoint — Ensure all tests pass
+- [~] 37. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 38. Integration tests — encryption round-trip + bootstrap middleware + concurrent completion
-  - [ ]* 38.1 Create `SettingsEncryptionIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
+- [x] 38. Integration tests — encryption round-trip + bootstrap middleware + concurrent completion
+  - [x]* 38.1 Create `SettingsEncryptionIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: write encrypted setting, read decrypted, verify DB row contains `aes-gcm-v1:` ciphertext
     - _Requirements: 3.1, 3.3, 3.9_
-  - [ ]* 38.2 Create `BootstrapModeIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
+  - [x]* 38.2 Create `BootstrapModeIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: redirect in setup mode, passthrough after complete, JSON 503 on `Accept: application/json`
     - _Requirements: 7.2, 7.3, 7.4, 7.6_
-  - [ ]* 38.3 Create `BootstrapConcurrencyTests` in `GroundUp.Tests.Integration/Setup/`
+  - [x]* 38.3 Create `BootstrapConcurrencyTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: multiple workers calling CompleteSetupAsync — exactly one wins via xmin
     - _Requirements: 6.3, 6.4_
 
-- [ ] 39. Integration tests — full setup wizard flow + step ordering + rate limiting + health checks
-  - [ ]* 39.1 Create `SetupWizardIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
+- [x] 39. Integration tests — full setup wizard flow + step ordering + rate limiting + health checks
+  - [x]* 39.1 Create `SetupWizardIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: happy path all steps in order, verify state transitions and CreatedBy="setup-wizard"
     - _Requirements: 9–14, Cross-Cutting 8_
-  - [ ]* 39.2 Create `SetupStepOrderingTests` in `GroundUp.Tests.Integration/Setup/`
+  - [-]* 39.2 Create `SetupStepOrderingTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: skip steps → 412, repeat steps → idempotent
     - _Requirements: 16.1–16.5_
-  - [ ]* 39.3 Create `SetupRateLimitTests` in `GroundUp.Tests.Integration/Setup/`
+  - [x]* 39.3 Create `SetupRateLimitTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: exceed limit → 429 with Retry-After, loopback bypass in dev, disabled when complete
     - _Requirements: 18.4_
-  - [ ]* 39.4 Create `SetupBodySizeTests` in `GroundUp.Tests.Integration/Setup/`
+  - [x]* 39.4 Create `SetupBodySizeTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: oversized payload → 413, 4096-byte floor clamp respected
     - _Requirements: 18.5_
   - [ ]* 39.5 Create `HealthCheckIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: `/ready` returns `{ status: "Healthy", setupMode: true }` in setup mode
     - _Requirements: 7.7_
-  - [ ]* 39.6 Create `FirstAdminIdempotencyIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
+  - [x]* 39.6 Create `FirstAdminIdempotencyIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: re-run with same email/displayName → 200 with same userId; conflicting attributes → 409
     - _Requirements: 12.14, 12.18, 12.19_
-  - [ ]* 39.7 Create `SetupRecoveryIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
+  - [-]* 39.7 Create `SetupRecoveryIntegrationTests` in `GroundUp.Tests.Integration/Setup/`
     - Test: db-pending recovery, already-completed rejection, keycloak-pending refusal
     - _Requirements: 13.4–13.8_
 
-- [ ] 40. Final checkpoint — Ensure all tests pass
+- [~] 40. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
