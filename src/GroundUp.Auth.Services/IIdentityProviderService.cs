@@ -15,8 +15,10 @@ public interface IIdentityProviderService
     /// <param name="code">The authorization code received from the OAuth2 callback.</param>
     /// <param name="redirectUri">The redirect URI used in the original authorization request.</param>
     /// <param name="realm">The optional realm/tenant identifier for multi-tenant identity providers.</param>
+    /// <param name="clientId">The optional client ID to use for the token request. When null, the implementation uses its configured default client ID.</param>
+    /// <param name="codeVerifier">The optional PKCE code verifier. When non-null, the request includes the code_verifier parameter for PKCE validation.</param>
     /// <returns>The token response containing access token, refresh token, and ID token; or null on failure.</returns>
-    Task<TokenResponseDto?> ExchangeCodeForTokensAsync(string code, string redirectUri, string? realm = null);
+    Task<TokenResponseDto?> ExchangeCodeForTokensAsync(string code, string redirectUri, string? realm = null, string? clientId = null, string? codeVerifier = null);
 
     /// <summary>
     /// Validates a token issued by the external identity provider.
