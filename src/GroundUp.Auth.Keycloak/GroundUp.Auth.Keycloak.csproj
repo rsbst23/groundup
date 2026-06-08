@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.*" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.*" />
@@ -18,6 +19,7 @@
     <ProjectReference Include="..\GroundUp.Auth.Core\GroundUp.Auth.Core.csproj" />
     <ProjectReference Include="..\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj" />
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />
+    <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
   </ItemGroup>
 
 </Project>
