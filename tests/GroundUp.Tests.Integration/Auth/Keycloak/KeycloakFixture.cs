@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using GroundUp.Auth.Keycloak;
@@ -10,8 +11,7 @@ namespace GroundUp.Tests.Integration.Auth.Keycloak;
 
 /// <summary>
 /// Shared xUnit fixture that starts a Keycloak container for integration testing.
-/// Imports the groundup realm from keycloak/realm.json and exposes admin credentials
-/// and HttpClient factory for test setup.
+/// Creates the groundup realm via the Admin REST API after startup.
 /// </summary>
 public sealed class KeycloakFixture : IAsyncLifetime
 {
@@ -31,12 +31,9 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
     public KeycloakFixture()
     {
-        var realmJsonPath = FindRealmJsonPath();
-
+        // Use the Testcontainers.Keycloak builder — it handles port, health check, and startup
         _container = new KeycloakBuilder()
             .WithImage("quay.io/keycloak/keycloak:26.0")
-            .WithResourceMapping(realmJsonPath, "/opt/keycloak/data/import/")
-            .WithCommand("start-dev", "--import-realm")
             .Build();
     }
 
@@ -47,19 +44,33 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
     /// <summary>
     /// Creates a <see cref="KeycloakOptions"/> configured to point at the test container.
+    /// The admin client is registered in the master realm with full admin privileges.
     /// </summary>
     public KeycloakOptions CreateOptions() => new()
     {
         InternalBaseUrl = BaseUrl,
         PublicBaseUrl = BaseUrl,
-        SharedRealmName = TestRealmName,
-        AdminClientId = "admin-cli",
-        AdminClientSecret = AdminPassword, // In dev mode, admin-cli uses the admin password
+        SharedRealmName = "master",  // Admin token comes from master realm
+        AdminClientId = "groundup-admin",
+        AdminClientSecret = "test-admin-secret",
         AppClientId = AppClientId
     };
 
     /// <summary>
-    /// Creates an <see cref="IOptionsMonitor{KeycloakOptions}"/> wrapping test options.
+    /// Creates options pointing at the test realm (for IdP service tests that operate within a realm).
+    /// </summary>
+    public KeycloakOptions CreateRealmOptions() => new()
+    {
+        InternalBaseUrl = BaseUrl,
+        PublicBaseUrl = BaseUrl,
+        SharedRealmName = TestRealmName,
+        AdminClientId = "groundup-admin",
+        AdminClientSecret = "test-admin-secret",
+        AppClientId = AppClientId
+    };
+
+    /// <summary>
+    /// Creates an <see cref="IOptionsMonitor{KeycloakOptions}"/> wrapping master realm options (for admin operations).
     /// </summary>
     public IOptionsMonitor<KeycloakOptions> CreateOptionsMonitor()
     {
@@ -71,7 +82,19 @@ public sealed class KeycloakFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Creates an HttpClient pointing at the Keycloak container with no special headers.
+    /// Creates an <see cref="IOptionsMonitor{KeycloakOptions}"/> wrapping test realm options (for IdP service tests).
+    /// </summary>
+    public IOptionsMonitor<KeycloakOptions> CreateRealmOptionsMonitor()
+    {
+        var monitor = Substitute.For<IOptionsMonitor<KeycloakOptions>>();
+        monitor.CurrentValue.Returns(CreateRealmOptions());
+        monitor.OnChange(Arg.Any<Action<KeycloakOptions, string>>())
+            .Returns(Substitute.For<IDisposable>());
+        return monitor;
+    }
+
+    /// <summary>
+    /// Creates an HttpClient pointing at the Keycloak container.
     /// </summary>
     public HttpClient CreateHttpClient() => new()
     {
@@ -103,7 +126,6 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
     /// <summary>
     /// Acquires an admin token for direct API calls in test setup.
-    /// Uses the resource owner password credentials grant against the master realm.
     /// </summary>
     public async Task<string> GetAdminTokenAsync()
     {
@@ -127,39 +149,11 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // The KeycloakBuilder handles the wait strategy internally (waits for HTTP 200 on /health/ready)
         await _container.StartAsync();
 
-        // Wait for Keycloak to be fully ready by hitting the realms endpoint
-        // Keycloak takes 30-60s to start (Java cold start + realm import)
-        using var client = CreateHttpClient();
-        var ready = false;
-        var retries = 0;
-        const int maxRetries = 60;
-
-        while (!ready && retries < maxRetries)
-        {
-            try
-            {
-                var response = await client.GetAsync($"{BaseUrl}/realms/{TestRealmName}");
-                ready = response.IsSuccessStatusCode;
-            }
-            catch
-            {
-                // Container not ready yet
-            }
-
-            if (!ready)
-            {
-                await Task.Delay(2000);
-                retries++;
-            }
-        }
-
-        if (!ready)
-        {
-            throw new InvalidOperationException(
-                $"Keycloak container did not become ready within {maxRetries * 2} seconds. BaseUrl: {BaseUrl}");
-        }
+        // After container is ready, create the test realm via Admin REST API
+        await CreateTestRealmAsync();
     }
 
     public async Task DisposeAsync()
@@ -168,13 +162,113 @@ public sealed class KeycloakFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Creates the groundup test realm with the app client and admin service account via the Admin REST API.
+    /// More reliable than file-based realm import which can have path issues in containers.
+    /// </summary>
+    private async Task CreateTestRealmAsync()
+    {
+        var adminToken = await GetAdminTokenAsync();
+
+        using var client = CreateHttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+
+        // Create the realm
+        var realmBody = new
+        {
+            realm = TestRealmName,
+            enabled = true,
+            registrationAllowed = false,
+            loginWithEmailAllowed = true,
+            duplicateEmailsAllowed = false
+        };
+
+        var createRealmResponse = await client.PostAsJsonAsync($"{BaseUrl}/admin/realms", realmBody);
+        createRealmResponse.EnsureSuccessStatusCode();
+
+        // Create the groundup-app client (public client with PKCE and direct access grants for testing)
+        var appClientBody = new
+        {
+            clientId = AppClientId,
+            enabled = true,
+            publicClient = true,
+            standardFlowEnabled = true,
+            directAccessGrantsEnabled = true,
+            redirectUris = new[] { "https://localhost:*/auth/callback", "http://localhost:*/auth/callback" },
+            webOrigins = new[] { "https://localhost:*", "http://localhost:*" },
+            attributes = new Dictionary<string, string>
+            {
+                ["pkce.code.challenge.method"] = "S256"
+            }
+        };
+
+        var createAppClientResponse = await client.PostAsJsonAsync(
+            $"{BaseUrl}/admin/realms/{TestRealmName}/clients", appClientBody);
+        createAppClientResponse.EnsureSuccessStatusCode();
+
+        // Create a confidential admin service account client in the MASTER realm
+        // This gives it global admin access for realm management operations
+        var adminClientBody = new
+        {
+            clientId = "groundup-admin",
+            enabled = true,
+            publicClient = false,
+            secret = "test-admin-secret",
+            serviceAccountsEnabled = true,
+            directAccessGrantsEnabled = false,
+            standardFlowEnabled = false
+        };
+
+        var createAdminClientResponse = await client.PostAsJsonAsync(
+            $"{BaseUrl}/admin/realms/master/clients", adminClientBody);
+        createAdminClientResponse.EnsureSuccessStatusCode();
+
+        // Get the internal ID of the admin client in master realm
+        var adminClientsResponse = await client.GetFromJsonAsync<JsonElement[]>(
+            $"{BaseUrl}/admin/realms/master/clients?clientId=groundup-admin");
+        var adminClientInternalId = adminClientsResponse![0].GetProperty("id").GetString()!;
+
+        // Get the service account user for the admin client
+        var serviceAccountUser = await client.GetFromJsonAsync<JsonElement>(
+            $"{BaseUrl}/admin/realms/master/clients/{adminClientInternalId}/service-account-user");
+        var serviceAccountUserId = serviceAccountUser!.GetProperty("id").GetString()!;
+
+        // Assign the master realm's "admin" realm role to the service account
+        // This gives full admin access across all realms
+        var adminRealmRoles = await client.GetFromJsonAsync<JsonElement[]>(
+            $"{BaseUrl}/admin/realms/master/roles");
+        
+        var rolesToAssign = new List<object>();
+        
+        foreach (var role in adminRealmRoles!)
+        {
+            var roleName = role.GetProperty("name").GetString();
+            // Assign admin + create-realm roles
+            if (roleName == "admin" || roleName == "create-realm")
+            {
+                rolesToAssign.Add(new
+                {
+                    id = role.GetProperty("id").GetString(),
+                    name = roleName
+                });
+            }
+        }
+
+        if (rolesToAssign.Count > 0)
+        {
+            await client.PostAsJsonAsync(
+                $"{BaseUrl}/admin/realms/master/users/{serviceAccountUserId}/role-mappings/realm",
+                rolesToAssign);
+        }
+    }
+
+    /// <summary>
     /// Finds the realm.json file by walking up from the test binary directory.
+    /// Kept for potential future use.
     /// </summary>
     private static string FindRealmJsonPath()
     {
         var dir = AppContext.BaseDirectory;
 
-        // Walk up to find the solution root (contains keycloak/realm.json)
         while (dir is not null)
         {
             var candidate = Path.Combine(dir, "keycloak", "realm.json");

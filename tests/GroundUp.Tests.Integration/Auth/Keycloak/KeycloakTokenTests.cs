@@ -29,22 +29,20 @@ public sealed class KeycloakTokenTests
     public async Task ValidateTokenAsync_ValidToken_ReturnsTrue()
     {
         // Arrange — acquire a real token using resource owner password grant
-        // First, enable direct access grants on the groundup-app client
         var adminToken = await _fixture.GetAdminTokenAsync();
-        await EnableDirectAccessGrant(adminToken);
 
         // Create a test user
         var testEmail = $"test-{Guid.NewGuid():N}@example.com";
         var testPassword = "TestPass123!";
         await CreateTestUser(adminToken, testEmail, testPassword);
 
-        // Get a token via direct access grant
+        // Get a token via direct access grant (already enabled on the app client)
         var accessToken = await GetUserToken(testEmail, testPassword);
         accessToken.Should().NotBeNullOrEmpty();
 
         // Act — validate the token using our service
         var factory = _fixture.CreateHttpClientFactory();
-        var optionsMonitor = _fixture.CreateOptionsMonitor();
+        var optionsMonitor = _fixture.CreateRealmOptionsMonitor();
         var jwksCache = new JwksCache(factory);
         var logger = NullLogger<KeycloakIdentityProviderService>.Instance;
         var service = new KeycloakIdentityProviderService(factory, optionsMonitor, jwksCache, logger);
@@ -63,7 +61,7 @@ public sealed class KeycloakTokenTests
     {
         // Arrange
         var factory = _fixture.CreateHttpClientFactory();
-        var optionsMonitor = _fixture.CreateOptionsMonitor();
+        var optionsMonitor = _fixture.CreateRealmOptionsMonitor();
         var jwksCache = new JwksCache(factory);
         var logger = NullLogger<KeycloakIdentityProviderService>.Instance;
         var service = new KeycloakIdentityProviderService(factory, optionsMonitor, jwksCache, logger);
@@ -85,7 +83,6 @@ public sealed class KeycloakTokenTests
     {
         // Arrange
         var adminToken = await _fixture.GetAdminTokenAsync();
-        await EnableDirectAccessGrant(adminToken);
 
         var testEmail = $"userinfo-{Guid.NewGuid():N}@example.com";
         var testPassword = "TestPass123!";
@@ -94,7 +91,7 @@ public sealed class KeycloakTokenTests
         var accessToken = await GetUserToken(testEmail, testPassword);
 
         var factory = _fixture.CreateHttpClientFactory();
-        var optionsMonitor = _fixture.CreateOptionsMonitor();
+        var optionsMonitor = _fixture.CreateRealmOptionsMonitor();
         var jwksCache = new JwksCache(factory);
         var logger = NullLogger<KeycloakIdentityProviderService>.Instance;
         var service = new KeycloakIdentityProviderService(factory, optionsMonitor, jwksCache, logger);
@@ -115,7 +112,7 @@ public sealed class KeycloakTokenTests
     public async Task GetUserInfoAsync_InvalidToken_ReturnsNull()
     {
         var factory = _fixture.CreateHttpClientFactory();
-        var optionsMonitor = _fixture.CreateOptionsMonitor();
+        var optionsMonitor = _fixture.CreateRealmOptionsMonitor();
         var jwksCache = new JwksCache(factory);
         var logger = NullLogger<KeycloakIdentityProviderService>.Instance;
         var service = new KeycloakIdentityProviderService(factory, optionsMonitor, jwksCache, logger);
@@ -125,32 +122,6 @@ public sealed class KeycloakTokenTests
 
         // Assert
         result.Should().BeNull();
-    }
-
-    private async Task EnableDirectAccessGrant(string adminToken)
-    {
-        using var client = _fixture.CreateHttpClient();
-        client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
-
-        // Get the groundup-app client
-        var url = $"{_fixture.BaseUrl}/admin/realms/{KeycloakFixture.TestRealmName}/clients?clientId={KeycloakFixture.AppClientId}";
-        var response = await client.GetFromJsonAsync<JsonElement[]>(url);
-
-        if (response is { Length: > 0 })
-        {
-            var internalId = response[0].GetProperty("id").GetString()!;
-            var updateUrl = $"{_fixture.BaseUrl}/admin/realms/{KeycloakFixture.TestRealmName}/clients/{internalId}";
-
-            var updateBody = new Dictionary<string, object>
-            {
-                ["clientId"] = KeycloakFixture.AppClientId,
-                ["directAccessGrantsEnabled"] = true,
-                ["publicClient"] = true
-            };
-
-            await client.PutAsJsonAsync(updateUrl, updateBody);
-        }
     }
 
     private async Task CreateTestUser(string adminToken, string email, string password)

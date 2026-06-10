@@ -227,15 +227,7 @@ public sealed class KeycloakUserProvisioningTests
         try
         {
             // Get a token for this user via direct access grant
-            // Need to enable direct access grants on the groundup-app client first
-            var appClientsResponse = await client.GetFromJsonAsync<JsonElement[]>(
-                $"{_fixture.BaseUrl}/admin/realms/{KeycloakFixture.TestRealmName}/clients?clientId={KeycloakFixture.AppClientId}");
-            var appInternalId = appClientsResponse![0].GetProperty("id").GetString()!;
-            await client.PutAsJsonAsync(
-                $"{_fixture.BaseUrl}/admin/realms/{KeycloakFixture.TestRealmName}/clients/{appInternalId}",
-                new { clientId = KeycloakFixture.AppClientId, directAccessGrantsEnabled = true, publicClient = true });
-
-            // Get token
+            // (directAccessGrantsEnabled is already true on the app client from fixture setup)
             using var tokenClient = _fixture.CreateHttpClient();
             var tokenResponse = await tokenClient.PostAsync(
                 $"{_fixture.BaseUrl}/realms/{KeycloakFixture.TestRealmName}/protocol/openid-connect/token",

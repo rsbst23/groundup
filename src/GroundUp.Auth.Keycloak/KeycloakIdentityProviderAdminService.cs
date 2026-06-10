@@ -149,7 +149,7 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
 
         var client = CreateAuthorizedClient(token);
 
-        // GET current realm representation to merge changes into
+        // GET current realm to merge changes
         var getResponse = await client.GetAsync(url, cancellationToken);
 
         if (getResponse.StatusCode == HttpStatusCode.NotFound)
@@ -159,39 +159,38 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
 
         if (!getResponse.IsSuccessStatusCode)
         {
-            _logger.LogWarning(
-                "UpdateRealmAsync: GET failed with status {StatusCode} for realm {RealmName}",
-                (int)getResponse.StatusCode, realmName);
             return OperationResult<RealmDto>.Fail(
                 $"Failed to retrieve realm '{realmName}' for update", (int)getResponse.StatusCode);
         }
 
+        // Parse as a mutable JSON document and modify fields
         var existingJson = await getResponse.Content.ReadAsStringAsync(cancellationToken);
-        var existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(existingJson, JsonOptions);
-
-        if (existing is null)
+        using var jsonDoc = JsonDocument.Parse(existingJson);
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
         {
-            return OperationResult<RealmDto>.Fail("Failed to deserialize current realm state", 500);
+            writer.WriteStartObject();
+            foreach (var prop in jsonDoc.RootElement.EnumerateObject())
+            {
+                if (request.DisplayName is not null && prop.Name == "displayName")
+                {
+                    writer.WriteString("displayName", request.DisplayName);
+                }
+                else if (request.Enabled is not null && prop.Name == "enabled")
+                {
+                    writer.WriteBoolean("enabled", request.Enabled.Value);
+                }
+                else
+                {
+                    prop.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
         }
 
-        // Merge only non-null fields from the request
-        var merged = new Dictionary<string, object?>(existing.Count);
-        foreach (var kvp in existing)
-        {
-            merged[kvp.Key] = kvp.Value;
-        }
-
-        if (request.DisplayName is not null)
-        {
-            merged["displayName"] = request.DisplayName;
-        }
-
-        if (request.Enabled is not null)
-        {
-            merged["enabled"] = request.Enabled.Value;
-        }
-
-        var putResponse = await client.PutAsJsonAsync(url, merged, JsonOptions, cancellationToken);
+        var updatedJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        var content = new StringContent(updatedJson, System.Text.Encoding.UTF8, "application/json");
+        var putResponse = await client.PutAsync(url, content, cancellationToken);
 
         if (putResponse.StatusCode == HttpStatusCode.NotFound)
         {
