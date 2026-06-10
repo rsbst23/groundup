@@ -14,6 +14,7 @@ internal sealed class JwksCache
     private readonly ConcurrentDictionary<string, CachedKeySet> _keysByIssuer = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphoresByIssuer = new();
     private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaxCacheDuration = TimeSpan.FromHours(24);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JwksCache"/> class.
@@ -34,7 +35,12 @@ internal sealed class JwksCache
     {
         if (_keysByIssuer.TryGetValue(issuerUrl, out var cached))
         {
-            return cached.Keys;
+            // If cache is still within max TTL, return it
+            var age = DateTimeOffset.UtcNow - cached.FetchedAt;
+            if (age < MaxCacheDuration)
+            {
+                return cached.Keys;
+            }
         }
 
         return await FetchAndCacheKeysAsync(issuerUrl, ct);

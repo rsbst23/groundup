@@ -147,34 +147,64 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
         var opts = _options.CurrentValue;
         var url = $"{opts.InternalBaseUrl.TrimEnd('/')}/admin/realms/{realmName}";
 
-        // Build a partial update object — only include fields that are non-null
-        var updateBody = new Dictionary<string, object>();
-
-        if (request.DisplayName is not null)
-        {
-            updateBody["displayName"] = request.DisplayName;
-        }
-
-        if (request.Enabled is not null)
-        {
-            updateBody["enabled"] = request.Enabled.Value;
-        }
-
         var client = CreateAuthorizedClient(token);
-        var response = await client.PutAsJsonAsync(url, updateBody, JsonOptions, cancellationToken);
 
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // GET current realm representation to merge changes into
+        var getResponse = await client.GetAsync(url, cancellationToken);
+
+        if (getResponse.StatusCode == HttpStatusCode.NotFound)
         {
             return OperationResult<RealmDto>.NotFound($"Realm '{realmName}' not found");
         }
 
-        if (!response.IsSuccessStatusCode)
+        if (!getResponse.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "UpdateRealmAsync: GET failed with status {StatusCode} for realm {RealmName}",
+                (int)getResponse.StatusCode, realmName);
+            return OperationResult<RealmDto>.Fail(
+                $"Failed to retrieve realm '{realmName}' for update", (int)getResponse.StatusCode);
+        }
+
+        var existingJson = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+        var existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(existingJson, JsonOptions);
+
+        if (existing is null)
+        {
+            return OperationResult<RealmDto>.Fail("Failed to deserialize current realm state", 500);
+        }
+
+        // Merge only non-null fields from the request
+        var merged = new Dictionary<string, object?>(existing.Count);
+        foreach (var kvp in existing)
+        {
+            merged[kvp.Key] = kvp.Value;
+        }
+
+        if (request.DisplayName is not null)
+        {
+            merged["displayName"] = request.DisplayName;
+        }
+
+        if (request.Enabled is not null)
+        {
+            merged["enabled"] = request.Enabled.Value;
+        }
+
+        var putResponse = await client.PutAsJsonAsync(url, merged, JsonOptions, cancellationToken);
+
+        if (putResponse.StatusCode == HttpStatusCode.NotFound)
+        {
+            return OperationResult<RealmDto>.NotFound($"Realm '{realmName}' not found");
+        }
+
+        if (!putResponse.IsSuccessStatusCode)
         {
             _logger.LogWarning(
                 "UpdateRealmAsync failed with status {StatusCode} for realm {RealmName}",
-                (int)response.StatusCode, realmName);
+                (int)putResponse.StatusCode, realmName);
             return OperationResult<RealmDto>.Fail(
-                $"Failed to update realm '{realmName}'", (int)response.StatusCode);
+                $"Failed to update realm '{realmName}'", (int)putResponse.StatusCode);
         }
 
         // Re-fetch the realm to return the updated state
@@ -323,48 +353,85 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
         var opts = _options.CurrentValue;
         var url = $"{opts.InternalBaseUrl.TrimEnd('/')}/admin/realms/{realmName}/clients/{internalId}";
 
-        // Build partial update body
-        var updateBody = new Dictionary<string, object>
-        {
-            ["clientId"] = clientId
-        };
-
-        if (request.RedirectUris is not null)
-        {
-            updateBody["redirectUris"] = request.RedirectUris;
-        }
-
-        if (request.RequiresPkce is not null)
-        {
-            var attributes = new Dictionary<string, string>();
-            if (request.RequiresPkce.Value)
-            {
-                attributes["pkce.code.challenge.method"] = "S256";
-            }
-            else
-            {
-                attributes["pkce.code.challenge.method"] = "";
-            }
-
-            updateBody["attributes"] = attributes;
-        }
-
         var client = CreateAuthorizedClient(token);
-        var response = await client.PutAsJsonAsync(url, updateBody, JsonOptions, cancellationToken);
 
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        // GET current client representation to merge changes into
+        var getResponse = await client.GetAsync(url, cancellationToken);
+
+        if (getResponse.StatusCode == HttpStatusCode.NotFound)
         {
             return OperationResult<IdentityProviderClientDto>.NotFound(
                 $"Client '{clientId}' not found in realm '{realmName}'");
         }
 
-        if (!response.IsSuccessStatusCode)
+        if (!getResponse.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "UpdateClientAsync: GET failed with status {StatusCode} for client {ClientId} in realm {RealmName}",
+                (int)getResponse.StatusCode, clientId, realmName);
+            return OperationResult<IdentityProviderClientDto>.Fail(
+                $"Failed to retrieve client '{clientId}' for update", (int)getResponse.StatusCode);
+        }
+
+        var existingJson = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+        var existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(existingJson, JsonOptions);
+
+        if (existing is null)
+        {
+            return OperationResult<IdentityProviderClientDto>.Fail("Failed to deserialize current client state", 500);
+        }
+
+        // Merge changes into the full representation
+        var merged = new Dictionary<string, object?>(existing.Count);
+        foreach (var kvp in existing)
+        {
+            merged[kvp.Key] = kvp.Value;
+        }
+
+        if (request.RedirectUris is not null)
+        {
+            merged["redirectUris"] = request.RedirectUris;
+        }
+
+        if (request.RequiresPkce is not null)
+        {
+            // Merge into existing attributes, preserving other attribute keys
+            var existingAttributes = new Dictionary<string, string>();
+            if (existing.TryGetValue("attributes", out var attrElement) && attrElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in attrElement.EnumerateObject())
+                {
+                    existingAttributes[prop.Name] = prop.Value.GetString() ?? "";
+                }
+            }
+
+            if (request.RequiresPkce.Value)
+            {
+                existingAttributes["pkce.code.challenge.method"] = "S256";
+            }
+            else
+            {
+                existingAttributes["pkce.code.challenge.method"] = "";
+            }
+
+            merged["attributes"] = existingAttributes;
+        }
+
+        var putResponse = await client.PutAsJsonAsync(url, merged, JsonOptions, cancellationToken);
+
+        if (putResponse.StatusCode == HttpStatusCode.NotFound)
+        {
+            return OperationResult<IdentityProviderClientDto>.NotFound(
+                $"Client '{clientId}' not found in realm '{realmName}'");
+        }
+
+        if (!putResponse.IsSuccessStatusCode)
         {
             _logger.LogWarning(
                 "UpdateClientAsync failed with status {StatusCode} for client {ClientId} in realm {RealmName}",
-                (int)response.StatusCode, clientId, realmName);
+                (int)putResponse.StatusCode, clientId, realmName);
             return OperationResult<IdentityProviderClientDto>.Fail(
-                $"Failed to update client '{clientId}'", (int)response.StatusCode);
+                $"Failed to update client '{clientId}'", (int)putResponse.StatusCode);
         }
 
         // Re-fetch to return updated state
@@ -445,6 +512,7 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
             FirstName: firstName,
             LastName: lastName,
             Enabled: true,
+            EmailVerified: true,
             RequiredActions: requiredActions);
 
         var client = CreateAuthorizedClient(token);

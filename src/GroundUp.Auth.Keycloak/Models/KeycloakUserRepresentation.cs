@@ -12,4 +12,5 @@ internal sealed record KeycloakUserRepresentation(
     [property: JsonPropertyName("firstName")] string? FirstName,
     [property: JsonPropertyName("lastName")] string? LastName,
     [property: JsonPropertyName("enabled")] bool Enabled,
+    [property: JsonPropertyName("emailVerified")] bool EmailVerified,
     [property: JsonPropertyName("requiredActions")] List<string>? RequiredActions);

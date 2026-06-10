@@ -15,7 +15,7 @@ namespace GroundUp.Auth.Keycloak;
 /// (application is in setup mode), validation is skipped. If settings are partially
 /// populated during setup mode, validation runs normally.
 /// </remarks>
-public sealed class KeycloakStartupValidator : IHostedService
+internal sealed class KeycloakStartupValidator : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
 
