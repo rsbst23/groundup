@@ -35,7 +35,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
         _container = new KeycloakBuilder()
             .WithImage("quay.io/keycloak/keycloak:26.0")
-            .WithResourceMapping(realmJsonPath, "/opt/keycloak/data/import/realm.json")
+            .WithResourceMapping(realmJsonPath, "/opt/keycloak/data/import/")
             .WithCommand("start-dev", "--import-realm")
             .Build();
     }
@@ -130,11 +130,13 @@ public sealed class KeycloakFixture : IAsyncLifetime
         await _container.StartAsync();
 
         // Wait for Keycloak to be fully ready by hitting the realms endpoint
+        // Keycloak takes 30-60s to start (Java cold start + realm import)
         using var client = CreateHttpClient();
         var ready = false;
         var retries = 0;
+        const int maxRetries = 60;
 
-        while (!ready && retries < 30)
+        while (!ready && retries < maxRetries)
         {
             try
             {
@@ -148,7 +150,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
             if (!ready)
             {
-                await Task.Delay(1000);
+                await Task.Delay(2000);
                 retries++;
             }
         }
@@ -156,7 +158,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
         if (!ready)
         {
             throw new InvalidOperationException(
-                $"Keycloak container did not become ready within 30 seconds. BaseUrl: {BaseUrl}");
+                $"Keycloak container did not become ready within {maxRetries * 2} seconds. BaseUrl: {BaseUrl}");
         }
     }
 
