@@ -132,20 +132,26 @@ public sealed class KeycloakTokenTests
 
         var url = $"{_fixture.BaseUrl}/admin/realms/{KeycloakFixture.TestRealmName}/users";
 
+        // Create user with credentials and explicitly no required actions
         var userBody = new
         {
             username = email,
             email,
             emailVerified = true,
             enabled = true,
+            requiredActions = Array.Empty<string>(),
             credentials = new[]
             {
                 new { type = "password", value = password, temporary = false }
             }
         };
 
-        var response = await client.PostAsJsonAsync(url, userBody);
-        response.EnsureSuccessStatusCode();
+        var createResponse = await client.PostAsJsonAsync(url, userBody);
+        if (!createResponse.IsSuccessStatusCode)
+        {
+            var body = await createResponse.Content.ReadAsStringAsync();
+            throw new Exception($"CreateTestUser: user creation failed ({(int)createResponse.StatusCode}): {body}");
+        }
     }
 
     private async Task<string> GetUserToken(string email, string password)
@@ -158,13 +164,19 @@ public sealed class KeycloakTokenTests
             ["grant_type"] = "password",
             ["client_id"] = KeycloakFixture.AppClientId,
             ["username"] = email,
-            ["password"] = password
+            ["password"] = password,
+            ["scope"] = "openid email profile"
         });
 
         var response = await client.PostAsync(tokenUrl, formData);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            throw new Exception($"GetUserToken: token request failed ({(int)response.StatusCode}): {body}");
+        }
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return json.GetProperty("access_token").GetString()!;
     }
+
 }

@@ -51,8 +51,8 @@ public sealed class KeycloakFixture : IAsyncLifetime
         InternalBaseUrl = BaseUrl,
         PublicBaseUrl = BaseUrl,
         SharedRealmName = "master",  // Admin token comes from master realm
-        AdminClientId = "groundup-admin",
-        AdminClientSecret = "test-admin-secret",
+        AdminClientId = "admin-cli",
+        AdminClientSecret = "admin-cli-secret",
         AppClientId = AppClientId
     };
 
@@ -64,8 +64,8 @@ public sealed class KeycloakFixture : IAsyncLifetime
         InternalBaseUrl = BaseUrl,
         PublicBaseUrl = BaseUrl,
         SharedRealmName = TestRealmName,
-        AdminClientId = "groundup-admin",
-        AdminClientSecret = "test-admin-secret",
+        AdminClientId = "admin-cli",
+        AdminClientSecret = "admin-cli-secret",
         AppClientId = AppClientId
     };
 
@@ -132,15 +132,31 @@ public sealed class KeycloakFixture : IAsyncLifetime
         using var client = CreateHttpClient();
         var tokenUrl = $"{BaseUrl}/realms/master/protocol/openid-connect/token";
 
+        // Try with client_secret first (after setup), fall back to without (during setup)
         var formData = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "password",
             ["client_id"] = "admin-cli",
+            ["client_secret"] = "admin-cli-secret",
             ["username"] = AdminUsername,
             ["password"] = AdminPassword
         });
 
         var response = await client.PostAsync(tokenUrl, formData);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            // Fallback: admin-cli might still be public (during initial setup)
+            formData = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "password",
+                ["client_id"] = "admin-cli",
+                ["username"] = AdminUsername,
+                ["password"] = AdminPassword
+            });
+            response = await client.PostAsync(tokenUrl, formData);
+        }
+        
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -172,14 +188,17 @@ public sealed class KeycloakFixture : IAsyncLifetime
         using var client = CreateHttpClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
-        // Create the realm
+        // Create the realm with all verification disabled for testing
         var realmBody = new
         {
             realm = TestRealmName,
             enabled = true,
             registrationAllowed = false,
             loginWithEmailAllowed = true,
-            duplicateEmailsAllowed = false
+            duplicateEmailsAllowed = false,
+            verifyEmail = false,
+            requiredActions = Array.Empty<object>(),
+            defaultDefaultClientScopes = new[] { "web-origins", "acr", "roles", "profile", "email" }
         };
 
         var createRealmResponse = await client.PostAsJsonAsync($"{BaseUrl}/admin/realms", realmBody);
@@ -205,35 +224,32 @@ public sealed class KeycloakFixture : IAsyncLifetime
             $"{BaseUrl}/admin/realms/{TestRealmName}/clients", appClientBody);
         createAppClientResponse.EnsureSuccessStatusCode();
 
-        // Create a confidential admin service account client in the MASTER realm
-        // This gives it global admin access for realm management operations
-        var adminClientBody = new
+        // Modify admin-cli to be a confidential client with service accounts
+        // This gives the client_credentials grant the same permissions as the admin user
+        var adminCliClients = await client.GetFromJsonAsync<JsonElement[]>(
+            $"{BaseUrl}/admin/realms/master/clients?clientId=admin-cli");
+        var adminCliInternalId = adminCliClients![0].GetProperty("id").GetString()!;
+
+        var updateAdminCli = new
         {
-            clientId = "groundup-admin",
-            enabled = true,
+            clientId = "admin-cli",
             publicClient = false,
-            secret = "test-admin-secret",
+            secret = "admin-cli-secret",
             serviceAccountsEnabled = true,
-            directAccessGrantsEnabled = false,
-            standardFlowEnabled = false
+            directAccessGrantsEnabled = true
         };
 
-        var createAdminClientResponse = await client.PostAsJsonAsync(
-            $"{BaseUrl}/admin/realms/master/clients", adminClientBody);
-        createAdminClientResponse.EnsureSuccessStatusCode();
+        var updateResponse = await client.PutAsJsonAsync(
+            $"{BaseUrl}/admin/realms/master/clients/{adminCliInternalId}", updateAdminCli);
+        updateResponse.EnsureSuccessStatusCode();;
 
-        // Get the internal ID of the admin client in master realm
-        var adminClientsResponse = await client.GetFromJsonAsync<JsonElement[]>(
-            $"{BaseUrl}/admin/realms/master/clients?clientId=groundup-admin");
-        var adminClientInternalId = adminClientsResponse![0].GetProperty("id").GetString()!;
-
-        // Get the service account user for the admin client
+        // Get the service account user for admin-cli and assign admin roles
         var serviceAccountUser = await client.GetFromJsonAsync<JsonElement>(
-            $"{BaseUrl}/admin/realms/master/clients/{adminClientInternalId}/service-account-user");
+            $"{BaseUrl}/admin/realms/master/clients/{adminCliInternalId}/service-account-user");
         var serviceAccountUserId = serviceAccountUser!.GetProperty("id").GetString()!;
 
         // Assign the master realm's "admin" realm role to the service account
-        // This gives full admin access across all realms
+        // AND the master-realm client's admin role for full cross-realm management
         var adminRealmRoles = await client.GetFromJsonAsync<JsonElement[]>(
             $"{BaseUrl}/admin/realms/master/roles");
         
@@ -242,7 +258,6 @@ public sealed class KeycloakFixture : IAsyncLifetime
         foreach (var role in adminRealmRoles!)
         {
             var roleName = role.GetProperty("name").GetString();
-            // Assign admin + create-realm roles
             if (roleName == "admin" || roleName == "create-realm")
             {
                 rolesToAssign.Add(new
@@ -255,9 +270,38 @@ public sealed class KeycloakFixture : IAsyncLifetime
 
         if (rolesToAssign.Count > 0)
         {
-            await client.PostAsJsonAsync(
+            var assignResponse = await client.PostAsJsonAsync(
                 $"{BaseUrl}/admin/realms/master/users/{serviceAccountUserId}/role-mappings/realm",
                 rolesToAssign);
+            assignResponse.EnsureSuccessStatusCode();
+        }
+
+        // Also assign ALL client roles from the master-realm client
+        // This is what the built-in admin user has and is required for managing other realms
+        var masterRealmClients = await client.GetFromJsonAsync<JsonElement[]>(
+            $"{BaseUrl}/admin/realms/master/clients?clientId=master-realm");
+        
+        if (masterRealmClients is { Length: > 0 })
+        {
+            var masterRealmClientId = masterRealmClients[0].GetProperty("id").GetString()!;
+            
+            // Get all available client roles
+            var clientRoles = await client.GetFromJsonAsync<JsonElement[]>(
+                $"{BaseUrl}/admin/realms/master/clients/{masterRealmClientId}/roles");
+            
+            if (clientRoles is { Length: > 0 })
+            {
+                var clientRolesToAssign = clientRoles.Select(r => new
+                {
+                    id = r.GetProperty("id").GetString(),
+                    name = r.GetProperty("name").GetString()
+                }).ToList();
+
+                var clientRoleResponse = await client.PostAsJsonAsync(
+                    $"{BaseUrl}/admin/realms/master/users/{serviceAccountUserId}/role-mappings/clients/{masterRealmClientId}",
+                    clientRolesToAssign);
+                clientRoleResponse.EnsureSuccessStatusCode();
+            }
         }
     }
 
