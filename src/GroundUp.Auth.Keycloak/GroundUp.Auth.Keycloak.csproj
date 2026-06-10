@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="GroundUp.Tests.Unit" />
+    <InternalsVisibleTo Include="GroundUp.Tests.Integration" />
   </ItemGroup>
 
   <ItemGroup>
