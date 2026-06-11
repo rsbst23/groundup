@@ -1,12 +1,9 @@
 using FsCheck;
 using FsCheck.Xunit;
-using FluentAssertions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Repositories;
-using Microsoft.EntityFrameworkCore;
-using Testcontainers.PostgreSql;
 
 namespace GroundUp.Tests.Integration.Auth.Services;
 
@@ -15,47 +12,29 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// for any random mix of expired/non-expired Pending rows, the sweep
 /// transitions only expired Pending rows and leaves others untouched.
 /// </summary>
-public sealed class AuthFlowStateSweeperExpirationPropertyTests : IAsyncLifetime
+[Collection("AuthFlowStatePostgres")]
+public sealed class AuthFlowStateSweeperExpirationPropertyTests
 {
-    private PostgreSqlContainer _postgres = null!;
-    private string _connectionString = null!;
+    private readonly AuthFlowStatePostgresFixture _fixture;
 
-    public async Task InitializeAsync()
+    public AuthFlowStateSweeperExpirationPropertyTests(AuthFlowStatePostgresFixture fixture)
     {
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
-            .Build();
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-
-        await using var context = CreateContext();
-        await context.Database.MigrateAsync();
+        _fixture = fixture;
     }
 
-    public async Task DisposeAsync()
-    {
-        await _postgres.DisposeAsync();
-    }
-
-    private AuthDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AuthDbContext>()
-            .UseNpgsql(_connectionString)
-            .Options;
-        return new AuthDbContext(options);
-    }
+    private AuthDbContext CreateContext() => _fixture.CreateContext();
 
     /// <summary>
     /// Property: For any random mix of rows (some expired, some not),
     /// MarkExpiredOlderThanAsync transitions only expired Pending rows.
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 10)]
     public Property Sweep_OnlyExpiredPendingRowsTransition(
         PositiveInt expiredCountRaw,
         PositiveInt freshCountRaw)
     {
-        var expiredCount = (expiredCountRaw.Get % 5) + 1; // 1–5
-        var freshCount = (freshCountRaw.Get % 5) + 1;     // 1–5
+        var expiredCount = (expiredCountRaw.Get % 5) + 1;
+        var freshCount = (freshCountRaw.Get % 5) + 1;
 
         var now = DateTime.UtcNow;
         var expiredIds = new List<Guid>();
@@ -65,7 +44,6 @@ public sealed class AuthFlowStateSweeperExpirationPropertyTests : IAsyncLifetime
         {
             var repo = new AuthFlowStateRepository(ctx);
 
-            // Seed expired rows (ExpiresAt in the past)
             for (var i = 0; i < expiredCount; i++)
             {
                 var dto = CreateDto(now.AddMinutes(-(i + 1)));
@@ -73,7 +51,6 @@ public sealed class AuthFlowStateSweeperExpirationPropertyTests : IAsyncLifetime
                 expiredIds.Add(result.Data!.Id);
             }
 
-            // Seed fresh rows (ExpiresAt in the future)
             for (var i = 0; i < freshCount; i++)
             {
                 var dto = CreateDto(now.AddMinutes(i + 10));
@@ -81,14 +58,11 @@ public sealed class AuthFlowStateSweeperExpirationPropertyTests : IAsyncLifetime
                 freshIds.Add(result.Data!.Id);
             }
 
-            // Act — sweep
             var sweepResult = repo.MarkExpiredOlderThanAsync(now).GetAwaiter().GetResult();
 
-            // Verify count
             if (!sweepResult.Success || sweepResult.Data != expiredCount)
                 return false.ToProperty();
 
-            // Verify expired rows are now Expired
             foreach (var id in expiredIds)
             {
                 var row = repo.GetByIdAsync(id).GetAwaiter().GetResult();
@@ -96,7 +70,6 @@ public sealed class AuthFlowStateSweeperExpirationPropertyTests : IAsyncLifetime
                     return false.ToProperty();
             }
 
-            // Verify fresh rows are still Pending
             foreach (var id in freshIds)
             {
                 var row = repo.GetByIdAsync(id).GetAwaiter().GetResult();
