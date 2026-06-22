@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests for AuthFlowStateRepository bulk operations
 /// (MarkExpiredOlderThanAsync, DeleteTerminalOlderThanAsync) against real Postgres.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateRepositoryBulkOperationsTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreateDto(FlowStatus status, DateTime expiresAt) => new(
@@ -164,3 +167,4 @@ public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegration
 
     #endregion
 }
+

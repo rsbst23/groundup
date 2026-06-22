@@ -11,8 +11,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Grandchildren, siblings, and unrelated tenants are invisible.
 /// Each test uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class TenantVisibilityTests : AuthIntegrationTestBase
 {
+    public TenantVisibilityTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetAll_AsTenantA_ReturnsSelf()
     {
@@ -211,3 +214,4 @@ public sealed class TenantVisibilityTests : AuthIntegrationTestBase
         result.Data!.Items.Should().BeEmpty();
     }
 }
+

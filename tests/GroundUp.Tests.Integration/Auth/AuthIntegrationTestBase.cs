@@ -4,38 +4,23 @@ using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Repositories;
 using GroundUp.Core.Abstractions;
 using Microsoft.EntityFrameworkCore;
-using Testcontainers.PostgreSql;
 
 namespace GroundUp.Tests.Integration.Auth;
 
 /// <summary>
-/// Base test fixture for auth integration tests. Spins up a Testcontainers Postgres
-/// instance, creates an AuthDbContext, applies migrations, and provides helper methods
-/// to create repositories with a specific tenant context.
+/// Base test class for auth integration tests. Uses the shared
+/// <see cref="AuthPostgresFixture"/> collection fixture for the Postgres container.
+/// Provides helper methods to create repositories with a specific tenant context.
 /// </summary>
-public abstract class AuthIntegrationTestBase : IAsyncLifetime
+public abstract class AuthIntegrationTestBase
 {
-    private PostgreSqlContainer _postgres = null!;
-    protected AuthDbContext DbContext = null!;
+    private readonly AuthPostgresFixture _fixture;
+    protected AuthDbContext DbContext;
 
-    public async Task InitializeAsync()
+    protected AuthIntegrationTestBase(AuthPostgresFixture fixture)
     {
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
-            .Build();
-        await _postgres.StartAsync();
-
-        var options = new DbContextOptionsBuilder<AuthDbContext>()
-            .UseNpgsql(_postgres.GetConnectionString())
-            .Options;
-        DbContext = new AuthDbContext(options);
-        await DbContext.Database.MigrateAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        await DbContext.DisposeAsync();
-        await _postgres.DisposeAsync();
+        _fixture = fixture;
+        DbContext = fixture.CreateContext();
     }
 
     /// <summary>

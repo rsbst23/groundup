@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests for AuthFlowStateRepository.MarkFailedAsync against real Postgres.
 /// Validates failure marking semantics and terminal state rejection.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateRepositoryMarkFailedTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateRepositoryMarkFailedTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreatePendingDto() => new(
@@ -115,3 +118,4 @@ public sealed class AuthFlowStateRepositoryMarkFailedTests : AuthIntegrationTest
         result.Data!.FailureReason!.Length.Should().Be(1024);
     }
 }
+

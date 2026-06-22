@@ -10,8 +10,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Property 6: Tenant-scoped repositories enforce tenant isolation.
 /// Validates: Requirements 11.5, 11.6
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class TenantIsolationTests : AuthIntegrationTestBase
 {
+    public TenantIsolationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     #region RoleRepository Isolation
 
     [Fact]
@@ -311,3 +314,4 @@ public sealed class TenantIsolationTests : AuthIntegrationTestBase
 
     #endregion
 }
+

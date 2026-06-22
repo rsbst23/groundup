@@ -13,8 +13,11 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// hierarchy: User → UserRole → Role → RolePolicy → Policy → PolicyPermission → Permission.
 /// Uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class PermissionResolutionTests : AuthIntegrationTestBase
 {
+    public PermissionResolutionTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetUserPermissionsAsync_FullHierarchy_ReturnsCorrectPermissions()
     {
@@ -177,3 +180,4 @@ public sealed class PermissionResolutionTests : AuthIntegrationTestBase
         return new PermissionService(userRoleRepo, roleRepo, policyRepo, tenantContext, cache, options);
     }
 }
+

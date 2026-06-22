@@ -11,8 +11,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// and DeleteTerminalOlderThanAsync) in combination, simulating sweeper behavior
 /// without starting the BackgroundService timer.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateCleanupSweeperTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateCleanupSweeperTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreateDto(DateTime expiresAt) => new(
@@ -106,3 +109,4 @@ public sealed class AuthFlowStateCleanupSweeperTests : AuthIntegrationTestBase
         getResult.Success.Should().BeFalse();
     }
 }
+

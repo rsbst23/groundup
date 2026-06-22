@@ -8,8 +8,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Property 5: UserRepository email lookup is case-insensitive.
 /// Validates: Requirements 9.2, 9.3, 9.4
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class UserRepositoryLookupTests : AuthIntegrationTestBase
 {
+    public UserRepositoryLookupTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetByExternalUserIdAsync_ReturnsCorrectUser()
     {
@@ -105,3 +108,4 @@ public sealed class UserRepositoryLookupTests : AuthIntegrationTestBase
         result.StatusCode.Should().Be(404);
     }
 }
+

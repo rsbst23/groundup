@@ -10,8 +10,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// must fail, and querying junction data for entities in other tenants must return NotFound.
 /// Each test uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class JunctionCrossTenantTests : AuthIntegrationTestBase
 {
+    public JunctionCrossTenantTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     #region RolePolicy Cross-Tenant
 
     [Fact]
@@ -228,3 +231,4 @@ public sealed class JunctionCrossTenantTests : AuthIntegrationTestBase
 
     #endregion
 }
+

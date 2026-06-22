@@ -10,8 +10,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Property 2: TenantRepository visibility restricts to self and direct children.
 /// Validates: Requirements 10.2, 10.3, 10.4, 10.5
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
 {
+    public TenantRepositoryVisibilityTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetAllAsync_AsTenantA_ReturnsOnlySelfAndDirectChildren()
     {
@@ -287,3 +290,4 @@ public sealed class TenantRepositoryVisibilityTests : AuthIntegrationTestBase
         result.StatusCode.Should().Be(404);
     }
 }
+

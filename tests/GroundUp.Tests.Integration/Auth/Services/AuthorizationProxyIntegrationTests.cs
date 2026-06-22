@@ -18,8 +18,11 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// Integration tests verifying end-to-end authorization proxy enforcement with real
 /// permission resolution against a Postgres database. Tests both allowed and denied scenarios.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
 {
+    public AuthorizationProxyIntegrationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     #region Test Service Interface and Implementation
 
     /// <summary>
@@ -259,3 +262,4 @@ public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
         return AuthorizationInterceptor<ITestOrderService>.Create(target, permissionService, currentUser);
     }
 }
+
