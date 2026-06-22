@@ -73,6 +73,10 @@ public abstract class GroundUpWebApplicationFactory<TEntryPoint, TContext>
     /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Set required configuration values that startup validation expects
+        builder.UseSetting("GroundUp:Auth:JwtSigningKey", "integration-test-signing-key-that-is-at-least-32-bytes-long!");
+        builder.UseSetting("GroundUp:Auth:CleanupIntervalMinutes", "60");
+
         builder.ConfigureTestServices(services =>
         {
             // 1. Remove only the DbContextOptions<TContext> registration

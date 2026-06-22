@@ -10,8 +10,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Property 9: PolicyRepository junction management round-trip.
 /// Validates: Requirements 11.7, 11.8, 4.2, 4.3, 4.4, 5.2, 5.3, 5.4
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class JunctionManagementTests : AuthIntegrationTestBase
 {
+    public JunctionManagementTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     #region RolePolicy Junction (RoleRepository)
 
     [Fact]
@@ -234,3 +237,4 @@ public sealed class JunctionManagementTests : AuthIntegrationTestBase
 
     #endregion
 }
+

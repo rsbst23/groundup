@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests for AuthFlowStateRepository.MarkConsumedAsync against real Postgres.
 /// Validates atomic one-shot consumption semantics.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateRepositoryMarkConsumedTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateRepositoryMarkConsumedTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreatePendingDto(TimeSpan? lifetime = null) => new(
@@ -117,3 +120,4 @@ public sealed class AuthFlowStateRepositoryMarkConsumedTests : AuthIntegrationTe
         result.StatusCode.Should().Be(409);
     }
 }
+

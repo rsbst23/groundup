@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests for AuthFlowStateRepository standard CRUD operations
 /// (Add, GetById, Update, Delete) against a real Postgres database.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateRepositoryCrudTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateRepositoryCrudTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreateValidDto() => new(
@@ -135,3 +138,4 @@ public sealed class AuthFlowStateRepositoryCrudTests : AuthIntegrationTestBase
         result.StatusCode.Should().Be(404);
     }
 }
+

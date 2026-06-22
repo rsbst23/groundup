@@ -8,8 +8,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// with the exception of the system bypass method GetAllMembershipsForUserAsync.
 /// Each test uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
 {
+    public UserTenantIsolationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task CreateUserTenant_AsTenantA_GetByUserId_AsTenantA_ReturnsIt()
     {
@@ -115,3 +118,4 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
         result.StatusCode.Should().Be(404);
     }
 }
+

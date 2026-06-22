@@ -16,8 +16,11 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// role assignments change. Resolves permissions (populates cache), modifies
 /// data, publishes events, and verifies re-resolution produces updated results.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class CacheInvalidationTests : AuthIntegrationTestBase
 {
+    public CacheInvalidationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task CacheInvalidation_NewUserRoleAdded_ReResolutionReflectsNewPermissions()
     {
@@ -159,3 +162,4 @@ public sealed class CacheInvalidationTests : AuthIntegrationTestBase
         updatedPermissions.Should().HaveCount(2);
     }
 }
+

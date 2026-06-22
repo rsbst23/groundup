@@ -22,6 +22,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.*" />
     <PackageReference Include="NSubstitute" Version="5.*" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.*" />
+    <PackageReference Include="Testcontainers.Keycloak" Version="3.*" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
   </ItemGroup>
@@ -35,6 +36,7 @@
     <ProjectReference Include="..\..\src\GroundUp.Data.Abstractions\GroundUp.Data.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Data.Postgres\GroundUp.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Auth.Services\GroundUp.Auth.Services.csproj" />
+    <ProjectReference Include="..\..\src\GroundUp.Auth.Keycloak\GroundUp.Auth.Keycloak.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Events\GroundUp.Events.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Repositories\GroundUp.Repositories.csproj" />
     <ProjectReference Include="..\..\src\GroundUp.Services\GroundUp.Services.csproj" />

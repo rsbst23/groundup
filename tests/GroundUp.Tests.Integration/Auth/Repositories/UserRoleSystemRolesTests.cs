@@ -8,8 +8,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests verifying that GetSystemRolesForUserAsync returns only system roles
 /// regardless of tenant context, and that RoleName is populated in the result.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
 {
+    public UserRoleSystemRolesTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetSystemRolesForUserAsync_ReturnsOnlySystemRoles()
     {
@@ -133,3 +136,4 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         result.Data.Should().BeEmpty();
     }
 }
+

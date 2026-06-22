@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests verifying that Role data NEVER leaks across tenants.
 /// Each test uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class RoleTenantIsolationTests : AuthIntegrationTestBase
 {
+    public RoleTenantIsolationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task CreateRole_AsTenantA_GetAll_AsTenantA_ReturnsRole()
     {
@@ -126,3 +129,4 @@ public sealed class RoleTenantIsolationTests : AuthIntegrationTestBase
         result.Data!.TenantId.Should().NotBe(spoofedTenantId);
     }
 }
+

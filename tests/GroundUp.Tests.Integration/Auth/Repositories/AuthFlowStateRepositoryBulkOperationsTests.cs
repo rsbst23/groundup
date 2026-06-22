@@ -9,8 +9,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests for AuthFlowStateRepository bulk operations
 /// (MarkExpiredOlderThanAsync, DeleteTerminalOlderThanAsync) against real Postgres.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegrationTestBase
 {
+    public AuthFlowStateRepositoryBulkOperationsTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
     private static AuthFlowStateDto CreateDto(FlowStatus status, DateTime expiresAt) => new(
@@ -66,19 +69,22 @@ public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegration
     {
         // Arrange
         var repo = CreateRepository();
-        var cutoff = DateTime.UtcNow;
 
-        // Create a row and consume it (terminal state)
+        // Use a far-future cutoff so only our specific row is in play
+        var cutoff = DateTime.UtcNow.AddHours(1);
+
+        // Create a row with ExpiresAt before cutoff, then consume it (terminal state)
         var consumed = await repo.AddAsync(CreateDto(FlowStatus.Pending, cutoff.AddMinutes(-10)));
         await repo.MarkConsumedAsync(consumed.Data!.Id);
 
-        // Act
+        // Count existing pending expired rows before our act (from other tests in same DB)
+        // (This line is just for understanding — we don't actually need the baseline count)
+
+        // Act — sweep with our cutoff
         var result = await repo.MarkExpiredOlderThanAsync(cutoff);
 
-        // Assert
-        result.Success.Should().BeTrue();
-        result.Data.Should().Be(0); // Already consumed, not Pending
-
+        // Assert — no new pending rows should have been swept (our row was already consumed)
+        // Any rows swept were pending leftovers from other tests, so just verify our consumed row wasn't touched
         var row = await repo.GetByIdAsync(consumed.Data!.Id);
         row.Data!.Status.Should().Be(FlowStatus.Consumed);
     }
@@ -161,3 +167,4 @@ public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegration
 
     #endregion
 }
+

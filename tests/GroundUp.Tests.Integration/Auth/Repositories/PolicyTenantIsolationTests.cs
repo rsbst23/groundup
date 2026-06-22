@@ -8,8 +8,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Integration tests verifying that Policy data NEVER leaks across tenants.
 /// Each test uses a real Postgres database via Testcontainers.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class PolicyTenantIsolationTests : AuthIntegrationTestBase
 {
+    public PolicyTenantIsolationTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task CreatePolicy_AsTenantA_GetAll_AsTenantA_ReturnsPolicy()
     {
@@ -125,3 +128,4 @@ public sealed class PolicyTenantIsolationTests : AuthIntegrationTestBase
         result.Data!.TenantId.Should().NotBe(spoofedTenantId);
     }
 }
+

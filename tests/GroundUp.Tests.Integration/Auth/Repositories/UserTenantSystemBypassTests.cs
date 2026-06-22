@@ -8,8 +8,11 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// Property 7: GetAllMembershipsForUserAsync bypasses tenant filtering.
 /// Validates: Requirements 7.3
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
 {
+    public UserTenantSystemBypassTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetAllMembershipsForUserAsync_ReturnsBothMemberships_RegardlessOfTenantContext()
     {
@@ -104,3 +107,4 @@ public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
         result.Data!.Should().HaveCount(3);
     }
 }
+

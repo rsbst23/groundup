@@ -13,8 +13,11 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// System role assignments are found regardless of tenant context via GetSystemRolesForUserAsync.
 /// Policy resolution for system roles works when the role is accessible in the current tenant.
 /// </summary>
+[Collection("AuthPostgres")]
 public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
 {
+    public SystemRoleResolutionTests(AuthPostgresFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task GetUserPermissionsAsync_SystemRole_PermissionsIncludedInResolution()
     {
@@ -192,3 +195,4 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         return new PermissionService(userRoleRepo, roleRepo, policyRepo, tenantContext, cache, options);
     }
 }
+

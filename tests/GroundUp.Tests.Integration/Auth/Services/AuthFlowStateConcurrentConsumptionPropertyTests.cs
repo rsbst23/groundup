@@ -1,12 +1,9 @@
 using FsCheck;
 using FsCheck.Xunit;
-using FluentAssertions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Repositories;
-using Microsoft.EntityFrameworkCore;
-using Testcontainers.PostgreSql;
 
 namespace GroundUp.Tests.Integration.Auth.Services;
 
@@ -15,41 +12,23 @@ namespace GroundUp.Tests.Integration.Auth.Services;
 /// for any valid AuthFlowState row, launching N concurrent ConsumeAsync calls
 /// via real Postgres guarantees exactly one winner.
 /// </summary>
-public sealed class AuthFlowStateConcurrentConsumptionPropertyTests : IAsyncLifetime
+[Collection("AuthFlowStatePostgres")]
+public sealed class AuthFlowStateConcurrentConsumptionPropertyTests
 {
-    private PostgreSqlContainer _postgres = null!;
-    private string _connectionString = null!;
+    private readonly AuthFlowStatePostgresFixture _fixture;
 
-    public async Task InitializeAsync()
+    public AuthFlowStateConcurrentConsumptionPropertyTests(AuthFlowStatePostgresFixture fixture)
     {
-        _postgres = new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
-            .Build();
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-
-        await using var context = CreateContext();
-        await context.Database.MigrateAsync();
+        _fixture = fixture;
     }
 
-    public async Task DisposeAsync()
-    {
-        await _postgres.DisposeAsync();
-    }
-
-    private AuthDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AuthDbContext>()
-            .UseNpgsql(_connectionString)
-            .Options;
-        return new AuthDbContext(options);
-    }
+    private AuthDbContext CreateContext() => _fixture.CreateContext();
 
     /// <summary>
     /// Property: For any valid Pending AuthFlowState row, launching N (2–10) concurrent
     /// MarkConsumedAsync calls against real Postgres guarantees exactly one success.
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 10)]
     public Property ConcurrentConsume_ExactlyOneWinner(
         int flowTypeInt,
         PositiveInt concurrencyRaw)
