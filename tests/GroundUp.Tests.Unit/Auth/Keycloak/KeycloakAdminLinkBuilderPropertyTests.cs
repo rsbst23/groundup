@@ -1,6 +1,7 @@
 using FsCheck;
 using FsCheck.Xunit;
 using GroundUp.Auth.Keycloak;
+using GroundUp.Auth.Services.Configuration;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 

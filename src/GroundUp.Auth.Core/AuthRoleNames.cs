@@ -18,4 +18,11 @@ public static class AuthRoleNames
     /// Full system access. Bypasses all permission checks.
     /// </summary>
     public const string SuperAdmin = "SuperAdmin";
+
+    /// <summary>
+    /// Tenant-scoped full access. Bypasses all permission checks within the tenant.
+    /// This is NOT a global System role — it is created per-tenant with <c>IsSystem=true</c>
+    /// and scoped to the owning tenant's <c>TenantId</c>.
+    /// </summary>
+    public const string TenantAdmin = "TenantAdmin";
 }

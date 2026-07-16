@@ -13,6 +13,10 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="JoinLinkId">Optional join link identifier.</param>
 /// <param name="Realm">Optional identity provider realm name.</param>
 /// <param name="ReturnUrl">Optional post-authentication redirect URL.</param>
+/// <param name="StateToken">Cryptographically-random OAuth state value — lookup key at callback.</param>
+/// <param name="CodeVerifier">PKCE code_verifier for code exchange.</param>
+/// <param name="RedirectUri">Exact redirect_uri used at authorize time.</param>
+/// <param name="OrganizationName">Organization name for NewOrganization flows.</param>
 /// <param name="Nonce">Cryptographic nonce for CSRF protection.</param>
 /// <param name="CreatedByIp">IP address of the initiating client.</param>
 /// <param name="CreatedByUserAgent">User-Agent of the initiating client.</param>
@@ -31,6 +35,10 @@ public record AuthFlowStateDto(
     Guid? JoinLinkId,
     string? Realm,
     string? ReturnUrl,
+    string StateToken,
+    string CodeVerifier,
+    string RedirectUri,
+    string? OrganizationName,
     string Nonce,
     string? CreatedByIp,
     string? CreatedByUserAgent,

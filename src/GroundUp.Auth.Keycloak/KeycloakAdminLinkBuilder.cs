@@ -1,3 +1,4 @@
+using GroundUp.Auth.Services.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace GroundUp.Auth.Keycloak;

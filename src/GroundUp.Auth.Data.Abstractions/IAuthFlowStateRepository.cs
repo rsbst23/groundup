@@ -50,4 +50,14 @@ public interface IAuthFlowStateRepository : IBaseRepository<AuthFlowStateDto>
     /// <returns>The count of rows deleted.</returns>
     Task<OperationResult<int>> DeleteTerminalOlderThanAsync(
         DateTime cutoff, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds an AuthFlowState by its cryptographic state token (the OAuth <c>state</c> parameter value).
+    /// Returns the DTO if found, or a NotFound result if no matching row exists.
+    /// </summary>
+    /// <param name="stateToken">The state token to look up.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching AuthFlowState DTO on success, or a NotFound result.</returns>
+    Task<OperationResult<AuthFlowStateDto>> FindByStateTokenAsync(
+        string stateToken, CancellationToken cancellationToken = default);
 }

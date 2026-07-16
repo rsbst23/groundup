@@ -2,6 +2,7 @@ using FsCheck;
 using FsCheck.Xunit;
 using FluentAssertions;
 using GroundUp.Auth.Keycloak;
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Models;
 using Microsoft.Extensions.DependencyInjection;

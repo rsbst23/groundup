@@ -78,6 +78,10 @@ public static class AuthServiceCollectionExtensions
                 return keyByteCount >= ConfigurationSigningKeyProvider.MinimumKeyBytes;
             },
             $"AuthOptions.JwtSigningKey must be configured and at least {ConfigurationSigningKeyProvider.MinimumKeyBytes} bytes ({ConfigurationSigningKeyProvider.MinimumKeyBytes * 8} bits) when UTF-8 encoded for HMAC-SHA256.")
+            .Validate(options => options.AbsoluteSessionLifetimeMinutes > 0,
+                "AuthOptions.AbsoluteSessionLifetimeMinutes must be greater than 0.")
+            .Validate(options => options.AbsoluteSessionLifetimeMinutes >= options.TokenExpirationMinutes,
+                "AuthOptions.AbsoluteSessionLifetimeMinutes must be greater than or equal to TokenExpirationMinutes.")
             .Validate(options => options.CleanupIntervalMinutes > 0,
                 "AuthOptions.CleanupIntervalMinutes must be greater than 0.")
             .Validate(options => options.RetentionDays >= 0,
@@ -122,6 +126,16 @@ public static class AuthServiceCollectionExtensions
 
         // Bootstrap services
         services.AddScoped<IIdentityBootstrapService, IdentityBootstrapService>();
+
+        // Auth dispatcher services (Phase 10C)
+        services.AddScoped<IAuthCookieWriter, AuthCookieWriter>();
+        services.AddScoped<IHostTenantResolver, HostTenantResolver>();
+        services.AddScoped<HostResolvedTenant>();
+        services.AddScoped<IAuthUrlBuilder, AuthUrlBuilderService>();
+        services.AddScoped<IAuthFlowService, AuthFlowService>();
+        services.AddScoped<IFlowHandler, NewOrganizationFlowHandler>();
+        services.AddScoped<IFlowHandler, LoginFlowHandler>();
+        services.AddScoped<LastAdminGuard>();
 
         // Cleanup sweeper (hosted service)
         services.AddHostedService<AuthFlowStateCleanupSweeper>();

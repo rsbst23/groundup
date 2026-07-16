@@ -13,6 +13,10 @@ public sealed class InitiateAuthFlowRequestValidator : AbstractValidator<Initiat
     /// </summary>
     public InitiateAuthFlowRequestValidator()
     {
+        RuleFor(x => x.StateToken).NotEmpty().MaximumLength(128);
+        RuleFor(x => x.CodeVerifier).NotEmpty().MaximumLength(128);
+        RuleFor(x => x.RedirectUri).NotEmpty().MaximumLength(2048);
+        RuleFor(x => x.OrganizationName).MaximumLength(256).When(x => x.OrganizationName is not null);
         RuleFor(x => x.Nonce).NotEmpty().MaximumLength(128);
         RuleFor(x => x.FlowType).IsInEnum();
         RuleFor(x => x.Realm).MaximumLength(128).When(x => x.Realm is not null);

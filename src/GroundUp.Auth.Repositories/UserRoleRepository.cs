@@ -83,4 +83,25 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
 
         return OperationResult<List<UserRoleDto>>.Ok(dtos);
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: Queries the DbContext directly with an explicit tenant filter,
+    /// bypassing the tenant-scoped DbSet. Returns all users who hold the TenantAdmin
+    /// role in the specified tenant, used by the last-admin guard.
+    /// </remarks>
+    public async Task<OperationResult<List<UserRoleDto>>> GetTenantAdminHoldersAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var dtos = await Context.Set<UserRole>()
+            .AsNoTracking()
+            .Include(ur => ur.Role)
+            .Where(ur => ur.TenantId == tenantId
+                && ur.Role.Name == Auth.Core.AuthRoleNames.TenantAdmin)
+            .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name))
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<UserRoleDto>>.Ok(dtos);
+    }
 }

@@ -19,21 +19,29 @@ public interface IAuthSessionService
     /// </summary>
     /// <param name="userId">The authenticated user's identifier.</param>
     /// <param name="tenantId">The tenant to select, or null to trigger auto-select or list.</param>
+    /// <param name="originalAuthTime">
+    /// The original authentication time to preserve on the reissued token.
+    /// When provided (tenant re-selection from an existing GroundUp token), the value is preserved.
+    /// When null (first issuance from a pending-selection Keycloak principal), auth_time is set to the current UTC time.
+    /// </param>
     /// <returns>
     /// A successful result containing the tenant selection response,
     /// or a forbidden result if the user does not belong to the specified tenant.
     /// </returns>
-    Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId);
+    Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null);
 
     /// <summary>
     /// Refreshes the token for the specified user and tenant with fresh roles.
     /// Re-validates tenant membership before issuing a new token.
+    /// The original authentication time is preserved on the reissued token so the
+    /// absolute session lifetime cap is measured from the original login, not from each refresh.
     /// </summary>
     /// <param name="userId">The authenticated user's identifier.</param>
     /// <param name="tenantId">The tenant to refresh the token for.</param>
+    /// <param name="originalAuthTime">The original authentication time from the current token's auth_time claim.</param>
     /// <returns>
     /// A successful result containing the new token string,
     /// or a forbidden result if the user no longer belongs to the tenant.
     /// </returns>
-    Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId);
+    Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId, DateTimeOffset originalAuthTime);
 }

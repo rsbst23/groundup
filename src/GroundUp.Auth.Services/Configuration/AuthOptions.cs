@@ -70,6 +70,29 @@ public sealed class AuthOptions
     public SameSiteMode CookieSameSite { get; set; } = SameSiteMode.Strict;
 
     /// <summary>
+    /// Absolute session lifetime cap in minutes, measured from auth_time.
+    /// Sliding refresh stops after this threshold. Default: 480 (8 hours).
+    /// Must be greater than 0 and >= TokenExpirationMinutes.
+    /// </summary>
+    public int AbsoluteSessionLifetimeMinutes { get; set; } = 480;
+
+    /// <summary>
+    /// Duration in minutes for AuthFlowState expiration. Default: 10.
+    /// </summary>
+    public int FlowStateExpirationMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// Name of the state cookie for browser-binding CSRF protection.
+    /// Default: "AuthState".
+    /// </summary>
+    public string StateCookieName { get; set; } = "AuthState";
+
+    /// <summary>
+    /// Callback URL path (relative) for OAuth callbacks. Default: "/auth/callback".
+    /// </summary>
+    public string CallbackPath { get; set; } = "/auth/callback";
+
+    /// <summary>
     /// Interval in minutes between AuthFlowState cleanup sweeper cycles. Default: 5.
     /// Must be greater than 0; validated on startup.
     /// </summary>

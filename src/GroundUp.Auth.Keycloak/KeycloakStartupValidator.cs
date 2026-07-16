@@ -1,3 +1,4 @@
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,14 +34,26 @@ internal sealed class KeycloakStartupValidator : IHostedService
     {
         using var scope = _serviceProvider.CreateScope();
 
-        var bootstrapStateService = scope.ServiceProvider.GetRequiredService<IBootstrapStateService>();
-        var isBootstrapComplete = await bootstrapStateService.IsCompleteAsync(cancellationToken);
+        var bootstrapStateService = scope.ServiceProvider.GetService<IBootstrapStateService>();
+
+        // If IBootstrapStateService is not registered, we can't determine bootstrap state.
+        // In that case, skip validation when settings are not fully configured (dev/sample mode).
+        bool isBootstrapComplete;
+        if (bootstrapStateService is null)
+        {
+            isBootstrapComplete = false; // Treat as "not complete" so we apply the lenient check below
+        }
+        else
+        {
+            isBootstrapComplete = await bootstrapStateService.IsCompleteAsync(cancellationToken);
+        }
 
         var optionsMonitor = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<KeycloakOptions>>();
         var options = optionsMonitor.CurrentValue;
 
-        // If bootstrap is not complete and ALL settings are empty, skip validation (setup mode).
-        if (!isBootstrapComplete && AllSettingsEmpty(options))
+        // If bootstrap is not complete (or unknown), skip validation when settings are missing.
+        // This covers setup mode and dev scenarios where Keycloak isn't fully configured yet.
+        if (!isBootstrapComplete && !AllSettingsPopulated(options))
         {
             return;
         }
@@ -59,6 +72,16 @@ internal sealed class KeycloakStartupValidator : IHostedService
             && string.IsNullOrWhiteSpace(options.AdminClientId)
             && string.IsNullOrWhiteSpace(options.AdminClientSecret)
             && string.IsNullOrWhiteSpace(options.AppClientId);
+    }
+
+    private static bool AllSettingsPopulated(KeycloakOptions options)
+    {
+        return !string.IsNullOrWhiteSpace(options.PublicBaseUrl)
+            && !string.IsNullOrWhiteSpace(options.SharedRealmName)
+            && !string.IsNullOrWhiteSpace(options.InternalBaseUrl)
+            && !string.IsNullOrWhiteSpace(options.AdminClientId)
+            && !string.IsNullOrWhiteSpace(options.AdminClientSecret)
+            && !string.IsNullOrWhiteSpace(options.AppClientId);
     }
 
     private static void Validate(KeycloakOptions options)

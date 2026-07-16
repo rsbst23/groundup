@@ -142,4 +142,20 @@ public sealed class AuthFlowStateRepository : BaseRepository<AuthFlowState, Auth
 
         return OperationResult<int>.Ok(count);
     }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<AuthFlowStateDto>> FindByStateTokenAsync(
+        string stateToken, CancellationToken cancellationToken = default)
+    {
+        var entity = await DbSet.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.StateToken == stateToken, cancellationToken);
+
+        if (entity is null)
+        {
+            return OperationResult<AuthFlowStateDto>.NotFound(
+                $"AuthFlowState with StateToken not found");
+        }
+
+        return OperationResult<AuthFlowStateDto>.Ok(AuthFlowStateMapper.ToDto(entity));
+    }
 }

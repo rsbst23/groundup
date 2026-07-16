@@ -11,8 +11,8 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["https://localhost:*/auth/callback"],
-      "webOrigins": ["https://localhost:*"],
+      "redirectUris": ["https://localhost:*/auth/callback", "http://localhost:*/auth/callback"],
+      "webOrigins": ["https://localhost:*", "http://localhost:*"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Keycloak.Models;
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core;
 using GroundUp.Core.Results;
 using Microsoft.Extensions.Logging;

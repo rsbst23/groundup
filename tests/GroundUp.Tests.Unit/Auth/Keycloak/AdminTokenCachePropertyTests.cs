@@ -4,6 +4,7 @@ using FsCheck;
 using FsCheck.Xunit;
 using FluentAssertions;
 using GroundUp.Auth.Keycloak;
+using GroundUp.Auth.Services.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

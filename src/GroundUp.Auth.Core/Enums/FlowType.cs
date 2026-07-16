@@ -21,8 +21,8 @@ public enum FlowType
     /// <summary>Enterprise SSO auto-join for federated users.</summary>
     EnterpriseSsoAutoJoin = 4,
 
-    /// <summary>User selecting which tenant to authenticate into.</summary>
-    MultiTenantSelection = 5,
+    /// <summary>Standard login flow with membership resolution and tenant selection.</summary>
+    Login = 5,
 
     /// <summary>Silent token refresh flow.</summary>
     TokenRefresh = 6

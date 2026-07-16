@@ -36,20 +36,31 @@ public sealed class DefaultScopeChainProvider : IScopeChainProvider
     public async Task<IReadOnlyList<SettingScopeEntry>> GetScopeChainAsync(
         CancellationToken cancellationToken = default)
     {
-        if (_tenantContext.TenantId == Guid.Empty)
-        {
-            return Array.Empty<SettingScopeEntry>();
-        }
+        var chain = new List<SettingScopeEntry>();
 
-        var tenantLevel = await _dbContext.Set<SettingLevel>()
+        // Always include the System level (scope = null for system-wide settings)
+        var systemLevel = await _dbContext.Set<SettingLevel>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "Tenant", cancellationToken);
+            .FirstOrDefaultAsync(l => l.Name == "System", cancellationToken);
 
-        if (tenantLevel is null)
+        if (systemLevel is not null)
         {
-            return Array.Empty<SettingScopeEntry>();
+            chain.Add(new SettingScopeEntry(systemLevel.Id, null));
         }
 
-        return new[] { new SettingScopeEntry(tenantLevel.Id, _tenantContext.TenantId) };
+        // Include the Tenant level only when a tenant context is active
+        if (_tenantContext.TenantId != Guid.Empty)
+        {
+            var tenantLevel = await _dbContext.Set<SettingLevel>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(l => l.Name == "Tenant", cancellationToken);
+
+            if (tenantLevel is not null)
+            {
+                chain.Add(new SettingScopeEntry(tenantLevel.Id, _tenantContext.TenantId));
+            }
+        }
+
+        return chain;
     }
 }

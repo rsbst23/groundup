@@ -6,6 +6,7 @@ using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Keycloak.Models;
 using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
