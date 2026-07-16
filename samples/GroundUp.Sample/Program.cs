@@ -24,10 +24,13 @@ builder.Services.AddGroundUpEvents();
 builder.Services.AddGroundUpServices(typeof(Program).Assembly);
 builder.Services.AddGroundUpApi();
 builder.Services.AddGroundUpSettings();
+builder.Services.AddGroundUpBootstrap(builder.Configuration);
+builder.Services.AddGroundUpSetup(builder.Configuration);
 
 // GroundUp auth services
 builder.Services.AddGroundUpAuthPostgres(connectionString);
 builder.Services.AddGroundUpAuth(builder.Configuration);
+builder.Services.AddGroundUpAuthKeycloak();
 
 // Settings seeder
 builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();

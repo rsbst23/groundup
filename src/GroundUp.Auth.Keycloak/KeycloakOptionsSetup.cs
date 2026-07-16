@@ -1,3 +1,4 @@
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Abstractions;
 using GroundUp.Events;
 using Microsoft.Extensions.DependencyInjection;

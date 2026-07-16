@@ -18,12 +18,17 @@ public sealed class AuthFlowStateConfiguration : IEntityTypeConfiguration<AuthFl
         // Indexes
         builder.HasIndex(e => new { e.Status, e.ExpiresAt });
         builder.HasIndex(e => e.TenantId);
+        builder.HasIndex(e => e.StateToken).IsUnique();
 
         // Enum storage as int
         builder.Property(e => e.FlowType).HasConversion<int>();
         builder.Property(e => e.Status).HasConversion<int>();
 
         // String constraints
+        builder.Property(e => e.StateToken).IsRequired().HasMaxLength(128);
+        builder.Property(e => e.CodeVerifier).IsRequired().HasMaxLength(128);
+        builder.Property(e => e.RedirectUri).IsRequired().HasMaxLength(2048);
+        builder.Property(e => e.OrganizationName).HasMaxLength(256);
         builder.Property(e => e.Nonce).IsRequired().HasMaxLength(128);
         builder.Property(e => e.Realm).HasMaxLength(128);
         builder.Property(e => e.ReturnUrl).HasMaxLength(2048);

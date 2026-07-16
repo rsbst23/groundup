@@ -1,6 +1,7 @@
 using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Keycloak;
 using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

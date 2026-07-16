@@ -1,4 +1,4 @@
-namespace GroundUp.Auth.Keycloak;
+namespace GroundUp.Auth.Services.Configuration;
 
 /// <summary>
 /// Configuration options for the Keycloak identity provider.

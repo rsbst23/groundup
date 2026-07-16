@@ -47,6 +47,27 @@ public sealed class AuthFlowState : BaseEntity, IAuditable
     public string? ReturnUrl { get; set; }
 
     /// <summary>
+    /// Cryptographically-random OAuth state token — the lookup key at callback.
+    /// Distinct from the PK (UUIDv7) because UUIDv7 is timestamp-based and partially predictable.
+    /// </summary>
+    public string StateToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PKCE code_verifier for authorization code exchange.
+    /// </summary>
+    public string CodeVerifier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Exact redirect_uri used at authorize time, reused at code exchange.
+    /// </summary>
+    public string RedirectUri { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Organization name for NewOrganization flows. Null for other flow types.
+    /// </summary>
+    public string? OrganizationName { get; set; }
+
+    /// <summary>
     /// Cryptographic nonce for CSRF protection. Required.
     /// </summary>
     public string Nonce { get; set; } = string.Empty;

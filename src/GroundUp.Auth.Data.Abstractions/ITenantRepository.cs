@@ -34,6 +34,22 @@ public interface ITenantRepository : IBaseRepository<TenantDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Retrieves a tenant by its slug, bypassing the ambient tenant-context visibility filter.
+    /// Soft-deleted tenants are still excluded.
+    /// </summary>
+    /// <remarks>
+    /// <b>SECURITY:</b> This method bypasses tenant visibility enforcement. The intended
+    /// consumer is <c>HostTenantResolver</c>, which runs before any tenant context is
+    /// established and must resolve a tenant from the request Host header's subdomain.
+    /// </remarks>
+    /// <param name="slug">The tenant slug to search for.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The matching tenant DTO or a NotFound result.</returns>
+    Task<OperationResult<TenantDto>> GetBySlugBypassFilterAsync(
+        string slug,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retrieves multiple tenants by their IDs in a single query, bypassing the
     /// ambient tenant-context visibility filter. Soft-deleted tenants are still excluded.
     /// </summary>

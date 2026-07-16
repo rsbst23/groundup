@@ -47,4 +47,15 @@ public interface IUserRoleRepository : IBaseRepository<UserRoleDto>
     Task<OperationResult<List<UserRoleDto>>> GetSystemRolesForUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves all active users who hold the TenantAdmin role in the specified tenant.
+    /// Used by the last-admin guard to determine whether a TenantAdmin removal is safe.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier to check for TenantAdmin holders.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A list of user-role DTOs for users holding TenantAdmin in the specified tenant.</returns>
+    Task<OperationResult<List<UserRoleDto>>> GetTenantAdminHoldersAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
 }

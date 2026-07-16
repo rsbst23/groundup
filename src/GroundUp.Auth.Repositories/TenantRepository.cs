@@ -103,6 +103,28 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
     /// <inheritdoc />
     /// <remarks>
     /// SYSTEM BYPASS: Uses <c>IgnoreQueryFilters()</c> to bypass tenant-context visibility,
+    /// then explicitly excludes soft-deleted tenants. Required for host-based tenant resolution
+    /// which runs before any tenant context is established.
+    /// </remarks>
+    public async Task<OperationResult<TenantDto>> GetBySlugBypassFilterAsync(
+        string slug,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await Context.Set<Tenant>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(t => !t.IsDeleted)
+            .FirstOrDefaultAsync(t => t.Slug == slug, cancellationToken);
+
+        if (entity is null)
+            return OperationResult<TenantDto>.NotFound();
+
+        return OperationResult<TenantDto>.Ok(MapToDto(entity));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: Uses <c>IgnoreQueryFilters()</c> to bypass tenant-context visibility,
     /// then explicitly excludes soft-deleted tenants. Required for multi-tenant sign-in
     /// where the user must see their memberships' tenant details before selecting a tenant.
     /// </remarks>

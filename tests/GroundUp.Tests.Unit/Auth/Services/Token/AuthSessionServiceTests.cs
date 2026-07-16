@@ -18,6 +18,7 @@ public sealed class AuthSessionServiceTests
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _tenantId1 = Guid.NewGuid();
     private readonly Guid _tenantId2 = Guid.NewGuid();
+    private readonly DateTimeOffset _originalAuthTime = DateTimeOffset.UtcNow.AddMinutes(-30);
 
     public AuthSessionServiceTests()
     {
@@ -221,7 +222,7 @@ public sealed class AuthSessionServiceTests
         });
 
         // Act
-        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert
         Assert.True(result.Success);
@@ -238,7 +239,7 @@ public sealed class AuthSessionServiceTests
         });
 
         // Act
-        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert
         Assert.False(result.Success);
@@ -253,7 +254,7 @@ public sealed class AuthSessionServiceTests
             .Returns(OperationResult<List<UserTenantDto>>.Fail("DB error", 500));
 
         // Act
-        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert
         Assert.False(result.Success);
@@ -272,7 +273,7 @@ public sealed class AuthSessionServiceTests
             .Returns((string?)null);
 
         // Act
-        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert
         Assert.False(result.Success);
@@ -289,7 +290,7 @@ public sealed class AuthSessionServiceTests
         });
 
         // Act
-        await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert — membership was queried
         await _userTenantRepository.Received(1).GetAllMembershipsForUserAsync(_userId, Arg.Any<CancellationToken>());
@@ -363,7 +364,7 @@ public sealed class AuthSessionServiceTests
         });
 
         // Act
-        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1);
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, _originalAuthTime);
 
         // Assert — inactive memberships cannot refresh
         Assert.False(result.Success);

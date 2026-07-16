@@ -760,7 +760,7 @@ internal sealed class SetupWizardService : ISetupWizardService
     private async Task<Guid> GetSystemLevelIdAsync(CancellationToken ct)
     {
         var level = await _dbContext.Set<SettingLevel>().AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "system", ct);
+            .FirstOrDefaultAsync(l => l.Name == "System", ct);
         return level?.Id ?? throw new InvalidOperationException("System setting level not found.");
     }
 

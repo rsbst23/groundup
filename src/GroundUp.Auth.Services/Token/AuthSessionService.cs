@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core.Results;
@@ -32,7 +33,7 @@ public sealed class AuthSessionService : IAuthSessionService
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId)
+    public async Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null)
     {
         // 1. Query all tenant memberships for user, then filter to active memberships only.
         //    An inactive (soft-disabled) membership must not be selectable for sign-in.
@@ -50,6 +51,11 @@ public sealed class AuthSessionService : IAuthSessionService
             return OperationResult<SetTenantResponseDto>.Forbidden("User does not belong to any tenant");
         }
 
+        // Resolve auth_time: preserve originalAuthTime if provided (tenant re-selection),
+        // otherwise set to now (first issuance from pending-selection Keycloak principal).
+        var authTime = originalAuthTime ?? DateTimeOffset.UtcNow;
+        var authTimeClaims = CreateAuthTimeClaims(authTime);
+
         // 3. If tenantId is null → auto-select or return list
         if (tenantId is null)
         {
@@ -57,7 +63,7 @@ public sealed class AuthSessionService : IAuthSessionService
             {
                 // Auto-select the single tenant
                 var membership = memberships[0];
-                var token = await _tokenService.GenerateTokenAsync(userId, membership.TenantId);
+                var token = await _tokenService.GenerateTokenAsync(userId, membership.TenantId, authTimeClaims);
 
                 if (token is null)
                 {
@@ -101,7 +107,7 @@ public sealed class AuthSessionService : IAuthSessionService
             return OperationResult<SetTenantResponseDto>.Forbidden("User does not belong to the specified tenant");
         }
 
-        var selectedToken = await _tokenService.GenerateTokenAsync(userId, tenantId.Value);
+        var selectedToken = await _tokenService.GenerateTokenAsync(userId, tenantId.Value, authTimeClaims);
         if (selectedToken is null)
         {
             return OperationResult<SetTenantResponseDto>.NotFound("User not found");
@@ -112,7 +118,7 @@ public sealed class AuthSessionService : IAuthSessionService
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId)
+    public async Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId, DateTimeOffset originalAuthTime)
     {
         // 1. Re-validate user still has an active membership in the tenant.
         //    An inactive membership must not be refreshable.
@@ -128,13 +134,25 @@ public sealed class AuthSessionService : IAuthSessionService
             return OperationResult<string>.Forbidden("User no longer belongs to the specified tenant");
         }
 
-        // 2. Generate new token with fresh roles
-        var token = await _tokenService.GenerateTokenAsync(userId, tenantId);
+        // 2. Generate new token with fresh roles, preserving the original auth_time
+        var authTimeClaims = CreateAuthTimeClaims(originalAuthTime);
+        var token = await _tokenService.GenerateTokenAsync(userId, tenantId, authTimeClaims);
         if (token is null)
         {
             return OperationResult<string>.NotFound("User not found");
         }
 
         return OperationResult<string>.Ok(token);
+    }
+
+    /// <summary>
+    /// Creates the auth_time claim as an additional claim for token generation.
+    /// </summary>
+    private static IEnumerable<Claim> CreateAuthTimeClaims(DateTimeOffset authTime)
+    {
+        return
+        [
+            new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
+        ];
     }
 }

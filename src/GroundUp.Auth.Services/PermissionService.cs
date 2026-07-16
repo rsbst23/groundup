@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Abstractions;
@@ -9,6 +10,7 @@ namespace GroundUp.Auth.Services;
 /// <summary>
 /// Resolves a user's effective permissions by traversing the role hierarchy and caching results.
 /// Combines tenant-scoped role permissions with system-level role permissions into a deduplicated set.
+/// Short-circuits for SuperAdmin (global bypass) and TenantAdmin (tenant-scoped bypass) before cache lookup.
 /// </summary>
 public sealed class PermissionService : IPermissionService
 {
@@ -47,6 +49,14 @@ public sealed class PermissionService : IPermissionService
     /// <inheritdoc />
     public async Task<bool> HasPermissionAsync(Guid userId, string permissionKey, CancellationToken cancellationToken = default)
     {
+        // SuperAdmin and TenantAdmin bypass — short-circuit BEFORE cache lookup.
+        // Never cached as a concrete permission set so newly added permissions are automatically covered.
+        if (await IsSuperAdminAsync(userId, cancellationToken))
+            return true;
+
+        if (await IsTenantAdminInCurrentTenantAsync(userId, cancellationToken))
+            return true;
+
         var permissions = await GetUserPermissionsAsync(userId, cancellationToken);
         return permissions.Contains(permissionKey);
     }
@@ -54,6 +64,14 @@ public sealed class PermissionService : IPermissionService
     /// <inheritdoc />
     public async Task<bool> HasAnyPermissionAsync(Guid userId, IEnumerable<string> permissionKeys, CancellationToken cancellationToken = default)
     {
+        // SuperAdmin and TenantAdmin bypass — short-circuit BEFORE cache lookup.
+        // Never cached as a concrete permission set so newly added permissions are automatically covered.
+        if (await IsSuperAdminAsync(userId, cancellationToken))
+            return true;
+
+        if (await IsTenantAdminInCurrentTenantAsync(userId, cancellationToken))
+            return true;
+
         var permissions = await GetUserPermissionsAsync(userId, cancellationToken);
         return permissionKeys.Any(permissions.Contains);
     }
@@ -119,6 +137,40 @@ public sealed class PermissionService : IPermissionService
 
         var roleNameSet = new HashSet<string>(roleNames, StringComparer.OrdinalIgnoreCase);
         return systemRolesResult.Data.Any(r => r.RoleName is not null && roleNameSet.Contains(r.RoleName));
+    }
+
+    /// <summary>
+    /// Determines whether the user holds the SuperAdmin system role.
+    /// SuperAdmin bypasses all permission checks everywhere (global).
+    /// </summary>
+    private async Task<bool> IsSuperAdminAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var systemRolesResult = await _userRoleRepository.GetSystemRolesForUserAsync(userId, cancellationToken);
+        if (systemRolesResult is null || !systemRolesResult.Success || systemRolesResult.Data is null)
+            return false;
+
+        return systemRolesResult.Data.Any(r =>
+            string.Equals(r.RoleName, AuthRoleNames.SuperAdmin, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Determines whether the user holds the TenantAdmin role in the current tenant.
+    /// Uses the tenant-scoped query (<see cref="IUserRoleRepository.GetByUserIdForTenantAsync"/>)
+    /// so the check never leaks across tenants. Skipped when no tenant context is available
+    /// (TenantId == Guid.Empty, e.g., during pending tenant selection).
+    /// </summary>
+    private async Task<bool> IsTenantAdminInCurrentTenantAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var tenantId = _tenantContext.TenantId;
+        if (tenantId == Guid.Empty)
+            return false;
+
+        var rolesResult = await _userRoleRepository.GetByUserIdForTenantAsync(userId, tenantId, cancellationToken);
+        if (rolesResult is null || !rolesResult.Success || rolesResult.Data is null)
+            return false;
+
+        return rolesResult.Data.Any(r =>
+            string.Equals(r.RoleName, AuthRoleNames.TenantAdmin, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task ResolvePermissionsForRolesAsync(

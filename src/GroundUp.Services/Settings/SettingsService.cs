@@ -482,10 +482,13 @@ public sealed class SettingsService : ISettingsService
                 await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            // Resolve level IDs from names
+            // Resolve level IDs from names (case-insensitive comparison)
+            var levelNames = request.AllowedLevelNames
+                .Select(n => n.ToLowerInvariant())
+                .ToList();
             var levels = await _dbContext.Set<SettingLevel>()
                 .AsNoTracking()
-                .Where(l => request.AllowedLevelNames.Contains(l.Name))
+                .Where(l => levelNames.Contains(l.Name.ToLower()))
                 .ToListAsync(cancellationToken);
 
             // Create the definition
