@@ -25,5 +25,8 @@ public enum FlowType
     Login = 5,
 
     /// <summary>Silent token refresh flow.</summary>
-    TokenRefresh = 6
+    TokenRefresh = 6,
+
+    /// <summary>Simple signup flow: user registers and auto-joins the configured default tenant.</summary>
+    SimpleSignup = 7
 }

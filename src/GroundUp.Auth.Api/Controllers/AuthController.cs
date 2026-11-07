@@ -21,6 +21,9 @@ public sealed class AuthController : ControllerBase
     private readonly IAuthSessionService _authSessionService;
     private readonly IAuthCookieWriter _authCookieWriter;
     private readonly IUserRepository _userRepository;
+    private readonly IUserTenantRepository _userTenantRepository;
+    private readonly ITenantRepository _tenantRepository;
+    private readonly LastAdminGuard _lastAdminGuard;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -33,6 +36,9 @@ public sealed class AuthController : ControllerBase
     /// <param name="authSessionService">Manages tenant selection and token refresh.</param>
     /// <param name="authCookieWriter">Writes and clears authentication cookies.</param>
     /// <param name="userRepository">Resolves GroundUp users by external identity provider identifier.</param>
+    /// <param name="userTenantRepository">Repository for querying and managing user-tenant memberships.</param>
+    /// <param name="tenantRepository">Repository for loading tenant details.</param>
+    /// <param name="lastAdminGuard">Guard for preventing removal of the last TenantAdmin.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
     /// <param name="httpClientFactory">Factory for creating HTTP clients (used for Keycloak end_session).</param>
@@ -42,6 +48,9 @@ public sealed class AuthController : ControllerBase
         IAuthSessionService authSessionService,
         IAuthCookieWriter authCookieWriter,
         IUserRepository userRepository,
+        IUserTenantRepository userTenantRepository,
+        ITenantRepository tenantRepository,
+        LastAdminGuard lastAdminGuard,
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
         IHttpClientFactory httpClientFactory,
@@ -51,6 +60,9 @@ public sealed class AuthController : ControllerBase
         _authSessionService = authSessionService;
         _authCookieWriter = authCookieWriter;
         _userRepository = userRepository;
+        _userTenantRepository = userTenantRepository;
+        _tenantRepository = tenantRepository;
+        _lastAdminGuard = lastAdminGuard;
         _authOptions = authOptions;
         _keycloakOptions = keycloakOptions;
         _httpClientFactory = httpClientFactory;
@@ -58,11 +70,12 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Initiates the standard login flow. Redirects the user to Keycloak for authentication.
+    /// Initiates the standard login flow. Returns the Keycloak authorization URL as JSON
+    /// for the client to navigate to.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>HTTP 302 redirect to the Keycloak authorization endpoint.</returns>
-    [HttpGet("login")]
+    /// <returns>HTTP 200 with <c>{ redirectUrl }</c> pointing to the Keycloak authorization endpoint.</returns>
+    [HttpPost("login")]
     public async Task<IActionResult> Login(CancellationToken cancellationToken = default)
     {
         var request = new FlowInitiationRequest(FlowType.Login);
@@ -73,40 +86,42 @@ public sealed class AuthController : ControllerBase
             return StatusCode(result.StatusCode, new { error = result.Message });
         }
 
-        return Redirect(result.Data!.RedirectUrl);
+        return Ok(new { redirectUrl = result.Data!.RedirectUrl });
     }
 
     /// <summary>
-    /// Initiates the new organization registration flow. Redirects the user to Keycloak
-    /// for authentication/registration with the organization name preserved for callback processing.
+    /// Initiates a signup flow. When <c>organizationName</c> is provided, starts a new-organization
+    /// registration; when omitted (null), starts a simple signup that joins the default tenant.
+    /// Returns the Keycloak authorization URL as JSON for the client to navigate to.
     /// </summary>
-    /// <param name="organizationName">The name of the organization to create (required, max 200 characters).</param>
+    /// <param name="request">Optional request body containing the organization name.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>HTTP 302 redirect to the Keycloak authorization endpoint.</returns>
-    [HttpGet("register")]
-    public async Task<IActionResult> Register(
-        [FromQuery] string? organizationName,
+    /// <returns>HTTP 200 with <c>{ redirectUrl }</c> pointing to the Keycloak authorization endpoint.</returns>
+    [HttpPost("signup")]
+    public async Task<IActionResult> Signup(
+        [FromBody] SignupRequestDto? request = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(organizationName))
-        {
-            return BadRequest(new { error = "Organization name is required." });
-        }
+        var organizationName = request?.OrganizationName;
 
-        if (organizationName.Length > 200)
+        if (organizationName is not null && organizationName.Length > 200)
         {
             return BadRequest(new { error = "Organization name must not exceed 200 characters." });
         }
 
-        var request = new FlowInitiationRequest(FlowType.NewOrganization, OrganizationName: organizationName);
-        var result = await _authFlowService.InitiateFlowAsync(request, HttpContext, cancellationToken);
+        var flowType = string.IsNullOrWhiteSpace(organizationName)
+            ? FlowType.SimpleSignup
+            : FlowType.NewOrganization;
+
+        var flowRequest = new FlowInitiationRequest(flowType, OrganizationName: organizationName);
+        var result = await _authFlowService.InitiateFlowAsync(flowRequest, HttpContext, cancellationToken);
 
         if (!result.Success)
         {
             return StatusCode(result.StatusCode, new { error = result.Message });
         }
 
-        return Redirect(result.Data!.RedirectUrl);
+        return Ok(new { redirectUrl = result.Data!.RedirectUrl });
     }
 
     /// <summary>
@@ -117,7 +132,7 @@ public sealed class AuthController : ControllerBase
     /// <param name="state">The state token for CSRF validation and flow correlation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
-    /// HTTP 302 redirect on success; HTTP 200 JSON with tenant list on pending selection;
+    /// HTTP 200 JSON on success (token + session info or tenant selection);
     /// appropriate error status on failure.
     /// </returns>
     [HttpGet("callback")]
@@ -150,13 +165,12 @@ public sealed class AuthController : ControllerBase
         if (flowResult.RequiresTenantSelection)
         {
             ProvisionAntiforgeryToken();
-            return Ok(new { tenants = flowResult.TenantList });
+            return Ok(new { requiresTenantSelection = true, tenants = flowResult.TenantList });
         }
 
         // Success with token — cookie already written by the flow handler
         ProvisionAntiforgeryToken();
-        var redirectUrl = flowResult.RedirectUrl ?? "/";
-        return Redirect(redirectUrl);
+        return Ok(new { token = flowResult.Token, redirectUrl = flowResult.RedirectUrl ?? "/" });
     }
 
     /// <summary>
@@ -386,6 +400,219 @@ public sealed class AuthController : ControllerBase
         }
 
         return Ok();
+    }
+
+    /// <summary>
+    /// Returns the list of tenants the authenticated user is a member of.
+    /// For standard tenants, includes a <c>current</c> flag and <c>switchable: true</c>.
+    /// For enterprise tenants (with a RealmName), marks them as <c>switchable: false</c>
+    /// since they require re-authentication via their subdomain.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>HTTP 200 with the tenant list; HTTP 401 when unauthenticated.</returns>
+    [HttpGet("me/tenants")]
+    public async Task<IActionResult> GetMyTenants(CancellationToken cancellationToken = default)
+    {
+        if (HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            return Unauthorized();
+        }
+
+        var userId = ResolveGroundUpUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        // Get active memberships
+        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId.Value, cancellationToken);
+        if (!membershipsResult.Success || membershipsResult.Data is null)
+        {
+            return Ok(Array.Empty<object>());
+        }
+
+        var activeMemberships = membershipsResult.Data.Where(m => m.IsActive).ToList();
+        if (activeMemberships.Count == 0)
+        {
+            return Ok(Array.Empty<object>());
+        }
+
+        // Load tenant details
+        var tenantIds = activeMemberships.Select(m => m.TenantId).ToList();
+        var tenantsResult = await _tenantRepository.GetByIdsBypassFilterAsync(tenantIds, cancellationToken);
+        if (!tenantsResult.Success || tenantsResult.Data is null)
+        {
+            return Ok(Array.Empty<object>());
+        }
+
+        // Determine the current tenant from the tid claim
+        var options = _authOptions.Value;
+        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
+        Guid? currentTenantId = null;
+        if (!string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out var parsedTid))
+        {
+            currentTenantId = parsedTid;
+        }
+
+        // Map to response
+        var tenantList = tenantsResult.Data.Select(t =>
+        {
+            var isEnterprise = !string.IsNullOrEmpty(t.RealmName);
+            if (isEnterprise)
+            {
+                return (object)new
+                {
+                    id = t.Id,
+                    name = t.Name,
+                    slug = t.Slug,
+                    type = "enterprise",
+                    switchable = false,
+                    subdomain = t.Slug
+                };
+            }
+
+            return new
+            {
+                id = t.Id,
+                name = t.Name,
+                slug = t.Slug,
+                type = "standard",
+                switchable = true,
+                current = t.Id == currentTenantId
+            };
+        }).ToList();
+
+        return Ok(tenantList);
+    }
+
+    /// <summary>
+    /// Leaves a tenant. Deactivates the user's membership in the specified tenant.
+    /// If the user is the sole TenantAdmin, returns 403 (last-admin guard).
+    /// If the user was viewing the left tenant, generates a new token for the next available
+    /// tenant or clears the cookie if no memberships remain.
+    /// </summary>
+    /// <param name="tenantId">The ID of the tenant to leave.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// HTTP 200 with <c>{ success: true }</c> on success;
+    /// HTTP 200 with <c>{ noTenants: true }</c> when no remaining memberships;
+    /// HTTP 401 when unauthenticated;
+    /// HTTP 403 when last-admin guard blocks;
+    /// HTTP 404 when user is not a member.
+    /// </returns>
+    [HttpPost("tenants/{tenantId}/leave")]
+    public async Task<IActionResult> LeaveTenant(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        if (HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            return Unauthorized();
+        }
+
+        var userId = ResolveGroundUpUserId();
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        // Get all memberships and find the active one for this tenant
+        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId.Value, cancellationToken);
+        if (!membershipsResult.Success || membershipsResult.Data is null)
+        {
+            return NotFound(new { error = "User is not a member of this tenant." });
+        }
+
+        var membership = membershipsResult.Data.FirstOrDefault(m => m.TenantId == tenantId && m.IsActive);
+        if (membership is null)
+        {
+            return NotFound(new { error = "User is not a member of this tenant." });
+        }
+
+        // Check last-admin guard
+        var guardResult = await _lastAdminGuard.CanRemoveTenantAdminAsync(userId.Value, tenantId, cancellationToken);
+        if (!guardResult.Success)
+        {
+            return StatusCode(403, new { error = guardResult.Message, errorCode = guardResult.ErrorCode });
+        }
+
+        // Deactivate membership
+        var deactivatedDto = membership with { IsActive = false };
+        await _userTenantRepository.UpdateAsync(membership.Id, deactivatedDto, cancellationToken);
+
+        // Determine if the user was viewing the left tenant
+        var options = _authOptions.Value;
+        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
+        var wasViewingLeftTenant = !string.IsNullOrEmpty(tidClaim)
+                                  && Guid.TryParse(tidClaim, out var currentTid)
+                                  && currentTid == tenantId;
+
+        if (wasViewingLeftTenant)
+        {
+            // Find remaining active memberships
+            var remainingMemberships = membershipsResult.Data
+                .Where(m => m.IsActive && m.TenantId != tenantId)
+                .ToList();
+
+            if (remainingMemberships.Count == 0)
+            {
+                _authCookieWriter.ClearAuthCookie(HttpContext);
+                return Ok(new { noTenants = true });
+            }
+
+            // Generate token for next available tenant
+            var nextTenantId = remainingMemberships.First().TenantId;
+
+            // Read auth_time from the current token to preserve on reissue
+            DateTimeOffset? originalAuthTime = null;
+            var authTimeClaim = HttpContext.User.FindFirst("auth_time");
+            if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
+            {
+                originalAuthTime = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix);
+            }
+
+            var setTenantResult = await _authSessionService.SetTenantAsync(userId.Value, nextTenantId, originalAuthTime);
+            if (setTenantResult.Success && !string.IsNullOrEmpty(setTenantResult.Data?.Token))
+            {
+                _authCookieWriter.WriteAuthCookie(HttpContext, setTenantResult.Data.Token);
+            }
+        }
+
+        return Ok(new { success = true });
+    }
+
+    /// <summary>
+    /// Resolves the GroundUp user ID from the current principal.
+    /// For GroundUp tokens (has tid claim): reads the sub claim as a GUID.
+    /// For Keycloak pending tokens (no tid): the sub is a Keycloak external ID — not resolvable here.
+    /// </summary>
+    /// <returns>The user ID if resolvable from a GroundUp token, or null.</returns>
+    private Guid? ResolveGroundUpUserId()
+    {
+        var options = _authOptions.Value;
+        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
+        var hasTid = !string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out _);
+
+        if (hasTid)
+        {
+            // GroundUp token — sub is the userId GUID
+            var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
+            if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId))
+            {
+                return userId;
+            }
+        }
+        else
+        {
+            // Pending-selection Keycloak token — sub is an external ID.
+            // For these endpoints we still accept it, but need the sub claim as the user ID
+            // if it's a GUID (which it is for GroundUp tokens without tid in transition states).
+            var subClaim = HttpContext.User.FindFirst("sub")?.Value;
+            if (!string.IsNullOrEmpty(subClaim) && Guid.TryParse(subClaim, out var userId))
+            {
+                return userId;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

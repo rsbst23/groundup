@@ -84,6 +84,12 @@ public sealed class AuthUrlBuilderService : IAuthUrlBuilder
             ["code_challenge_method"] = "S256"
         };
 
+        // For sign-up flows, direct users to Keycloak's registration form
+        if (request.IsSignup)
+        {
+            queryParams["kc_action"] = "register";
+        }
+
         var queryString = string.Join("&", queryParams.Select(
             kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 

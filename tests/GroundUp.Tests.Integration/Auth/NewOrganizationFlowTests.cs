@@ -1,4 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Text.Json;
 using FluentAssertions;
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Enums;
@@ -48,9 +50,15 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — HTTP response is a redirect
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        var redirectUrl = ParseRedirectResponse(response);
+        // Assert — HTTP response is 200 OK with JSON body
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty();
+        json.RootElement.TryGetProperty("redirectUrl", out var redirectElement).Should().BeTrue();
+        var redirectUrl = redirectElement.GetString();
         redirectUrl.Should().NotBeNullOrEmpty();
 
         // Assert — Tenant exists with derived slug
@@ -85,6 +93,13 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Assert — Auth cookie is set in the response
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty();
+
+        // Assert — JWT token contains the correct tid claim
+        var handler = new JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(tokenValue);
+        var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
+        tidClaim.Should().NotBeNull("the token must contain a tid claim");
+        tidClaim!.Value.Should().Be(tenant!.Id.ToString(), "the tid should match the new tenant");
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -190,8 +205,13 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — Redirect (success)
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // Assert — 200 OK with JSON (success)
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty();
 
         // Assert — New tenant gets a disambiguated slug (e.g., "acme-corp-2")
         var disambiguatedTenant = await GetTenantBySlugAsync("acme-corp-2");
@@ -201,6 +221,13 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Assert — Auth cookie is set
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty();
+
+        // Assert — JWT token contains tid for the disambiguated tenant
+        var handler = new JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(tokenValue);
+        var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
+        tidClaim.Should().NotBeNull();
+        tidClaim!.Value.Should().Be(disambiguatedTenant!.Id.ToString());
     }
 
     // ────────────────────────────────────────────────────────────────────────

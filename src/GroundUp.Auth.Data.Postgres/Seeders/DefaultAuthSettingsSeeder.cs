@@ -73,6 +73,30 @@ public sealed class DefaultAuthSettingsSeeder : IDataSeeder
             AllowedLevelNames: ["system"]),
             cancellationToken);
 
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: "auth.application.default-tenant-slug",
+            DataType: SettingDataType.String,
+            DefaultValue: "",
+            DisplayName: "Default Tenant Slug",
+            Description: "When set, new users with zero memberships auto-join this tenant on first login/sign-up. Leave empty to disable simple sign-up.",
+            Category: "Application",
+            GroupKey: "auth.application",
+            GroupDisplayName: "Auth Application",
+            AllowedLevelNames: ["system"]),
+            cancellationToken);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: "auth.application.signup-creates-org",
+            DataType: SettingDataType.Bool,
+            DefaultValue: "false",
+            DisplayName: "Sign-Up Creates Organization",
+            Description: "When true, the sign-up flow collects an organization name and creates a new organization. When false, sign-up joins the default tenant.",
+            Category: "Application",
+            GroupKey: "auth.application",
+            GroupDisplayName: "Auth Application",
+            AllowedLevelNames: ["system"]),
+            cancellationToken);
+
         _logger.LogInformation("Auth settings definitions seeded successfully");
     }
 }

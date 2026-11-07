@@ -245,4 +245,54 @@ public sealed class AuthUrlBuilderTests
         // CodeVerifier should be between 43 and 128 characters per RFC 7636
         data.CodeVerifier.Length.Should().BeInRange(43, 128);
     }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_IsSignupTrue_UrlContainsKcActionRegister()
+    {
+        // Arrange
+        var request = new AuthUrlRequest(
+            RealmOverride: null,
+            RedirectUri: "https://app.example.com/auth/callback",
+            IsSignup: true);
+
+        // Act
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data!.AuthorizationUrl.Should().Contain("kc_action=register");
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_IsSignupFalse_UrlDoesNotContainKcActionRegister()
+    {
+        // Arrange
+        var request = new AuthUrlRequest(
+            RealmOverride: null,
+            RedirectUri: "https://app.example.com/auth/callback",
+            IsSignup: false);
+
+        // Act
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data!.AuthorizationUrl.Should().NotContain("kc_action");
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_IsSignupDefault_UrlDoesNotContainKcActionRegister()
+    {
+        // Arrange — IsSignup defaults to false
+        var request = new AuthUrlRequest(
+            RealmOverride: null,
+            RedirectUri: "https://app.example.com/auth/callback");
+
+        // Act
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Data!.AuthorizationUrl.Should().NotContain("kc_action");
+    }
 }

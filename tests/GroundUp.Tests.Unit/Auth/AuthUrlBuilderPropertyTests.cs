@@ -134,6 +134,46 @@ public sealed class AuthUrlBuilderPropertyTests
             .ToProperty();
     }
 
+    // --- Signup Flag (kc_action=register) ---
+
+    /// <summary>
+    /// Feature: phase-10c-api-alignment, Property: Signup Flag
+    /// When IsSignup is true, the authorization URL SHALL contain the query parameter kc_action=register.
+    /// **Validates: Requirements 2.1**
+    /// </summary>
+    [Property(MaxTest = 100, Arbitrary = new[] { typeof(AuthUrlBuilderArbitraries) },
+        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=true always appends kc_action=register")]
+    public Property IsSignupTrue_AlwaysContainsKcActionRegister(ValidRedirectUri input)
+    {
+        var sut = CreateSut();
+        var request = new AuthUrlRequest(RealmOverride: null, RedirectUri: input.Uri, IsSignup: true);
+
+        var result = sut.BuildAuthorizationUrlAsync(request).GetAwaiter().GetResult();
+
+        return (result.Success
+            && result.Data!.AuthorizationUrl.Contains("kc_action=register"))
+            .ToProperty();
+    }
+
+    /// <summary>
+    /// Feature: phase-10c-api-alignment, Property: Signup Flag
+    /// When IsSignup is false (or default), the authorization URL SHALL NOT contain kc_action.
+    /// **Validates: Requirements 2.1**
+    /// </summary>
+    [Property(MaxTest = 100, Arbitrary = new[] { typeof(AuthUrlBuilderArbitraries) },
+        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=false never contains kc_action")]
+    public Property IsSignupFalse_NeverContainsKcAction(ValidRedirectUri input)
+    {
+        var sut = CreateSut();
+        var request = new AuthUrlRequest(RealmOverride: null, RedirectUri: input.Uri, IsSignup: false);
+
+        var result = sut.BuildAuthorizationUrlAsync(request).GetAwaiter().GetResult();
+
+        return (result.Success
+            && !result.Data!.AuthorizationUrl.Contains("kc_action"))
+            .ToProperty();
+    }
+
     // --- Property 6: PKCE Round-Trip Integrity ---
 
     /// <summary>

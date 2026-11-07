@@ -1,7 +1,7 @@
 {
   "realm": "groundup",
   "enabled": true,
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "clients": [

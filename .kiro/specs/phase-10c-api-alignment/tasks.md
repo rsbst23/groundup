@@ -8,36 +8,36 @@ Reference document: `.kiro/specs/phase-10-cleanup/auth-flows-design.md`
 
 ## Tasks
 
-- [ ] 1. AuthController: Convert 302 redirects to JSON responses
-  - [ ] 1.1 Change `GET /auth/login` to `POST /auth/login` returning `200 { redirectUrl }` instead of 302
+- [x] 1. AuthController: Convert 302 redirects to JSON responses
+  - [x] 1.1 Change `GET /auth/login` to `POST /auth/login` returning `200 { redirectUrl }` instead of 302
     - Accept POST with optional JSON body (for future parameters)
     - Return `{ "redirectUrl": "https://keycloak/..." }` as JSON
     - Remove the 302 Redirect response
     - Keep the state cookie setting behavior (still needs HttpOnly cookie for CSRF binding)
-  - [ ] 1.2 Change `GET /auth/register` to `POST /auth/signup` returning `200 { redirectUrl }`
+  - [x] 1.2 Change `GET /auth/register` to `POST /auth/signup` returning `200 { redirectUrl }`
     - Rename endpoint from "register" to "signup"
     - Accept `{ "organizationName": "..." }` in the request body (optional — null means simple signup)
     - Return `{ "redirectUrl": "https://keycloak/..." }` as JSON
     - Remove the 302 Redirect response
-  - [ ] 1.3 Change `GET /auth/callback` to return JSON instead of 302 redirect on success
+  - [x] 1.3 Change `GET /auth/callback` to return JSON instead of 302 redirect on success
     - On success (single tenant): return `200 { token, tenant, user }` + Set-Cookie
     - On success (picker needed): return `200 { requiresTenantSelection: true, tenants: [...], user }`
     - On error: return appropriate error status + JSON body
     - Keep the callback as GET (Keycloak redirects here with query params)
-  - [ ] 1.4 Update AuthController unit tests for new response format
+  - [x] 1.4 Update AuthController unit tests for new response format
     - Update all existing tests to expect JSON responses instead of 302
     - Add tests for the POST method change on login/signup
 
-- [ ] 2. Add `kc_action=register` to authorize URL for sign-up flows
-  - [ ] 2.1 Extend AuthUrlBuilderService to accept a `isSignup` flag
+- [x] 2. Add `kc_action=register` to authorize URL for sign-up flows
+  - [x] 2.1 Extend AuthUrlBuilderService to accept a `isSignup` flag
     - When `isSignup = true`, append `&kc_action=register` to the authorize URL
     - This ensures users land on Keycloak's registration form directly
-  - [ ] 2.2 Pass `isSignup = true` from AuthFlowService when FlowType is NewOrganization or SimpleSignup
-  - [ ] 2.3 Update AuthUrlBuilder unit tests and property tests
+  - [x] 2.2 Pass `isSignup = true` from AuthFlowService when FlowType is NewOrganization or SimpleSignup
+  - [x] 2.3 Update AuthUrlBuilder unit tests and property tests
 
-- [ ] 3. Add SimpleSignup flow type and handler
-  - [ ] 3.1 Add `SimpleSignup = 7` to FlowType enum
-  - [ ] 3.2 Create SimpleSignupFlowHandler
+- [x] 3. Add SimpleSignup flow type and handler
+  - [x] 3.1 Add `SimpleSignup = 7` to FlowType enum
+  - [x] 3.2 Create SimpleSignupFlowHandler
     - Implements IFlowHandler with HandledFlowType = FlowType.SimpleSignup
     - Exchange code for tokens (same as other handlers)
     - Validate nonce
@@ -51,51 +51,51 @@ Reference document: `.kiro/specs/phase-10-cleanup/auth-flows-design.md`
     - Assign default role (if configured and not already assigned)
     - Generate token scoped to default tenant
     - Write auth cookie
-  - [ ] 3.3 Register SimpleSignupFlowHandler in DI
-  - [ ] 3.4 Update AuthFlowService to route SimpleSignup vs NewOrganization
+  - [x] 3.3 Register SimpleSignupFlowHandler in DI
+  - [x] 3.4 Update AuthFlowService to route SimpleSignup vs NewOrganization
     - When `POST /auth/signup` has `organizationName` → FlowType.NewOrganization
     - When `POST /auth/signup` has no organizationName → FlowType.SimpleSignup
-  - [ ] 3.5 Write unit tests for SimpleSignupFlowHandler
-  - [ ] 3.6 Write property tests for SimpleSignup logic
-  - [ ] 3.7 Seed `auth.application.default-tenant-slug` setting definition in DefaultAuthSettingsSeeder
+  - [x] 3.5 Write unit tests for SimpleSignupFlowHandler
+  - [x] 3.6 Write property tests for SimpleSignup logic
+  - [x] 3.7 Seed `auth.application.default-tenant-slug` setting definition in DefaultAuthSettingsSeeder
 
-- [ ] 4. Add `GET /auth/me/tenants` endpoint
-  - [ ] 4.1 Add endpoint to AuthController
+- [x] 4. Add `GET /auth/me/tenants` endpoint
+  - [x] 4.1 Add endpoint to AuthController
     - Requires authentication (returns 401 if not authenticated)
     - Returns list of user's active tenant memberships
     - For standard tenants: `{ id, name, slug, type: "standard", switchable: true, current: bool }`
     - For enterprise tenants: `{ id, name, slug, type: "enterprise", switchable: false, subdomain }`
     - Enterprise tenants marked as `switchable: false` (requires re-auth via subdomain)
-  - [ ] 4.2 Write unit tests for the endpoint
+  - [x] 4.2 Write unit tests for the endpoint
 
-- [ ] 5. Add `POST /auth/tenants/{id}/leave` endpoint
-  - [ ] 5.1 Add endpoint to AuthController
+- [x] 5. Add `POST /auth/tenants/{id}/leave` endpoint
+  - [x] 5.1 Add endpoint to AuthController
     - Requires authentication
     - Validates user has membership in the specified tenant
     - Checks last-admin guard (cannot leave if sole TenantAdmin)
     - Deactivates UserTenant membership (soft delete: IsActive = false)
     - If user was viewing the left tenant: generate token for next available tenant
     - If no remaining memberships: clear cookie, return `{ noTenants: true }`
-  - [ ] 5.2 Write unit tests for the endpoint
+  - [x] 5.2 Write unit tests for the endpoint
 
-- [ ] 6. Fix Keycloak realm.json for development
-  - [ ] 6.1 Enable self-registration in realm.json
+- [x] 6. Fix Keycloak realm.json for development
+  - [x] 6.1 Enable self-registration in realm.json
     - Set `"registrationAllowed": true`
     - Set `"loginWithEmailAllowed": true` (already true)
-  - [ ] 6.2 Ensure http redirect URIs are included (already done in previous commit — verify)
-  - [ ] 6.3 Add `auth.application.default-tenant-slug` and `auth.application.signup-creates-org` settings to DefaultAuthSettingsSeeder
+  - [x] 6.2 Ensure http redirect URIs are included (already done in previous commit — verify)
+  - [x] 6.3 Add `auth.application.default-tenant-slug` and `auth.application.signup-creates-org` settings to DefaultAuthSettingsSeeder
 
-- [ ] 7. Checkpoint — Build and run all unit tests
+- [x] 7. Checkpoint — Build and run all unit tests
   - Ensure all tests pass after changes
 
-- [ ] 8. Update integration tests
-  - [ ] 8.1 Update NewOrganizationFlowTests for new API format (POST + JSON responses)
-  - [ ] 8.2 Update LoginFlowTests for new API format
-  - [ ] 8.3 Add integration test for SimpleSignup flow
-  - [ ] 8.4 Add integration test for /auth/me/tenants
-  - [ ] 8.5 Add integration test for /auth/tenants/{id}/leave
+- [x] 8. Update integration tests
+  - [x] 8.1 Update NewOrganizationFlowTests for new API format (POST + JSON responses)
+  - [x] 8.2 Update LoginFlowTests for new API format
+  - [~] 8.3 Add integration test for SimpleSignup flow
+  - [~] 8.4 Add integration test for /auth/me/tenants
+  - [~] 8.5 Add integration test for /auth/tenants/{id}/leave
 
-- [ ] 9. Final checkpoint — All tests pass
+- [x] 9. Final checkpoint — All tests pass
 
 ## Notes
 

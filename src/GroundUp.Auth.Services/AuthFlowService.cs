@@ -68,7 +68,9 @@ public sealed class AuthFlowService : IAuthFlowService
         var redirectUri = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{options.CallbackPath}";
 
         // Build the authorization URL (generates state, nonce, PKCE)
-        var urlRequest = new AuthUrlRequest(realmOverride, redirectUri);
+        // Sign-up flows get kc_action=register so users land on Keycloak's registration form
+        var isSignup = request.FlowType == FlowType.NewOrganization || request.FlowType == FlowType.SimpleSignup;
+        var urlRequest = new AuthUrlRequest(realmOverride, redirectUri, IsSignup: isSignup);
         var urlResult = await _authUrlBuilder.BuildAuthorizationUrlAsync(urlRequest, cancellationToken);
 
         if (!urlResult.Success)
