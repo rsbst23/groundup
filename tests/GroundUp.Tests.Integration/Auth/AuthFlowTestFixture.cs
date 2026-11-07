@@ -172,6 +172,19 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
     }
 
     /// <summary>
+    /// Creates a <see cref="SampleDbContext"/> for direct database operations in tests.
+    /// Used to seed settings (e.g., <c>auth.application.default-tenant-slug</c>) that are
+    /// stored in the application database rather than the auth database.
+    /// </summary>
+    public SampleDbContext CreateSampleDbContext()
+    {
+        var options = new DbContextOptionsBuilder<SampleDbContext>()
+            .UseNpgsql(ConnectionString)
+            .Options;
+        return new SampleDbContext(options);
+    }
+
+    /// <summary>
     /// Creates an HTTP client that includes cookies in requests (for auth cookie testing).
     /// </summary>
     public HttpClient CreateAuthClient()
