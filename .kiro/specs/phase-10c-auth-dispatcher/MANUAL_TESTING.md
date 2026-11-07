@@ -2,96 +2,93 @@
 
 This document walks through manually testing the auth system end-to-end. Follow the steps in order — each section builds on the previous.
 
+> **Updated for Phase 10C API Alignment.** All auth endpoints now return JSON instead of 302 redirects. The `/auth/register` endpoint has been renamed to `/auth/signup`. Test using Swagger or a REST client (Bruno, Postman, curl) — not a browser address bar.
+
+---
+
 ## Prerequisites
 
-**From PowerShell in `d:\_Rob\github\groundup`:**
+**Start Docker infrastructure** from PowerShell in `d:\_Rob\github\groundup`:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 ```
 
-**Apply database migrations (first time only):**
+**Wait ~15 seconds** for Keycloak to fully start, then verify both are healthy:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.keycloak.yml ps
+```
+
+**Apply database migrations** (first time only, or after pulling new migrations):
 
 ```powershell
 dotnet ef database update --project src/GroundUp.Data.Postgres --startup-project samples/GroundUp.Sample --context SampleDbContext
 dotnet ef database update --project src/GroundUp.Auth.Data.Postgres --startup-project samples/GroundUp.Sample --context AuthDbContext
 ```
 
-**Run the sample app:** Hit F5 in Kiro.
+**Run the sample app:** Hit F5 in Kiro (use the `http` profile).
 
 **URLs:**
-- Sample app Swagger: http://localhost:5000/swagger/index.html
+- Sample app Swagger: http://localhost:5117/swagger/index.html
 - Keycloak admin: http://localhost:8080 (admin / admin)
 
 ---
 
-## Phase 1: Setup Wizard (Configuring Keycloak Settings)
+## Phase 1: Setup Wizard
 
-The setup wizard configures the Keycloak connection settings that the auth flows need. Without this, `/auth/login` and `/auth/register` won't work.
+The setup wizard configures the Keycloak connection settings that the auth flows need. Without completing this, all `/auth/*` endpoints will return errors.
 
-### 1.1 Configure the Bootstrap Admin Token
-
-Add this to `samples/GroundUp.Sample/appsettings.Development.json` under the root:
-
-```json
-{
-  "GroundUp": {
-    "BootstrapAdminToken": "my-dev-bootstrap-token-at-least-32-chars-long!!",
-    "Auth": { ... existing auth config ... }
-  }
-}
+The `BootstrapAdminToken` is already set in `appsettings.Development.json`:
+```
+my-dev-bootstrap-token-at-least-32-chars-long!!
 ```
 
-Restart the app (stop + F5).
-
-### 1.2 Check Setup Status
+### 1.1 Verify Setup Is Active
 
 ```
 GET /setup
 ```
+Expected: `{ "code": "setup_active", ... }` — confirms setup mode is running.
 
-Should return `{"code":"setup_active","message":"..."}` confirming setup mode.
+### 1.2 Create the Keycloak Admin Client
 
-### 1.3 Create a Keycloak Admin Client
+The `groundup-app` public client is already imported from `realm.json` with the correct redirect URIs. You only need to create the confidential admin client once:
 
-Before running the setup wizard, create a confidential client in Keycloak for admin API access:
-
-1. Go to http://localhost:8080 → login as admin/admin
-2. Select the **groundup** realm (dropdown top-left)
-3. **Update the `groundup-app` client** — go to Clients → `groundup-app` → Settings:
-   - Valid redirect URIs: add `http://localhost:*/auth/callback` (the realm.json only has https)
-   - Web origins: add `http://localhost:*`
+1. Go to http://localhost:8080 → log in as `admin` / `admin`
+2. Select the **groundup** realm from the dropdown (top-left)
+3. Go to **Clients** → **Create client**
+   - Client ID: `groundup-admin`
+   - Client authentication: **ON**
+   - Standard flow: **OFF**
+   - Direct access grants: **OFF**
+   - Service account roles: **ON**
    - Save
-4. **Create the admin client** — Clients → Create client:
-4. Client ID: `groundup-admin`
-5. Client authentication: **ON** (makes it confidential)
-6. Authorization: OFF
-7. Standard flow: OFF, Direct access grants: OFF, Service accounts roles: **ON**
-8. Save
-9. Go to the **Credentials** tab → copy the **Client secret**
-10. Go to **Service account roles** tab → **Assign role** → Filter by clients → assign `realm-admin`
+4. Go to the **Credentials** tab → copy the **Client secret**
+5. Go to **Service account roles** tab → **Assign role** → Filter by clients → assign `realm-admin`
 
-### 1.4 Run the Setup Wizard Steps
+### 1.3 Run Setup Wizard Steps
 
-All setup calls require the header: `Authorization: Bearer my-dev-bootstrap-token`
+All setup calls require the header: `Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!`
 
 **Step 1: Set App Identity**
 ```
 POST /setup/app-identity
+Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
 Content-Type: application/json
-Authorization: Bearer my-dev-bootstrap-token
 
 {
   "applicationName": "GroundUp Dev",
   "defaultDomain": "localhost"
 }
 ```
+Expected: 200 OK.
 
 **Step 2: Set Identity Provider**
 ```
 POST /setup/identity-provider
+Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
 Content-Type: application/json
-Authorization: Bearer my-dev-bootstrap-token
 
 {
   "publicBaseUrl": "http://localhost:8080",
@@ -100,272 +97,416 @@ Authorization: Bearer my-dev-bootstrap-token
   "appClientId": "groundup-app"
 }
 ```
+Expected: 200 OK.
 
 **Step 3: Bootstrap Keycloak Admin**
 ```
 POST /setup/keycloak-bootstrap
+Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
 Content-Type: application/json
-Authorization: Bearer my-dev-bootstrap-token
 
 {
   "adminClientId": "groundup-admin",
-  "adminClientSecret": "<paste the secret from step 1.3>"
+  "adminClientSecret": "<paste the secret from step 1.2>"
 }
 ```
+Expected: 200 OK.
 
-**Step 4: Create First Admin** (optional for auth flow testing)
-```
-POST /setup/first-admin
-Content-Type: application/json
-Authorization: Bearer my-dev-bootstrap-token
-
-{
-  "email": "admin@example.com",
-  "firstName": "Admin",
-  "lastName": "User",
-  "password": "Admin123!"
-}
-```
-
-**Step 5: Complete Setup**
+**Step 4: Complete Setup**
 ```
 POST /setup/complete
-Authorization: Bearer my-dev-bootstrap-token
+Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
 ```
+Expected: 200 OK.
 
-### 1.5 Verify Settings Are Configured
+### 1.4 Verify Setup Completed
 
-Restart the app. If it starts without Keycloak validation errors, settings are configured correctly.
+Restart the app (stop + F5). If it starts without Keycloak validation errors in the console, settings are configured correctly.
 
 ---
 
-## Phase 2: New Organization Registration Flow
+## Phase 2: New Organization Signup Flow
 
-This is the "sign up" flow — a new user creates an organization (tenant).
+Tests the "create your own organization" path — a user signs up and a new tenant is created for them.
 
-### 2.1 Create a Test User in Keycloak
+### 2.1 Initiate Signup
 
-1. Go to Keycloak admin → **groundup** realm → **Users** → **Add user**
-2. Email: `testuser@example.com`, First name: `Test`, Last name: `User`
-3. Email verified: ON
-4. Save → go to **Credentials** tab → **Set password** → `Test123!` (temporary: OFF)
+Because the endpoint now returns a redirect URL as JSON instead of 302-redirecting, the two-step flow is:
 
-### 2.2 Initiate Registration
-
-Open this URL in your browser (not Swagger — needs browser redirects):
+1. **Call the API** to get the Keycloak URL:
 
 ```
-http://localhost:5000/auth/register?organizationName=My%20Test%20Org
+POST /auth/signup
+Content-Type: application/json
+
+{
+  "organizationName": "My Test Org"
+}
+```
+Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/auth?..." }`
+
+2. **Copy the `redirectUrl`** from the response and paste it into your browser. This opens the Keycloak login page with the registration tab active.
+
+### 2.2 Register a New Account
+
+On the Keycloak login page:
+- Click **Register** (or the form opens directly on the registration tab)
+- Fill in: email `testuser@example.com`, password `Test123!`, first name `Test`, last name `User`
+- Submit
+
+Keycloak will redirect the browser back to `http://localhost:5117/auth/callback?code=...&state=...`
+
+### 2.3 Interpret the Callback Response
+
+The callback now returns JSON instead of redirecting. The browser will show raw JSON:
+
+```json
+{
+  "token": "eyJhbGci...",
+  "redirectUrl": "/"
+}
 ```
 
-**Expected:** Redirects to Keycloak login page.
-
-### 2.3 Complete the Flow
-
-1. Log in with `testuser@example.com` / `Test123!`
-2. Keycloak redirects back to `/auth/callback`
-3. **Expected:** Redirect to the app's root URL (or wherever `FlowResult.Success` sends you)
+In a real frontend, the client would receive this JSON, store the token, and navigate to `redirectUrl`. For manual testing, copy the `token` value.
 
 ### 2.4 Verify Results
 
-**Check the auth cookie** — open browser DevTools → Application → Cookies. You should see an `AuthToken` cookie.
-
-**Check `/auth/me`:**
+**Check your identity** — use the token as a cookie header:
 ```
 GET /auth/me
+Cookie: AuthToken=<paste token here>
 ```
-Should return your user info with a `tenantId` (the newly created org).
+Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [] }`
 
-**Check the database** — in Keycloak admin or via Swagger:
-- A new Tenant with slug derived from "My Test Org" (e.g., `my-test-org`)
-- A User linked to the Keycloak sub
-- A UserTenant membership
-- A TenantAdmin role assigned to the user
+If you completed the flow via the browser, the `AuthToken` cookie is already set. Check via browser DevTools → Application → Cookies → `AuthToken`.
+
+**Verify the database** — confirm these were created:
+- A `Tenants` row with slug `my-test-org`
+- A `Users` row with `ExternalUserId` matching the Keycloak sub
+- A `UserTenants` membership row
+- A `Roles` row for `TenantAdmin` in that tenant
+- A `UserRoles` assignment for the founder
 
 ---
 
 ## Phase 3: Login Flow
 
-This tests logging in to an existing account.
+Tests logging in to an existing account (created in Phase 2).
 
-### 3.1 Clear Your Auth Cookie
-
-Delete the `AuthToken` cookie from DevTools, or open an incognito window.
-
-### 3.2 Initiate Login
-
-Open in browser:
+### 3.1 Initiate Login
 
 ```
-http://localhost:5000/auth/login
+POST /auth/login
 ```
+No body needed. Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/..." }`
 
-**Expected:** Redirects to Keycloak login page.
+Copy the `redirectUrl` and paste into your browser.
 
-### 3.3 Complete Login
+### 3.2 Log In
 
-Log in with `testuser@example.com` / `Test123!`
+Enter `testuser@example.com` / `Test123!` on the Keycloak login page.
 
-**Expected outcomes depend on membership count:**
-- **One membership** (from Phase 2): Auto-selects that tenant, issues token, redirects home.
-- **Multiple memberships**: Returns tenant picker JSON (no redirect).
+Keycloak redirects back to `/auth/callback`. The browser shows JSON:
 
-### 3.4 Verify
+**Single membership (Phase 2 user):**
+```json
+{
+  "token": "eyJhbGci...",
+  "redirectUrl": "/"
+}
+```
+A new `AuthToken` cookie is set. Done.
+
+**Multiple memberships** (if you've joined more than one org):
+```json
+{
+  "requiresTenantSelection": true,
+  "tenants": [
+    { "id": "...", "name": "My Test Org", "slug": "my-test-org" },
+    { "id": "...", "name": "Other Org", "slug": "other-org" }
+  ]
+}
+```
+Proceed to Phase 4.
+
+### 3.3 Verify
 
 ```
 GET /auth/me
 ```
-
-Should return your identity with `tenantId`, `email`, etc.
+Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [...] }`
 
 ---
 
 ## Phase 4: Tenant Selection (Multi-Tenant Users)
 
-If the login flow returns a tenant picker (user has 2+ memberships), test set-tenant.
+If the login callback returned `requiresTenantSelection: true`, use this to complete sign-in.
 
-### 4.1 Set Tenant
+### 4.1 Select a Tenant
 
 ```
 POST /auth/set-tenant
 Content-Type: application/json
+Cookie: AuthToken=<pending-selection token from callback>
 
 {
-  "tenantId": "<tenant-id-from-picker-response>"
+  "tenantId": "<id from the tenants array>"
 }
 ```
-
-**Expected:** 200 OK, new `AuthToken` cookie issued scoped to that tenant.
+Expected: 200 OK, new `AuthToken` cookie written scoped to that tenant.
 
 ### 4.2 Verify
 
 ```
 GET /auth/me
 ```
-
-Should show the selected `tenantId`.
+Should now show the selected `tenantId`.
 
 ---
 
-## Phase 5: Token Refresh
+## Phase 5: Simple Signup Flow
 
-The token refresh happens automatically via middleware. To test manually:
+Tests signing up without creating an organization — the user is auto-joined to the configured default tenant. Requires a default tenant to be set up first.
 
-### 5.1 Wait for Token to Age
+### 5.1 Configure the Default Tenant
 
-The token refreshes when age > 50% of `TokenExpirationMinutes` (60 min by default). For testing, temporarily lower this in appsettings.Development.json:
+First, ensure a tenant exists (from Phase 2). Then set the `auth.application.default-tenant-slug` setting in the database to point to it. The easiest way is to insert it directly via psql or by having the seeder pick it up — for now, create it via the settings API if available, or insert via Swagger or psql:
 
+```sql
+-- Quick dev approach: update the setting value directly
+UPDATE "SettingValues"
+SET "Value" = 'my-test-org'
+WHERE "SettingDefinitionId" = (
+  SELECT "Id" FROM "SettingDefinitions" WHERE "Key" = 'auth.application.default-tenant-slug'
+)
+AND "ScopeId" IS NULL;
+```
+
+### 5.2 Initiate Simple Signup
+
+```
+POST /auth/signup
+```
+No body (or send `{}` with no `organizationName`). Expected: `200 { "redirectUrl": "..." }`
+
+### 5.3 Complete the Flow
+
+Copy the `redirectUrl` into your browser → register a new user → callback returns:
+```json
+{
+  "token": "eyJhbGci...",
+  "redirectUrl": "/"
+}
+```
+The new user is automatically a member of the default tenant — no organization creation, no slug selection.
+
+---
+
+## Phase 6: View Your Tenant List
+
+Tests `GET /auth/me/tenants` — the endpoint that returns all tenants a user belongs to.
+
+### 6.1 Get Your Tenants
+
+```
+GET /auth/me/tenants
+Cookie: AuthToken=<your token>
+```
+
+Expected for a single standard tenant:
+```json
+[
+  {
+    "id": "...",
+    "name": "My Test Org",
+    "slug": "my-test-org",
+    "type": "standard",
+    "switchable": true,
+    "current": true
+  }
+]
+```
+
+The `current: true` flag appears on whichever tenant's ID is in your token's `tid` claim.
+Enterprise tenants (with a `realmName`) appear as `"type": "enterprise", "switchable": false` with a `subdomain` field instead of `current`.
+
+---
+
+## Phase 7: Leave a Tenant
+
+Tests `POST /auth/tenants/{id}/leave`.
+
+### 7.1 Join a Second Tenant First
+
+To leave a tenant without triggering the "no tenants remaining" path, you need at least two active memberships. Repeat Phase 2 or Phase 5 with a different user / incognito window to create a second tenant, then add the current user as a member via the database.
+
+### 7.2 Leave a Non-Current Tenant
+
+```
+POST /auth/tenants/<other-tenant-id>/leave
+Cookie: AuthToken=<your token>
+```
+Expected: `200 { "success": true }` — no cookie change (you're still on your current tenant).
+
+### 7.3 Leave the Current Tenant
+
+```
+POST /auth/tenants/<current-tenant-id>/leave
+Cookie: AuthToken=<your token>
+```
+Expected: `200 { "success": true }` — a **new** `AuthToken` cookie is written scoped to the next available tenant.
+
+### 7.4 Leave Your Last Tenant
+
+If you have only one membership:
+```
+POST /auth/tenants/<tenant-id>/leave
+Cookie: AuthToken=<your token>
+```
+Expected: `200 { "noTenants": true }` — `AuthToken` cookie is cleared.
+
+### 7.5 Last-Admin Guard
+
+If you're the sole `TenantAdmin` in a tenant:
+```
+POST /auth/tenants/<tenant-id>/leave
+Cookie: AuthToken=<your token>
+```
+Expected: `403 { "error": "...", "errorCode": "LAST_ADMIN" }` — membership untouched.
+
+---
+
+## Phase 8: Token Refresh
+
+Token refresh is automatic via middleware. To test it manually:
+
+### 8.1 Shorten the Token Lifetime
+
+In `appsettings.Development.json`, temporarily set:
 ```json
 "TokenExpirationMinutes": 2
 ```
+Restart the app.
 
-### 5.2 Make a Request After 1+ Minutes
+### 8.2 Request After 1+ Minutes
 
 ```
 GET /auth/me
+Cookie: AuthToken=<your token>
 ```
+Expected: 200 OK **and** a new `AuthToken` cookie in the response headers (check Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
 
-**Expected:** Response succeeds AND the `AuthToken` cookie is rewritten with a new value (check DevTools → Network → Response Headers for `Set-Cookie`).
+### 8.3 Restore
+
+Set `TokenExpirationMinutes` back to `60`.
 
 ---
 
-## Phase 6: Logout
+## Phase 9: Logout
 
 ```
 POST /auth/logout
+Cookie: AuthToken=<your token>
 ```
+Expected: 200 OK, `AuthToken` cookie cleared (expired in response headers).
 
-**Expected:**
-- 200 OK
-- `AuthToken` cookie cleared (expired)
-- Response may include a Keycloak end_session URL
-
-### Verify
-
+Verify:
 ```
 GET /auth/me
 ```
-
-Should return 401 Unauthorized.
+Expected: 401 Unauthorized.
 
 ---
 
-## Phase 7: Host-Based Tenant Resolution
+## Phase 10: Host-Based Tenant Resolution
 
-This tests subdomain-based tenant pinning. Requires DNS/hosts file setup.
+This tests subdomain-pinning — when a user accesses the app via `myorg.localhost`, the system automatically scopes them to that tenant's context.
 
-### 7.1 Add Hosts File Entry
+### 10.1 Add Hosts File Entry
 
-Add to `C:\Windows\System32\drivers\etc\hosts`:
-
+Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
 ```
 127.0.0.1  my-test-org.localhost
 ```
 
-### 7.2 Access via Subdomain
+### 10.2 Initiate Login via Subdomain
 
 ```
-http://my-test-org.localhost:5000/auth/login
+POST http://my-test-org.localhost:5117/auth/login
 ```
+Expected: `redirectUrl` returned. Copy and open in browser.
 
-**Expected:** When you log in, the system detects the host-resolved tenant and auto-selects it (skipping the tenant picker even for multi-membership users).
+### 10.3 Complete Login
+
+Log in with your credentials. On callback:
+- If you're a **member** of `my-test-org`: token auto-scoped to that tenant (no picker, even if you have multiple memberships)
+- If you're **not a member**: 403 Forbidden
 
 ---
 
-## Phase 8: Host/Token Reconciliation
+## Phase 11: Host/Token Reconciliation
 
-Tests what happens when your token is scoped to tenant A but you navigate to tenant B's subdomain.
+Tests what happens when your token's `tid` doesn't match the subdomain you're accessing.
 
-### 8.1 Log in to Tenant A (normal flow)
+### 11.1 Log In to Tenant A Normally
 
-### 8.2 Navigate to Tenant B's Subdomain
+Complete Phase 10 for `my-test-org` — you have a token scoped to that tenant.
 
-If you create a second org, add its slug to hosts, then navigate there:
+### 11.2 Access Tenant B's Subdomain With Tenant A's Token
 
-**Expected:**
-- Data endpoints: 409 TENANT_SWITCH_REQUIRED (if you're a member) or 403 Forbidden (if not)
-- `/auth/*` endpoints: exempt, always accessible
+Add `another-org.localhost` to hosts. Make a data request:
+```
+GET http://another-org.localhost:5117/api/projects
+Cookie: AuthToken=<tenant-A token>
+```
+Expected: `409 { "error": "TENANT_SWITCH_REQUIRED" }` (if you're a member of `another-org`) or `403` (if not).
 
-### 8.3 Switch Tenant
+### 11.3 Resolve the Mismatch
 
 ```
 POST /auth/set-tenant
-{
-  "tenantId": "<tenant-b-id>"
-}
-```
+Cookie: AuthToken=<tenant-A token>
 
-Resolves the mismatch without re-authentication.
+{ "tenantId": "<tenant-B id>" }
+```
+Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 
 ---
 
 ## Troubleshooting
 
 | Problem | Solution |
-|---------|----------|
+|---|---|
 | `relation "SettingDefinitions" does not exist` | Run the EF migrations (see Prerequisites) |
-| `Keycloak configuration validation failed` | Run the setup wizard (Phase 1) |
-| `/auth/login` returns 500 | Check that Keycloak is running and settings are configured |
-| Redirect URI mismatch at Keycloak | Add `http://localhost:5000/auth/callback` to the `groundup-app` client's Valid Redirect URIs in Keycloak admin (Clients → groundup-app → Settings → Valid redirect URIs) |
-| Cookie not being set | Check `CookieSecure: false` in dev config (http doesn't get secure cookies) |
+| App starts with Keycloak validation errors | Run the setup wizard (Phase 1) |
+| `POST /auth/login` returns 500 | Check that Keycloak is running: `docker compose ps` |
+| `POST /auth/signup` returns 500 | Same as above; also check setup was completed |
+| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | The realm.json already includes `http://localhost:*/auth/callback` — this shouldn't happen. If it does, check you're using port `5117` |
+| Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
+| Callback returns 410 Gone | You already consumed this auth flow. Start over |
+| Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
+| `/auth/me` returns 401 after successful callback | The browser didn't store the cookie. The callback sets `Set-Cookie` on the response — make sure you're sending the request through a browser or a cookie-aware client, not a plain REST client |
 
 ---
 
 ## Resetting Everything
 
-To start completely fresh:
+To wipe all data and start completely fresh (re-runs migrations and setup wizard):
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml down -v
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 ```
 
-Then re-run migrations and the setup wizard.
+Then re-run migrations and the full setup wizard.
 
 ---
 
-## Notes for Future Phases
+## What's Not Yet Testable
 
-- **Phase 10D** (Enterprise SSO): Will add dedicated realm login tests here
-- **Phase 10E** (Tenant Invitations): Will add invitation acceptance flow tests
-- **Phase 10F** (Admin Management): Will add admin panel endpoint tests
+These flows are planned for future phases and are not implemented yet:
+
+- **Enterprise SSO / custom realms** (Phase 10D) — `501 Not Implemented` is returned if triggered
+- **Invitation flow** (Phase 10E)
+- **Join links** (Phase 10F)
+- **Admin management UI** (Phase 10G)
