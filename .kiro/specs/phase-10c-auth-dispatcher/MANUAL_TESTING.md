@@ -235,9 +235,8 @@ Copy the `redirectUrl` and paste into your browser.
 
 Enter `testuser@example.com` / `Test123!` on the Keycloak login page.
 
-Keycloak redirects back to `/auth/callback`. The browser shows JSON:
+Keycloak redirects back to `/auth/callback`. Since the user from Phase 2 has a single membership, the callback auto-selects that tenant and returns JSON:
 
-**Single membership (Phase 2 user):**
 ```json
 {
   "token": "eyJhbGci...",
@@ -246,17 +245,7 @@ Keycloak redirects back to `/auth/callback`. The browser shows JSON:
 ```
 A new `AuthToken` cookie is set. Done.
 
-**Multiple memberships** (if you've joined more than one org):
-```json
-{
-  "requiresTenantSelection": true,
-  "tenants": [
-    { "id": "...", "name": "My Test Org", "slug": "my-test-org" },
-    { "id": "...", "name": "Other Org", "slug": "other-org" }
-  ]
-}
-```
-Proceed to Phase 4.
+> The multi-membership tenant picker is tested separately in Phase 4, which first creates a second organization so the picker becomes reachable.
 
 ### 3.3 Verify
 
@@ -269,22 +258,63 @@ Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "..."
 
 ## Phase 4: Tenant Selection (Multi-Tenant Users)
 
-If the login callback returned `requiresTenantSelection: true`, use this to complete sign-in.
+Tests the multi-membership tenant picker. The user from Phase 2 only belongs to one org, so this phase first creates a **second** organization for the same user — then logging in returns a tenant picker instead of auto-selecting.
 
-### 4.1 Select a Tenant
+### 4.1 Create a Second Organization
+
+Run the signup flow again with a different org name. The callback resolves your existing user by `sub` and creates a second tenant + membership (you become TenantAdmin of the new org too). If you are still SSO-authenticated in Keycloak, you go straight through; if not, Keycloak prompts you to log in with `testuser@example.com` / `Test123!` first — either way you end up with the second membership.
+
+1. Call the API:
+```
+POST /auth/signup
+Content-Type: application/json
+
+{
+  "organizationName": "Second Org"
+}
+```
+2. Copy the `redirectUrl` and paste it into the same browser. Keycloak (still SSO-authenticated) redirects straight back to the callback.
+3. The callback returns a token scoped to the new org. You now have **two** memberships.
+
+Verify two memberships exist:
+```
+GET /auth/me/tenants
+Cookie: AuthToken=<token from step 2>
+```
+Expected: an array with two tenants (`My Test Org` and `Second Org`).
+
+### 4.2 Log In and Get the Picker
+
+Now log in fresh so the callback evaluates membership count:
+
+1. `POST /auth/login` → copy `redirectUrl` → paste into browser.
+2. Keycloak (still SSO-authenticated) redirects back to the callback.
+3. Because the user now has 2+ standard-tenant memberships, the callback returns the picker instead of a token:
+```json
+{
+  "requiresTenantSelection": true,
+  "tenants": [
+    { "id": "...", "name": "My Test Org", "slug": "my-test-org" },
+    { "id": "...", "name": "Second Org", "slug": "second-org" }
+  ]
+}
+```
+At this point the auth cookie holds a Keycloak token (identity-only, no `tid`) — the GroundUp token is not issued until you select a tenant.
+
+### 4.3 Select a Tenant
 
 ```
 POST /auth/set-tenant
 Content-Type: application/json
-Cookie: AuthToken=<pending-selection token from callback>
+Cookie: AuthToken=<pending-selection token from the callback>
 
 {
   "tenantId": "<id from the tenants array>"
 }
 ```
-Expected: 200 OK, new `AuthToken` cookie written scoped to that tenant.
+Expected: 200 OK, new `AuthToken` cookie written scoped to the selected tenant.
 
-### 4.2 Verify
+### 4.4 Verify
 
 ```
 GET /auth/me
@@ -365,9 +395,14 @@ Enterprise tenants (with a `realmName`) appear as `"type": "enterprise", "switch
 
 Tests `POST /auth/tenants/{id}/leave`.
 
-### 7.1 Join a Second Tenant First
+### 7.1 Confirm You Have Two Memberships
 
-To leave a tenant without triggering the "no tenants remaining" path, you need at least two active memberships. Repeat Phase 2 or Phase 5 with a different user / incognito window to create a second tenant, then add the current user as a member via the database.
+To exercise the "leave a non-current tenant" and "switch to next tenant" paths, you need at least two active memberships. If you completed Phase 4, you already belong to both `My Test Org` and `Second Org`. Confirm with:
+```
+GET /auth/me/tenants
+Cookie: AuthToken=<your token>
+```
+If you only have one membership, create a second org first (see Phase 4.1).
 
 ### 7.2 Leave a Non-Current Tenant
 
