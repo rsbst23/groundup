@@ -10,29 +10,31 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
 
 ## Tasks
 
-- [ ] 1. Create `IOrganizationProvisioningService` and its implementation (no behavior change yet)
-  - [ ] 1.1 Add `OrganizationProvisioningRequest` and `OrganizationProvisioningResult` records in `GroundUp.Auth.Services`
+- [x] 1. Create `IOrganizationProvisioningService` and its implementation (no behavior change yet)
+  - [x] 1.1 Add `OrganizationProvisioningRequest` and `OrganizationProvisioningResult` records in `GroundUp.Auth.Services`
     - Request: `UserId`, `ExternalUserId`, `OrganizationName`
     - Result: `TenantId`, `Name`, `Slug`
-  - [ ] 1.2 Add `IOrganizationProvisioningService` with `ProvisionAsync(request, cancellationToken)` returning `OperationResult<OrganizationProvisioningResult>`
-  - [ ] 1.3 Implement `OrganizationProvisioningService` by moving the logic from `NewOrganizationFlowHandler` (copy first; the handler is not touched in this group)
+  - [x] 1.2 Add `IOrganizationProvisioningService` with `ProvisionAsync(request, cancellationToken)` returning `OperationResult<OrganizationProvisioningResult>`
+  - [x] 1.3 Implement `OrganizationProvisioningService` by moving the logic from `NewOrganizationFlowHandler` (copy first; the handler is not touched in this group)
     - Slug derivation via `SlugGenerator.FromOrganizationName`, retry loop (max 5) with `SlugGenerator.Disambiguate`
     - Single `IUnitOfWork.ExecuteInTransactionAsync`: Tenant (`Standard`, `InviteOnly`, `RealmName = null`), set `TenantContext.TenantId`, `UserTenant`, `TenantAdmin` role (`IsSystem = true`), `UserRole`
     - Private `SlugCollisionException` marker moves into this class
     - Slug exhaustion returns `OperationResult.Fail(..., 409, "SLUG_COLLISION")` (no exception escapes)
-  - [ ] 1.4 Register `IOrganizationProvisioningService` as scoped in `AuthServiceCollectionExtensions`
-  - [ ] 1.5 Unit tests for `OrganizationProvisioningService` (xUnit + NSubstitute)
+  - [x] 1.4 Register `IOrganizationProvisioningService` as scoped in `AuthServiceCollectionExtensions`
+  - [x] 1.5 Unit tests for `OrganizationProvisioningService` (xUnit + NSubstitute)
     - Happy path creates tenant, membership, TenantAdmin role, user-role and returns correct id/name/slug
     - Slug derived from the organization name
     - Collision on first attempt retries with a disambiguated slug
     - Collision on all attempts returns `SLUG_COLLISION` / 409
     - Tenant context is set to the new tenant before tenant-scoped repository calls
-  - [ ] 1.6 Build and run the new unit tests; commit
+  - [x] 1.6 Build and run the new unit tests; commit
 
 - [ ] 2. Refactor `NewOrganizationFlowHandler` to delegate to the service
-  - [ ] 2.1 Inject `IOrganizationProvisioningService` into the handler; remove the now-unused tenant, role, user-role, tenant-context and unit-of-work dependencies (keep `IUserRepository` for user resolution)
+  - [ ] 2.1 Inject `IOrganizationProvisioningService` into the handler; remove the now-unused tenant, role, user-role and unit-of-work dependencies. Keep `IUserRepository` (user resolution) and `TenantContext` (see 2.2)
   - [ ] 2.2 Replace the inline transaction and slug-retry block with a single `ProvisionAsync` call
+    - The service restores `TenantContext` to its previous value before returning, so after a successful call the handler sets `_tenantContext.TenantId` to the new tenant id itself (preserves today's behavior for token generation)
     - On failure: `MarkFailedAsync` and return `FlowResult.Error` carrying the service's error code (e.g. `SLUG_COLLISION`), same as today
+    - **Behavior change to be aware of:** the founding user is resolved/created before provisioning, outside the provisioning transaction. If provisioning fails, a newly created user row remains (with zero memberships, which the Login flow already handles). Previously the user creation was inside the transaction and rolled back
   - [ ] 2.3 Remove the handler's private `SlugCollisionException` and `MaxSlugRetries`
   - [ ] 2.4 Reorganize handler unit tests
     - Substitute `IOrganizationProvisioningService`; assert it is called with the resolved user id, external id and organization name

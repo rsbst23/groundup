@@ -1,0 +1,210 @@
+using GroundUp.Auth.Core;
+using GroundUp.Auth.Core.Dtos;
+using GroundUp.Auth.Core.Enums;
+using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Core;
+using GroundUp.Core.Results;
+using GroundUp.Data.Abstractions;
+using Microsoft.Extensions.Logging;
+
+namespace GroundUp.Auth.Services;
+
+/// <summary>
+/// Default implementation of <see cref="IOrganizationProvisioningService"/>.
+/// Logic was extracted from <see cref="NewOrganizationFlowHandler"/> so the sign-up callback
+/// and the authenticated organization-creation endpoint share one implementation.
+/// </summary>
+public sealed class OrganizationProvisioningService : IOrganizationProvisioningService
+{
+    /// <summary>
+    /// Maximum number of slug attempts (the original slug plus disambiguated variants) before giving up.
+    /// </summary>
+    private const int MaxSlugRetries = 5;
+
+    private readonly ITenantRepository _tenantRepository;
+    private readonly IUserTenantRepository _userTenantRepository;
+    private readonly IRoleRepository _roleRepository;
+    private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly TenantContext _tenantContext;
+    private readonly ILogger<OrganizationProvisioningService> _logger;
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="OrganizationProvisioningService"/>.
+    /// </summary>
+    public OrganizationProvisioningService(
+        ITenantRepository tenantRepository,
+        IUserTenantRepository userTenantRepository,
+        IRoleRepository roleRepository,
+        IUserRoleRepository userRoleRepository,
+        IUnitOfWork unitOfWork,
+        TenantContext tenantContext,
+        ILogger<OrganizationProvisioningService> logger)
+    {
+        _tenantRepository = tenantRepository;
+        _userTenantRepository = userTenantRepository;
+        _roleRepository = roleRepository;
+        _userRoleRepository = userRoleRepository;
+        _unitOfWork = unitOfWork;
+        _tenantContext = tenantContext;
+        _logger = logger;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<OrganizationProvisioningResult>> ProvisionAsync(
+        OrganizationProvisioningRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var organizationName = request.OrganizationName;
+        var baseSlug = SlugGenerator.FromOrganizationName(organizationName);
+
+        var previousTenantId = _tenantContext.TenantId;
+        var tenantId = Guid.Empty;
+        var slug = baseSlug;
+        var provisioned = false;
+
+        try
+        {
+            for (var attempt = 1; attempt <= MaxSlugRetries; attempt++)
+            {
+                slug = attempt == 1 ? baseSlug : SlugGenerator.Disambiguate(baseSlug, attempt);
+
+                try
+                {
+                    var transactionResult = await _unitOfWork.ExecuteInTransactionAsync(
+                        ct => CreateOrganizationRowsAsync(request, slug, id => tenantId = id, ct),
+                        cancellationToken);
+
+                    if (transactionResult.Success)
+                    {
+                        provisioned = true;
+                        break;
+                    }
+
+                    // A failed (rolled back) transaction is reported by the unit of work for unique
+                    // constraint violations. Retry with the next disambiguated slug.
+                    _logger.LogDebug(
+                        "Organization provisioning transaction failed on slug '{Slug}' (attempt {Attempt}), retrying",
+                        slug, attempt);
+                }
+                catch (SlugCollisionException)
+                {
+                    _logger.LogDebug(
+                        "Slug collision on '{Slug}' (attempt {Attempt}), retrying",
+                        slug, attempt);
+                }
+            }
+        }
+        finally
+        {
+            // The context is only pointed at the new tenant while the tenant-scoped rows are written.
+            _tenantContext.TenantId = previousTenantId;
+        }
+
+        if (!provisioned)
+        {
+            _logger.LogError(
+                "Organization provisioning failed: slug unavailable after {MaxRetries} attempts for org '{OrgName}'",
+                MaxSlugRetries, organizationName);
+
+            return OperationResult<OrganizationProvisioningResult>.Fail(
+                "Unable to create organization — slug unavailable after retries.",
+                409,
+                "SLUG_COLLISION");
+        }
+
+        _logger.LogInformation(
+            "Organization provisioned: TenantId={TenantId}, UserId={UserId}",
+            tenantId, request.UserId);
+
+        return OperationResult<OrganizationProvisioningResult>.Ok(
+            new OrganizationProvisioningResult(tenantId, organizationName, slug));
+    }
+
+    /// <summary>
+    /// Writes the tenant, membership, TenantAdmin role and role assignment. Runs inside the
+    /// unit-of-work transaction; any failure throws so the transaction rolls back.
+    /// </summary>
+    private async Task CreateOrganizationRowsAsync(
+        OrganizationProvisioningRequest request,
+        string slug,
+        Action<Guid> onTenantCreated,
+        CancellationToken ct)
+    {
+        var tenantDto = new TenantDto(
+            Id: Guid.NewGuid(),
+            Name: request.OrganizationName,
+            Slug: slug,
+            TenantType: TenantType.Standard,
+            OnboardingMode: OnboardingMode.InviteOnly,
+            ParentTenantId: null,
+            RealmName: null,
+            IsActive: true);
+
+        var tenantResult = await _tenantRepository.AddAsync(tenantDto, ct);
+        if (!tenantResult.Success || tenantResult.Data is null)
+        {
+            // The only expected reason for a tenant insert to fail is a slug unique-constraint violation.
+            throw new SlugCollisionException(slug);
+        }
+
+        var tenantId = tenantResult.Data.Id;
+        onTenantCreated(tenantId);
+
+        // Point the tenant context at the new tenant so tenant-scoped repositories write to it.
+        _tenantContext.TenantId = tenantId;
+
+        var membershipDto = new UserTenantDto(
+            Id: Guid.NewGuid(),
+            UserId: request.UserId,
+            TenantId: tenantId,
+            ExternalUserId: request.ExternalUserId,
+            IsActive: true);
+
+        var membershipResult = await _userTenantRepository.AddAsync(membershipDto, ct);
+        if (!membershipResult.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create membership for user '{request.UserId}' in tenant '{tenantId}': {membershipResult.Message}");
+        }
+
+        var roleDto = new RoleDto(
+            Id: Guid.NewGuid(),
+            Name: AuthRoleNames.TenantAdmin,
+            Description: "Full access within this tenant",
+            RoleType: RoleType.Application,
+            TenantId: tenantId,
+            IsSystem: true);
+
+        var roleResult = await _roleRepository.AddAsync(roleDto, ct);
+        if (!roleResult.Success || roleResult.Data is null)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create TenantAdmin role for tenant '{tenantId}': {roleResult.Message}");
+        }
+
+        var userRoleDto = new UserRoleDto(
+            Id: Guid.NewGuid(),
+            UserId: request.UserId,
+            RoleId: roleResult.Data.Id,
+            TenantId: tenantId);
+
+        var userRoleResult = await _userRoleRepository.AddAsync(userRoleDto, ct);
+        if (!userRoleResult.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to assign TenantAdmin role to user '{request.UserId}' in tenant '{tenantId}': {userRoleResult.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Marker exception used to detect slug collisions within the transaction.
+    /// </summary>
+    private sealed class SlugCollisionException : Exception
+    {
+        public SlugCollisionException(string slug)
+            : base($"Slug collision on '{slug}'")
+        {
+        }
+    }
+}
