@@ -29,20 +29,26 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Tenant context is set to the new tenant before tenant-scoped repository calls
   - [x] 1.6 Build and run the new unit tests; commit
 
-- [ ] 2. Refactor `NewOrganizationFlowHandler` to delegate to the service
-  - [ ] 2.1 Inject `IOrganizationProvisioningService` into the handler; remove the now-unused tenant, role, user-role and unit-of-work dependencies. Keep `IUserRepository` (user resolution) and `TenantContext` (see 2.2)
-  - [ ] 2.2 Replace the inline transaction and slug-retry block with a single `ProvisionAsync` call
+- [x] 2. Refactor `NewOrganizationFlowHandler` to delegate to the service
+  - [x] 2.1 Inject `IOrganizationProvisioningService` into the handler; remove the now-unused tenant, role, user-role and unit-of-work dependencies. Keep `IUserRepository` (user resolution) and `TenantContext` (see 2.2)
+  - [x] 2.2 Replace the inline transaction and slug-retry block with a single `ProvisionAsync` call
     - The service restores `TenantContext` to its previous value before returning, so after a successful call the handler sets `_tenantContext.TenantId` to the new tenant id itself (preserves today's behavior for token generation)
     - On failure: `MarkFailedAsync` and return `FlowResult.Error` carrying the service's error code (e.g. `SLUG_COLLISION`), same as today
     - **Behavior change to be aware of:** the founding user is resolved/created before provisioning, outside the provisioning transaction. If provisioning fails, a newly created user row remains (with zero memberships, which the Login flow already handles). Previously the user creation was inside the transaction and rolled back
-  - [ ] 2.3 Remove the handler's private `SlugCollisionException` and `MaxSlugRetries`
-  - [ ] 2.4 Reorganize handler unit tests
+  - [x] 2.3 Remove the handler's private `SlugCollisionException` and `MaxSlugRetries`
+  - [x] 2.4 Reorganize handler unit tests
     - Substitute `IOrganizationProvisioningService`; assert it is called with the resolved user id, external id and organization name
     - Assert provisioning failure maps to `FlowResult.Error` and marks the flow failed
     - Keep tests for code-exchange failure, nonce mismatch, userinfo failure, token generation, and cookie writing
     - Entity-level assertions (rows created) now live in the service tests (1.5) and the integration tests
-  - [ ] 2.5 Run the existing `NewOrganizationFlowTests` integration tests (Docker required) to prove behavior is unchanged
-  - [ ] 2.6 Build, run all auth unit tests, commit
+  - [x] 2.5 Run the existing `NewOrganizationFlowTests` integration tests (Docker required) to prove behavior is unchanged
+  - [x] 2.6 Build, run all auth unit tests, commit
+  - [x] 2.7 Fix rejected entities staying tracked after a failed save (found while running 2.5)
+    - Root cause: `BaseRepository` caught `DbUpdateException` but left the entity Added/Modified, so every later `SaveChanges` on the same context failed. Slug retries therefore never succeeded.
+    - Added `BaseRepository.DiscardRejectedChanges` and called it from every repository `DbUpdateException` handler: `BaseRepository` and `BaseTenantRepository` Add/Update, `TenantRepository` Add/Update overrides, `RoleRepository` and `PolicyRepository` junction assign/remove
+    - New SQLite-backed `BaseRepositoryConflictTests` (the InMemory provider cannot enforce unique indexes)
+    - `NewOrganizationFlowTests` happy-path and collision tests now use unique org names (the fixture database is shared)
+    - Not changed: `SettingsService` and `IdentityBootstrapService` catch `DbUpdateException` inside their own transactions; review separately
   - **Manual re-test needed after this group:** MANUAL_TESTING.md Phase 2 (brand-new user + first org through Keycloak)
 
 - [ ] 3. Add `POST /auth/organizations` to `AuthController`

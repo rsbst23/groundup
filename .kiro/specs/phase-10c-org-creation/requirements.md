@@ -40,7 +40,8 @@ This spec separates the two by introducing a first-class authenticated organizat
 4. WHEN slug disambiguation is exhausted THEN the service SHALL return a failure result with a `SLUG_COLLISION` error code (no exception propagated to the caller).
 5. The service SHALL accept an already-resolved user identifier and external user id; it SHALL NOT perform identity-provider calls or user creation. (User resolution/creation stays with the caller that has the identity context.)
 6. The service SHALL return the created tenant's identifier on success.
-7. The extraction SHALL preserve the existing behavior of the `NewOrganization` signup flow exactly — all existing unit and integration tests for that flow SHALL continue to pass.
+7. The extraction SHALL preserve the existing behavior of the `NewOrganization` signup flow — all existing unit and integration tests for that flow SHALL continue to pass. One deliberate exception (decided during implementation): when slug disambiguation is exhausted, the callback now returns HTTP **409** (was 400), matching `POST /auth/organizations`.
+8. Slug disambiguation SHALL actually work: a retry on the same request after a rejected insert SHALL succeed. (Found during implementation: `BaseRepository` left rejected entities tracked, so every retry failed and slug collisions always ended in `SLUG_COLLISION`. Fixed in the core repositories — see `tasks.md` 2.7.)
 
 ### Requirement 2: Authenticated organization-creation endpoint
 

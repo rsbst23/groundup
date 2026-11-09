@@ -29,13 +29,15 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
     public async Task Callback_NewOrganization_HappyPath_CreatesFullTenantAndUser()
     {
         // Arrange
+        // Unique per run: the fixture's database is shared by every test in the collection
+        var suffix = Guid.NewGuid().ToString("N")[..8];
         var sub = $"kc-user-{Guid.NewGuid():N}";
         var nonce = AuthFlowTestFixture.GenerateNonce();
         var stateToken = AuthFlowTestFixture.GenerateStateToken();
-        var email = "founder@acme-test.com";
+        var email = $"founder-{suffix}@acme-test.com";
         var displayName = "Founder User";
-        const string organizationName = "Acme Corp";
-        const string expectedSlug = "acme-corp";
+        var organizationName = $"Acme Corp {suffix}";
+        var expectedSlug = $"acme-corp-{suffix}";
 
         var flowState = await CreatePendingFlowStateAsync(
             FlowType.NewOrganization,
@@ -182,15 +184,18 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
     [Fact]
     public async Task Callback_NewOrganization_SlugCollision_CreatesDisambiguatedSlug()
     {
-        // Arrange — seed a tenant that already occupies the "acme-corp" slug
-        await SeedTenantAsync("Existing Acme", "acme-corp");
+        // Arrange — seed a tenant that already occupies the slug the new org will derive.
+        // Unique per run: the fixture's database is shared by every test in the collection.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var organizationName = $"Collide Corp {suffix}";
+        var takenSlug = $"collide-corp-{suffix}";
+        await SeedTenantAsync("Existing Collide", takenSlug);
 
         var sub = $"kc-user-{Guid.NewGuid():N}";
         var nonce = AuthFlowTestFixture.GenerateNonce();
         var stateToken = AuthFlowTestFixture.GenerateStateToken();
-        var email = "founder@acme-collision.com";
+        var email = $"founder-{suffix}@acme-collision.com";
         var displayName = "Collision User";
-        const string organizationName = "Acme Corp";
 
         var flowState = await CreatePendingFlowStateAsync(
             FlowType.NewOrganization,
@@ -213,8 +218,8 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         var tokenValue = tokenElement.GetString();
         tokenValue.Should().NotBeNullOrEmpty();
 
-        // Assert — New tenant gets a disambiguated slug (e.g., "acme-corp-2")
-        var disambiguatedTenant = await GetTenantBySlugAsync("acme-corp-2");
+        // Assert — New tenant gets a disambiguated slug (e.g., "collide-corp-1a2b3c4d-2")
+        var disambiguatedTenant = await GetTenantBySlugAsync($"{takenSlug}-2");
         disambiguatedTenant.Should().NotBeNull();
         disambiguatedTenant!.Name.Should().Be(organizationName);
 
