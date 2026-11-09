@@ -438,9 +438,13 @@ POST /auth/logout
 Cookie: AuthToken=<your token>
 ```
 
-Expected: 200 OK with `{ "logoutUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/logout?..." }`, and the `AuthToken` cookie cleared (expired in response headers).
+Expected: 200 OK with `{ "logoutUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/logout?...&id_token_hint=..." }`, and both the `AuthToken` and `IdToken` cookies cleared (expired in response headers).
 
 **You must also navigate to the `logoutUrl`** to terminate the Keycloak SSO session. Copy the URL from the response and paste it into your browser. This clears the Keycloak session cookie so that the next login flow shows the credential form rather than silently re-authenticating.
+
+Because the logout URL includes `id_token_hint`, Keycloak logs out immediately without showing a confirmation screen, then redirects back to the app root. (Without `id_token_hint`, Keycloak shows a "Do you want to log out?" confirmation — the id_token hint is stored in the `IdToken` cookie at login time specifically to avoid this.)
+
+> **One-time Keycloak setup for logout redirect:** The `post_logout_redirect_uri` must be registered on the `groundup-app` client. In Keycloak admin → groundup realm → Clients → groundup-app → Settings → **Valid post logout redirect URIs**, add `http://localhost:5000/` (match your app's port). Without this, the logout URL returns "Invalid redirect uri".
 
 If you only call `POST /auth/logout` without visiting `logoutUrl`, the GroundUp cookie is cleared but Keycloak still has an active SSO session — the next `POST /auth/login` will immediately return a token without prompting for credentials.
 

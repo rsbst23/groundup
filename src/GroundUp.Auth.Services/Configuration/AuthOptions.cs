@@ -60,6 +60,12 @@ public sealed class AuthOptions
     public string CookieName { get; set; } = "AuthToken";
 
     /// <summary>
+    /// The name of the cookie used to store the Keycloak id_token for RP-initiated logout.
+    /// Default: "IdToken".
+    /// </summary>
+    public string IdTokenCookieName { get; set; } = "IdToken";
+
+    /// <summary>
     /// Whether the authentication cookie requires HTTPS. Default: true.
     /// </summary>
     public bool CookieSecure { get; set; } = true;

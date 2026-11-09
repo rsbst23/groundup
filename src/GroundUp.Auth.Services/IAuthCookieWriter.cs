@@ -34,4 +34,19 @@ public interface IAuthCookieWriter
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     void ClearAuthCookie(HttpContext httpContext);
+
+    /// <summary>
+    /// Writes the Keycloak id_token to a secondary HttpOnly cookie for use as
+    /// <c>id_token_hint</c> during RP-initiated logout. This suppresses Keycloak's
+    /// logout confirmation screen.
+    /// </summary>
+    /// <param name="httpContext">The current HTTP context.</param>
+    /// <param name="idToken">The raw Keycloak id_token JWT string.</param>
+    void WriteIdTokenCookie(HttpContext httpContext, string idToken);
+
+    /// <summary>
+    /// Clears the id_token cookie from the response.
+    /// </summary>
+    /// <param name="httpContext">The current HTTP context.</param>
+    void ClearIdTokenCookie(HttpContext httpContext);
 }

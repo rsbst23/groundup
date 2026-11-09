@@ -226,6 +226,7 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         if (httpContext is not null)
         {
             _authCookieWriter.WriteAuthCookie(httpContext, token);
+            _authCookieWriter.WriteIdTokenCookie(httpContext, tokenResponse.IdToken ?? string.Empty);
         }
 
         _logger.LogInformation(

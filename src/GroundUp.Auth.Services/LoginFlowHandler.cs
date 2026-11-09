@@ -124,14 +124,14 @@ public sealed class LoginFlowHandler : IFlowHandler
         // 7. Host-pinned scenarios
         if (context.HostResolvedTenant is not null)
         {
-            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant);
+            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant, tokenResponse.IdToken);
         }
 
         // 8. Non-host-pinned scenarios based on membership count
         return activeMemberships.Count switch
         {
-            0 => await HandleZeroMembershipsAsync(user),
-            1 => await HandleSingleMembershipAsync(user, activeMemberships[0]),
+            0 => await HandleZeroMembershipsAsync(user, tokenResponse.IdToken),
+            1 => await HandleSingleMembershipAsync(user, activeMemberships[0], tokenResponse.IdToken),
             _ => await HandleMultipleMembershipsAsync(user, activeMemberships, tokenResponse)
         };
     }
@@ -142,7 +142,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     private async Task<FlowResult> HandleHostPinnedAsync(
         UserDto user,
         List<UserTenantDto> activeMemberships,
-        TenantDto hostTenant)
+        TenantDto hostTenant,
+        string? idToken)
     {
         var membership = activeMemberships.FirstOrDefault(m => m.TenantId == hostTenant.Id);
 
@@ -163,6 +164,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: host-pinned auto-select for user {UserId} in tenant {TenantId}",
             user.Id, hostTenant.Id);
@@ -172,7 +174,7 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// <summary>
     /// Handles the zero-memberships scenario: auto-join if default tenant configured, else access-denied.
     /// </summary>
-    private async Task<FlowResult> HandleZeroMembershipsAsync(UserDto user)
+    private async Task<FlowResult> HandleZeroMembershipsAsync(UserDto user, string? idToken)
     {
         // Check for default tenant configuration
         var defaultTenantSlugResult = await _settingsService.GetAsync<string>(
@@ -232,6 +234,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: auto-joined user {UserId} to default tenant {TenantId}",
             user.Id, defaultTenant.Id);
@@ -241,7 +244,7 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// <summary>
     /// Handles the single-membership scenario: auto-select the one tenant.
     /// </summary>
-    private async Task<FlowResult> HandleSingleMembershipAsync(UserDto user, UserTenantDto membership)
+    private async Task<FlowResult> HandleSingleMembershipAsync(UserDto user, UserTenantDto membership, string? idToken)
     {
         var token = await GenerateTokenWithAuthTimeAsync(user.Id, membership.TenantId);
         if (token is null)
@@ -250,6 +253,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: auto-selected single tenant {TenantId} for user {UserId}",
             membership.TenantId, user.Id);
@@ -302,6 +306,7 @@ public sealed class LoginFlowHandler : IFlowHandler
             }
 
             WriteCookie(token);
+            WriteIdTokenCookie(tokenResponse.IdToken);
             _logger.LogInformation(
                 "Login flow: auto-selected single standard tenant {TenantId} for user {UserId} (enterprise tenants filtered)",
                 standardTenants[0].Id, user.Id);
@@ -461,6 +466,19 @@ public sealed class LoginFlowHandler : IFlowHandler
         if (httpContext is not null)
         {
             _authCookieWriter.WriteAuthCookie(httpContext, token);
+        }
+    }
+
+    /// <summary>
+    /// Writes the Keycloak id_token to its secondary cookie for use as id_token_hint at logout.
+    /// </summary>
+    private void WriteIdTokenCookie(string? idToken)
+    {
+        if (string.IsNullOrWhiteSpace(idToken)) return;
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext is not null)
+        {
+            _authCookieWriter.WriteIdTokenCookie(httpContext, idToken);
         }
     }
 }

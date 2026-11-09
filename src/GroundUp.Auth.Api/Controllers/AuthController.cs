@@ -363,6 +363,8 @@ public sealed class AuthController : ControllerBase
     /// Clears the local authentication cookie and returns the Keycloak RP-initiated logout URL
     /// for the client to navigate to. The browser must visit this URL to terminate the Keycloak
     /// SSO session — a server-to-server call cannot clear the browser's Keycloak session cookie.
+    /// When the Keycloak id_token is available (stored as <c>IdToken</c> cookie), it is included
+    /// as <c>id_token_hint</c> to suppress Keycloak's logout confirmation screen.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
@@ -372,18 +374,26 @@ public sealed class AuthController : ControllerBase
     [HttpPost("logout")]
     public Task<IActionResult> Logout(CancellationToken cancellationToken = default)
     {
-        _authCookieWriter.ClearAuthCookie(HttpContext);
-
-        // Build the Keycloak RP-initiated logout URL.
-        // The browser must navigate here to clear the Keycloak SSO session cookie.
-        // A server-to-server POST cannot clear the browser-held Keycloak session.
+        var authOptions = _authOptions.Value;
         var keycloakOpts = _keycloakOptions.Value;
+
+        // Clear both the auth cookie and the id_token hint cookie
+        _authCookieWriter.ClearAuthCookie(HttpContext);
+        _authCookieWriter.ClearIdTokenCookie(HttpContext);
+
         var postLogoutRedirectUri = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}/";
 
         var logoutUrl = $"{keycloakOpts.PublicBaseUrl}/realms/{keycloakOpts.SharedRealmName}" +
                         $"/protocol/openid-connect/logout" +
                         $"?client_id={Uri.EscapeDataString(keycloakOpts.AppClientId)}" +
                         $"&post_logout_redirect_uri={Uri.EscapeDataString(postLogoutRedirectUri)}";
+
+        // Include id_token_hint when available — this suppresses Keycloak's logout confirmation
+        var idToken = HttpContext.Request.Cookies[authOptions.IdTokenCookieName];
+        if (!string.IsNullOrWhiteSpace(idToken))
+        {
+            logoutUrl += $"&id_token_hint={Uri.EscapeDataString(idToken)}";
+        }
 
         return Task.FromResult<IActionResult>(Ok(new { logoutUrl }));
     }

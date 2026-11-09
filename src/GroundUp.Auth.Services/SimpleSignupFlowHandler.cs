@@ -190,6 +190,7 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         if (httpContext is not null)
         {
             _authCookieWriter.WriteAuthCookie(httpContext, token);
+            _authCookieWriter.WriteIdTokenCookie(httpContext, tokenResponse.IdToken ?? string.Empty);
         }
 
         _logger.LogInformation(
