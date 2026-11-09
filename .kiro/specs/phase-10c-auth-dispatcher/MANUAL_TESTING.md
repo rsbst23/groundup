@@ -51,13 +51,38 @@ GET /setup
 ```
 Expected: `{ "code": "setup_active", ... }` — confirms setup mode is running.
 
-### 1.2 Create the Keycloak Admin Client
+### 1.2 One-Time Keycloak Setup
 
-The `groundup-app` public client is already imported from `realm.json` with the correct redirect URIs. You only need to create the confidential admin client once:
+The `groundup` realm is imported from `realm.json` on first Keycloak startup. Two settings need to be verified or fixed manually because they are either not picked up from the import or are version-sensitive.
+
+**Fix the redirect URI (Keycloak 26 port wildcard limitation):**
+
+Keycloak 26 does not honour the `*` wildcard for ports in redirect URIs. Add the explicit callback URL:
 
 1. Go to http://localhost:8080 → log in as `admin` / `admin`
-2. Select the **groundup** realm from the dropdown (top-left)
-3. Go to **Clients** → **Create client**
+2. Select the **groundup** realm from the top-left dropdown
+3. Go to **Clients** → **groundup-app** → **Settings** tab
+4. Under **Valid redirect URIs**, click **Add valid redirect URIs** and add:
+   ```
+   http://localhost:5000/auth/callback
+   ```
+5. Save
+
+> If your app runs on a different port, add that port's URL instead (or add a few common ones: 5000, 5001, 7295).
+
+**Enable user registration:**
+
+The realm.json import is skipped if the realm already exists from a previous run, so this setting may not have been applied:
+
+1. Still in the **groundup** realm, go to **Realm settings** → **Login** tab
+2. Toggle **User registration** to **On**
+3. Save
+
+**Create the Keycloak Admin Client:**
+
+You only need to create the confidential admin client once:
+
+1. Go to **Clients** → **Create client**
    - Client ID: `groundup-admin`
    - Client authentication: **ON**
    - Standard flow: **OFF**
@@ -131,7 +156,9 @@ Tests the "create your own organization" path — a user signs up and a new tena
 
 ### 2.1 Initiate Signup
 
-Because the endpoint now returns a redirect URL as JSON instead of 302-redirecting, the two-step flow is:
+The signup flow sets an `AuthState` CSRF cookie when you call the API. That cookie must be present when Keycloak redirects back to the callback — which means the `redirectUrl` **must be opened in the same browser** that made the API call. Opening it in a different browser (or a browser that didn't make the original request) will cause a `CSRF_STATE_MISMATCH` error.
+
+The simplest way to ensure this: run `POST /auth/signup` from Swagger, then paste the `redirectUrl` into the address bar of **that same browser** (any tab is fine — cookies are shared across tabs within the same browser).
 
 1. **Call the API** to get the Keycloak URL:
 
@@ -145,7 +172,7 @@ Content-Type: application/json
 ```
 Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/auth?..." }`
 
-2. **Copy the `redirectUrl`** from the response and paste it into your browser. This opens the Keycloak login page with the registration tab active.
+2. **Copy the `redirectUrl`** and paste it into the address bar of the same browser you ran Swagger in. This opens the Keycloak login page.
 
 ### 2.2 Register a New Account
 
@@ -158,7 +185,7 @@ Keycloak will redirect the browser back to `http://localhost:<port>/auth/callbac
 
 ### 2.3 Interpret the Callback Response
 
-The callback now returns JSON instead of redirecting. The browser will show raw JSON:
+The callback returns JSON instead of redirecting. The browser will show raw JSON:
 
 ```json
 {
@@ -167,7 +194,7 @@ The callback now returns JSON instead of redirecting. The browser will show raw 
 }
 ```
 
-In a real frontend, the client would receive this JSON, store the token, and navigate to `redirectUrl`. For manual testing, copy the `token` value.
+The callback URL may also contain `kc_action_status=error` — this is harmless. It means Keycloak received the `kc_action=register` hint after you had already registered (a no-op). The flow still completes successfully as long as a `token` is present in the response.
 
 ### 2.4 Verify Results
 
@@ -481,7 +508,9 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 | App starts with Keycloak validation errors | Run the setup wizard (Phase 1) |
 | `POST /auth/login` returns 500 | Check that Keycloak is running: `docker compose ps` |
 | `POST /auth/signup` returns 500 | Same as above; also check setup was completed |
-| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | The realm.json already includes `http://localhost:*/auth/callback` — this shouldn't happen. If it does, verify Keycloak imported the realm correctly by checking Clients → groundup-app → Valid redirect URIs |
+| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | Keycloak 26 does not honour port wildcards. Add the explicit URL (e.g. `http://localhost:5000/auth/callback`) to the `groundup-app` client's Valid redirect URIs in Keycloak admin → Clients → groundup-app → Settings |
+| Callback returns `CSRF_STATE_MISMATCH` | You opened the `redirectUrl` in a different browser than the one that called the API. The `AuthState` cookie was set in browser A but the callback came back in browser B. Use the same browser for both steps |
+| No Register link on Keycloak login page | User registration is disabled. Go to Keycloak admin → groundup realm → Realm settings → Login → toggle User registration On |
 | Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
 | Callback returns 410 Gone | You already consumed this auth flow. Start over |
 | Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
