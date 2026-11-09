@@ -51,7 +51,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Token scoped to currentTenantId
         var token = Fixture.GenerateTestToken(userId, currentTenantId);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{otherTenantId}/leave", token);
 
         // Act
@@ -93,7 +93,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Token scoped to tenant1 (the one being left)
         var token = Fixture.GenerateTestToken(userId, tenant1Id);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{tenant1Id}/leave", token);
 
         // Act
@@ -133,7 +133,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Token scoped to the only tenant
         var token = Fixture.GenerateTestToken(userId, tenantId);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", token);
 
         // Act
@@ -168,7 +168,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         // No membership in otherTenantId
 
         var token = Fixture.GenerateTestToken(userId, ownTenantId);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{otherTenantId}/leave", token);
 
         // Act
@@ -196,7 +196,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         await AssignRoleToUserAsync(userId, adminRoleId, tenantId);
 
         var token = Fixture.GenerateTestToken(userId, tenantId);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", token);
 
         // Act
@@ -232,7 +232,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Token for admin1, leaving the tenant (admin2 still there)
         var token = Fixture.GenerateTestToken(admin1Id, tenantId);
-        var request = CreateAuthenticatedRequest(
+        var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", token);
 
         // Act

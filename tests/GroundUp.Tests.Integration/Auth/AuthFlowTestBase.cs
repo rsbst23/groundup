@@ -192,6 +192,19 @@ public abstract class AuthFlowTestBase
         return request;
     }
 
+    /// <summary>
+    /// Creates an HTTP request authenticated with an <c>Authorization: Bearer</c> header.
+    /// Use this for state-changing requests (POST, PUT, DELETE): cookie-authenticated ones must also
+    /// carry an antiforgery token or <c>CsrfProtectionMiddleware</c> returns 403, while bearer
+    /// requests are exempt from CSRF checks.
+    /// </summary>
+    protected HttpRequestMessage CreateBearerRequest(HttpMethod method, string url, string token)
+    {
+        var request = new HttpRequestMessage(method, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return request;
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // Response Parsing Helpers
     // ────────────────────────────────────────────────────────────────────────

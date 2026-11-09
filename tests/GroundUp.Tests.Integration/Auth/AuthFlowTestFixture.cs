@@ -60,6 +60,15 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
     /// </summary>
     public const string TestDefaultDomain = "testapp.local";
 
+    /// <summary>Keycloak base URL used when building authorization URLs in tests (never contacted).</summary>
+    public const string TestKeycloakPublicBaseUrl = "http://keycloak.test";
+
+    /// <summary>Keycloak shared realm name used in tests.</summary>
+    public const string TestKeycloakRealm = "groundup";
+
+    /// <summary>Keycloak public client id used in tests.</summary>
+    public const string TestKeycloakClientId = "groundup-app";
+
     /// <summary>
     /// The Postgres connection string for direct database access in test assertions.
     /// </summary>
@@ -154,6 +163,16 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
             // Register IHttpClientFactory required by AuthController for Keycloak logout
             services.AddHttpClient();
 
+            // In a real deployment the setup wizard stores these as settings. Tests never run the
+            // wizard, so supply them directly; without them flow initiation (POST /auth/login,
+            // POST /auth/signup) returns 500 MISSING_CONFIGURATION.
+            services.PostConfigure<GroundUp.Auth.Services.Configuration.KeycloakOptions>(o =>
+            {
+                o.PublicBaseUrl = TestKeycloakPublicBaseUrl;
+                o.SharedRealmName = TestKeycloakRealm;
+                o.AppClientId = TestKeycloakClientId;
+            });
+
             // Inject controllable TimeProvider for refresh/session tests
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(TimeProvider);
@@ -238,6 +257,10 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(60),
             signingCredentials: credentials);
+
+        // TokenService.ValidateTokenAsync rejects tokens without a kid header; "default" is the
+        // key id the configuration-backed signing key provider issues and validates.
+        token.Header["kid"] = "default";
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
