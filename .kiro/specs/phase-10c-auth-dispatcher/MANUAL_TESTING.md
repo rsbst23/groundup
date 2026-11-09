@@ -27,10 +27,10 @@ dotnet ef database update --project src/GroundUp.Data.Postgres --startup-project
 dotnet ef database update --project src/GroundUp.Auth.Data.Postgres --startup-project samples/GroundUp.Sample --context AuthDbContext
 ```
 
-**Run the sample app:** Hit F5 in Kiro (use the `http` profile).
+**Run the sample app:** Hit F5 in Kiro. The browser will open and show you the port in the address bar — note it down, you'll use it throughout this guide. It's typically `5000` when launched via IIS Express.
 
 **URLs:**
-- Sample app Swagger: http://localhost:5117/swagger/index.html
+- Sample app Swagger: `http://localhost:<port>/swagger/index.html`
 - Keycloak admin: http://localhost:8080 (admin / admin)
 
 ---
@@ -154,7 +154,7 @@ On the Keycloak login page:
 - Fill in: email `testuser@example.com`, password `Test123!`, first name `Test`, last name `User`
 - Submit
 
-Keycloak will redirect the browser back to `http://localhost:5117/auth/callback?code=...&state=...`
+Keycloak will redirect the browser back to `http://localhost:<port>/auth/callback?code=...&state=...`
 
 ### 2.3 Interpret the Callback Response
 
@@ -432,7 +432,7 @@ Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
 ### 10.2 Initiate Login via Subdomain
 
 ```
-POST http://my-test-org.localhost:5117/auth/login
+POST http://my-test-org.localhost:<port>/auth/login
 ```
 Expected: `redirectUrl` returned. Copy and open in browser.
 
@@ -456,7 +456,7 @@ Complete Phase 10 for `my-test-org` — you have a token scoped to that tenant.
 
 Add `another-org.localhost` to hosts. Make a data request:
 ```
-GET http://another-org.localhost:5117/api/projects
+GET http://another-org.localhost:<port>/api/projects
 Cookie: AuthToken=<tenant-A token>
 ```
 Expected: `409 { "error": "TENANT_SWITCH_REQUIRED" }` (if you're a member of `another-org`) or `403` (if not).
@@ -481,7 +481,7 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 | App starts with Keycloak validation errors | Run the setup wizard (Phase 1) |
 | `POST /auth/login` returns 500 | Check that Keycloak is running: `docker compose ps` |
 | `POST /auth/signup` returns 500 | Same as above; also check setup was completed |
-| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | The realm.json already includes `http://localhost:*/auth/callback` — this shouldn't happen. If it does, check you're using port `5117` |
+| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | The realm.json already includes `http://localhost:*/auth/callback` — this shouldn't happen. If it does, verify Keycloak imported the realm correctly by checking Clients → groundup-app → Valid redirect URIs |
 | Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
 | Callback returns 410 Gone | You already consumed this auth flow. Start over |
 | Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
