@@ -220,6 +220,8 @@ If you completed the flow via the browser, the `AuthToken` cookie is already set
 
 Tests logging in to an existing account (created in Phase 2).
 
+> **If you just completed Phase 2:** You are still logged into Keycloak via SSO. Pasting the login `redirectUrl` into the browser will immediately issue a token without showing the login form — that is correct SSO behavior. To test the full login experience (entering credentials), run `POST /auth/logout` first (Phase 9) to clear both the GroundUp cookie and the Keycloak SSO session, then come back here.
+
 ### 3.1 Initiate Login
 
 ```
