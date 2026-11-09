@@ -444,15 +444,21 @@ Expected: 200 OK with `{ "logoutUrl": "http://localhost:8080/realms/groundup/pro
 
 Because the logout URL includes `id_token_hint`, Keycloak logs out immediately without showing a confirmation screen, then redirects back to the app root. (Without `id_token_hint`, Keycloak shows a "Do you want to log out?" confirmation — the id_token hint is stored in the `IdToken` cookie at login time specifically to avoid this.)
 
+> **Expected:** After logout you land on `http://localhost:5000/` and see a **404 "This localhost page can't be found"**. This is normal — the API-only sample app has no route mapped to `/`, so the root returns 404. The logout still succeeded. In a real consuming app, `/` would be the frontend landing page. To confirm logout worked, see the verification below.
+
 > **One-time Keycloak setup for logout redirect:** The `post_logout_redirect_uri` must be registered on the `groundup-app` client. In Keycloak admin → groundup realm → Clients → groundup-app → Settings → **Valid post logout redirect URIs**, add `http://localhost:5000/` (match your app's port). Without this, the logout URL returns "Invalid redirect uri".
 
 If you only call `POST /auth/logout` without visiting `logoutUrl`, the GroundUp cookie is cleared but Keycloak still has an active SSO session — the next `POST /auth/login` will immediately return a token without prompting for credentials.
 
-Verify full logout:
-```
-GET /auth/me
-```
-Expected: 401 Unauthorized.
+Verify full logout — both halves should be cleared:
+
+1. **GroundUp session cleared:**
+   ```
+   GET /auth/me
+   ```
+   Expected: 401 Unauthorized.
+
+2. **Keycloak SSO session cleared:** Run `POST /auth/login`, copy the `redirectUrl`, and paste it into the browser. Keycloak should now show the **login form** (prompting for credentials) instead of silently issuing a token. If it prompts for credentials, the SSO session was successfully terminated.
 
 ---
 
