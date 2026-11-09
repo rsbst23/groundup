@@ -102,16 +102,18 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        var entity = MapToEntity(dto);
+        entity.TenantId = _tenantContext.TenantId;
+
         try
         {
-            var entity = MapToEntity(dto);
-            entity.TenantId = _tenantContext.TenantId;
             DbSet.Add(entity);
             await Context.SaveChangesAsync(cancellationToken);
             return OperationResult<TDto>.Ok(MapToDto(entity), "Created", 201);
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while saving the entity.",
                 409,
@@ -133,13 +135,13 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+
+        if (entity is null || entity.TenantId != _tenantContext.TenantId)
+            return OperationResult<TDto>.NotFound();
+
         try
         {
-            var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
-
-            if (entity is null || entity.TenantId != _tenantContext.TenantId)
-                return OperationResult<TDto>.NotFound();
-
             var updated = MapToEntity(dto);
             Context.Entry(entity).CurrentValues.SetValues(updated);
 
@@ -151,6 +153,7 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while updating the entity.",
                 409,

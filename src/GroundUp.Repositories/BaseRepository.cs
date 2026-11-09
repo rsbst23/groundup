@@ -13,7 +13,9 @@ namespace GroundUp.Repositories;
 /// Mapperly-generated mapping delegates via constructor parameters.
 /// <para>
 /// All public methods return <see cref="OperationResult{T}"/> or <see cref="OperationResult"/>.
-/// Only <see cref="DbUpdateException"/> is caught (mapped to 409 Conflict).
+/// Only <see cref="DbUpdateException"/> is caught (mapped to 409 Conflict). When an add or update
+/// is rejected, the affected entity is detached so the <see cref="DbContext"/> stays usable for
+/// later operations (for example a retry with different values).
 /// All other exceptions propagate to the exception handling middleware.
 /// </para>
 /// <para>
@@ -56,6 +58,18 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         DbSet = context.Set<TEntity>();
         _mapToDto = mapToDto;
         _mapToEntity = mapToEntity;
+    }
+
+    /// <summary>
+    /// Stops tracking an entity whose save was rejected (for example by a unique constraint).
+    /// Call this from every <see cref="DbUpdateException"/> handler. Otherwise the entity keeps its
+    /// Added, Modified or Deleted state and every later SaveChanges on the same context retries the
+    /// same failing statement, so the context cannot be reused (for example to retry with a new value).
+    /// </summary>
+    /// <param name="entity">The entity (or junction entity) whose pending change was rejected.</param>
+    protected void DiscardRejectedChanges(object entity)
+    {
+        Context.Entry(entity).State = EntityState.Detached;
     }
 
     #region GetAllAsync
@@ -161,15 +175,18 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        var entity = _mapToEntity(dto);
+
         try
         {
-            var entity = _mapToEntity(dto);
             DbSet.Add(entity);
             await Context.SaveChangesAsync(cancellationToken);
             return OperationResult<TDto>.Ok(_mapToDto(entity), "Created", 201);
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
+
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while saving the entity.",
                 409,
@@ -187,13 +204,13 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+
+        if (entity is null)
+            return OperationResult<TDto>.NotFound();
+
         try
         {
-            var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
-
-            if (entity is null)
-                return OperationResult<TDto>.NotFound();
-
             // Map DTO values onto the tracked entity
             var updated = _mapToEntity(dto);
             Context.Entry(entity).CurrentValues.SetValues(updated);
@@ -203,6 +220,8 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
+
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while updating the entity.",
                 409,
