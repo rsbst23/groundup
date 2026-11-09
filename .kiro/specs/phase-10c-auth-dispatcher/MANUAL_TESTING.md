@@ -437,9 +437,14 @@ Set `TokenExpirationMinutes` back to `60`.
 POST /auth/logout
 Cookie: AuthToken=<your token>
 ```
-Expected: 200 OK, `AuthToken` cookie cleared (expired in response headers).
 
-Verify:
+Expected: 200 OK with `{ "logoutUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/logout?..." }`, and the `AuthToken` cookie cleared (expired in response headers).
+
+**You must also navigate to the `logoutUrl`** to terminate the Keycloak SSO session. Copy the URL from the response and paste it into your browser. This clears the Keycloak session cookie so that the next login flow shows the credential form rather than silently re-authenticating.
+
+If you only call `POST /auth/logout` without visiting `logoutUrl`, the GroundUp cookie is cleared but Keycloak still has an active SSO session — the next `POST /auth/login` will immediately return a token without prompting for credentials.
+
+Verify full logout:
 ```
 GET /auth/me
 ```

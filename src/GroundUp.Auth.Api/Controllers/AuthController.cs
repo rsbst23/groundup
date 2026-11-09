@@ -26,7 +26,6 @@ public sealed class AuthController : ControllerBase
     private readonly LastAdminGuard _lastAdminGuard;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAntiforgery? _antiforgery;
 
     /// <summary>
@@ -41,7 +40,6 @@ public sealed class AuthController : ControllerBase
     /// <param name="lastAdminGuard">Guard for preventing removal of the last TenantAdmin.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
-    /// <param name="httpClientFactory">Factory for creating HTTP clients (used for Keycloak end_session).</param>
     /// <param name="antiforgery">Optional antiforgery service for CSRF token provisioning.</param>
     public AuthController(
         IAuthFlowService authFlowService,
@@ -53,7 +51,6 @@ public sealed class AuthController : ControllerBase
         LastAdminGuard lastAdminGuard,
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
-        IHttpClientFactory httpClientFactory,
         IAntiforgery? antiforgery = null)
     {
         _authFlowService = authFlowService;
@@ -65,7 +62,6 @@ public sealed class AuthController : ControllerBase
         _lastAdminGuard = lastAdminGuard;
         _authOptions = authOptions;
         _keycloakOptions = keycloakOptions;
-        _httpClientFactory = httpClientFactory;
         _antiforgery = antiforgery;
     }
 
@@ -364,42 +360,32 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Clears the local authentication cookie and terminates the Keycloak SSO session
-    /// via the RP-initiated logout endpoint. Uses <c>client_id</c> and <c>post_logout_redirect_uri</c>
-    /// (no <c>id_token_hint</c> in Phase 10C).
+    /// Clears the local authentication cookie and returns the Keycloak RP-initiated logout URL
+    /// for the client to navigate to. The browser must visit this URL to terminate the Keycloak
+    /// SSO session — a server-to-server call cannot clear the browser's Keycloak session cookie.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>HTTP 200 after cookie is cleared and Keycloak session is terminated.</returns>
+    /// <returns>
+    /// HTTP 200 with <c>{ logoutUrl }</c> after cookie is cleared.
+    /// The client should navigate the browser to <c>logoutUrl</c> to complete SSO logout.
+    /// </returns>
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout(CancellationToken cancellationToken = default)
+    public Task<IActionResult> Logout(CancellationToken cancellationToken = default)
     {
         _authCookieWriter.ClearAuthCookie(HttpContext);
 
-        // Call Keycloak end_session_endpoint to terminate the SSO session
+        // Build the Keycloak RP-initiated logout URL.
+        // The browser must navigate here to clear the Keycloak SSO session cookie.
+        // A server-to-server POST cannot clear the browser-held Keycloak session.
         var keycloakOpts = _keycloakOptions.Value;
-        var endSessionUrl = $"{keycloakOpts.PublicBaseUrl}/realms/{keycloakOpts.SharedRealmName}/protocol/openid-connect/logout";
-
         var postLogoutRedirectUri = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}/";
 
-        try
-        {
-            var client = _httpClientFactory.CreateClient("KeycloakIdp");
-            var parameters = new Dictionary<string, string>
-            {
-                ["client_id"] = keycloakOpts.AppClientId,
-                ["post_logout_redirect_uri"] = postLogoutRedirectUri
-            };
+        var logoutUrl = $"{keycloakOpts.PublicBaseUrl}/realms/{keycloakOpts.SharedRealmName}" +
+                        $"/protocol/openid-connect/logout" +
+                        $"?client_id={Uri.EscapeDataString(keycloakOpts.AppClientId)}" +
+                        $"&post_logout_redirect_uri={Uri.EscapeDataString(postLogoutRedirectUri)}";
 
-            using var content = new FormUrlEncodedContent(parameters);
-            await client.PostAsync(endSessionUrl, content, cancellationToken);
-        }
-        catch
-        {
-            // Best-effort: if end_session fails, the local cookie is already cleared.
-            // The user is logged out of GroundUp regardless.
-        }
-
-        return Ok();
+        return Task.FromResult<IActionResult>(Ok(new { logoutUrl }));
     }
 
     /// <summary>

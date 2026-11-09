@@ -26,7 +26,6 @@ public sealed class AuthControllerTests
     private readonly LastAdminGuard _lastAdminGuard;
     private readonly AuthOptions _authOptions;
     private readonly KeycloakOptions _keycloakOptions;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAntiforgery _antiforgery;
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly AuthController _sut;
@@ -65,7 +64,6 @@ public sealed class AuthControllerTests
             AppClientId = "groundup-app"
         };
 
-        _httpClientFactory = Substitute.For<IHttpClientFactory>();
         _antiforgery = Substitute.For<IAntiforgery>();
 
         _sut = CreateController();
@@ -647,33 +645,36 @@ public sealed class AuthControllerTests
     #region POST /auth/logout
 
     [Fact]
-    public async Task Logout_ClearsCookieAndReturns200()
+    public async Task Logout_ClearsCookieAndReturns200WithLogoutUrl()
     {
-        // Arrange — provide a client that does nothing
-        var httpClient = new HttpClient(new FakeHttpMessageHandler());
-        _httpClientFactory.CreateClient("KeycloakIdp").Returns(httpClient);
-
         // Act
         var result = await _sut.Logout();
 
-        // Assert
-        result.Should().BeOfType<OkResult>();
+        // Assert — cookie cleared
         _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+
+        // Assert — 200 with logoutUrl pointing to Keycloak end_session
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(okResult.Value!);
+        var logoutUrl = body["logoutUrl"]?.ToString();
+        logoutUrl.Should().NotBeNullOrEmpty();
+        logoutUrl.Should().Contain("/protocol/openid-connect/logout");
+        logoutUrl.Should().Contain("client_id=groundup-app");
+        logoutUrl.Should().Contain("post_logout_redirect_uri=");
     }
 
     [Fact]
-    public async Task Logout_KeycloakEndSessionFails_StillReturns200()
+    public async Task Logout_LogoutUrlContainsRealmFromKeycloakOptions()
     {
-        // Arrange — HttpClient throws to simulate Keycloak being down
-        var httpClient = new HttpClient(new ThrowingHttpMessageHandler());
-        _httpClientFactory.CreateClient("KeycloakIdp").Returns(httpClient);
-
         // Act
         var result = await _sut.Logout();
 
-        // Assert — cookie cleared, 200 returned (best-effort Keycloak logout)
-        result.Should().BeOfType<OkResult>();
-        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+        // Assert — logoutUrl uses the configured realm
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(okResult.Value!);
+        var logoutUrl = body["logoutUrl"]?.ToString();
+        logoutUrl.Should().Contain(_keycloakOptions.SharedRealmName);
+        logoutUrl.Should().Contain(_keycloakOptions.PublicBaseUrl);
     }
 
     #endregion
@@ -1025,7 +1026,6 @@ public sealed class AuthControllerTests
             _lastAdminGuard,
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),
-            _httpClientFactory,
             _antiforgery);
 
         controller.ControllerContext = new ControllerContext
@@ -1053,32 +1053,6 @@ public sealed class AuthControllerTests
             dict[prop.Name] = prop.GetValue(obj);
         }
         return dict;
-    }
-
-    /// <summary>
-    /// A fake HttpMessageHandler that returns a successful empty response.
-    /// </summary>
-    private sealed class FakeHttpMessageHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
-        }
-    }
-
-    /// <summary>
-    /// A fake HttpMessageHandler that throws to simulate network failure.
-    /// </summary>
-    private sealed class ThrowingHttpMessageHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            throw new HttpRequestException("Simulated network failure");
-        }
     }
 
     #endregion
