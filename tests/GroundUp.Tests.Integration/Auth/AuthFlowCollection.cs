@@ -13,3 +13,13 @@ namespace GroundUp.Tests.Integration.Auth;
 public sealed class AuthFlowCollection : ICollectionFixture<AuthFlowTestFixture>
 {
 }
+
+/// <summary>
+/// xUnit collection for auth flow tests that need a configured default tenant. Uses
+/// <see cref="DefaultTenantAuthFlowFixture"/>, which has its own database, so the default-tenant
+/// setting never reaches tests in the "AuthFlow" collection that expect no default tenant.
+/// </summary>
+[CollectionDefinition("AuthFlowDefaultTenant")]
+public sealed class AuthFlowDefaultTenantCollection : ICollectionFixture<DefaultTenantAuthFlowFixture>
+{
+}
