@@ -144,6 +144,7 @@ public sealed class LoginFlowHandlerPropertyTests
             authFlowStateService,
             settingsService,
             httpContextAccessor,
+            new GroundUp.Core.TenantContext(),
             logger);
 
         return (handler, authCookieWriter);

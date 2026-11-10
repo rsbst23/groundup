@@ -24,6 +24,7 @@ public sealed class SimpleSignupFlowHandlerTests
     private readonly ISettingsService _settingsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<SimpleSignupFlowHandler> _logger;
+    private readonly GroundUp.Core.TenantContext _tenantContext = new();
     private readonly SimpleSignupFlowHandler _sut;
 
     // Reusable test data
@@ -67,6 +68,7 @@ public sealed class SimpleSignupFlowHandlerTests
             _authFlowStateService,
             _settingsService,
             _httpContextAccessor,
+            _tenantContext,
             _logger);
     }
 
@@ -131,6 +133,36 @@ public sealed class SimpleSignupFlowHandlerTests
                 ut.TenantId == TestDefaultTenantId &&
                 ut.IsActive),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_NewUser_PointsTenantContextAtDefaultTenantBeforeCreatingMembership()
+    {
+        // Arrange — the real membership repository stamps the current tenant onto new rows,
+        // so the context must name the default tenant when the membership is written
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupNewUserCreation();
+        SetupDefaultTenantSlugSetting("community");
+        SetupDefaultTenantLookup("community");
+        SetupZeroActiveMemberships();
+        SetupDefaultRoleNotConfigured();
+        SetupSuccessfulTokenGeneration();
+
+        Guid? tenantContextAtInsert = null;
+        _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                tenantContextAtInsert = _tenantContext.TenantId;
+                return OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0));
+            });
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        tenantContextAtInsert.Should().Be(TestDefaultTenantId);
     }
 
     #endregion

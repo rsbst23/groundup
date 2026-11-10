@@ -4,6 +4,7 @@ using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,7 @@ public sealed class LoginFlowHandler : IFlowHandler
     private readonly IAuthFlowStateService _authFlowStateService;
     private readonly ISettingsService _settingsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly TenantContext _tenantContext;
     private readonly ILogger<LoginFlowHandler> _logger;
 
     /// <summary>
@@ -43,6 +45,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         IAuthFlowStateService authFlowStateService,
         ISettingsService settingsService,
         IHttpContextAccessor httpContextAccessor,
+        TenantContext tenantContext,
         ILogger<LoginFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
@@ -54,6 +57,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         _authFlowStateService = authFlowStateService;
         _settingsService = settingsService;
         _httpContextAccessor = httpContextAccessor;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
@@ -206,6 +210,10 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         var defaultTenant = tenantResult.Data;
+
+        // The membership repository stamps the current tenant onto new rows. During a sign-in
+        // callback no tenant is selected yet, so point the context at the tenant being joined.
+        _tenantContext.TenantId = defaultTenant.Id;
 
         // Auto-join: create membership
         var membershipDto = new UserTenantDto(

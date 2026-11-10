@@ -225,6 +225,7 @@ public sealed class SimpleSignupFlowHandlerPropertyTests
             authFlowStateService,
             settingsService,
             httpContextAccessor,
+            new GroundUp.Core.TenantContext(),
             logger);
 
         return (handler, httpContext);

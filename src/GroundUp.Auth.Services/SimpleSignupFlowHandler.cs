@@ -4,6 +4,7 @@ using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
     private readonly IAuthFlowStateService _authFlowStateService;
     private readonly ISettingsService _settingsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly TenantContext _tenantContext;
     private readonly ILogger<SimpleSignupFlowHandler> _logger;
 
     /// <summary>
@@ -42,6 +44,7 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         IAuthFlowStateService authFlowStateService,
         ISettingsService settingsService,
         IHttpContextAccessor httpContextAccessor,
+        TenantContext tenantContext,
         ILogger<SimpleSignupFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
@@ -53,6 +56,7 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         _authFlowStateService = authFlowStateService;
         _settingsService = settingsService;
         _httpContextAccessor = httpContextAccessor;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
@@ -137,6 +141,10 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
 
             if (existingMembership is null)
             {
+                // The membership repository stamps the current tenant onto new rows. During a
+                // sign-in callback no tenant is selected yet, so point the context at the default tenant.
+                _tenantContext.TenantId = defaultTenant.Id;
+
                 // 8. Create UserTenant membership
                 var membershipDto = new UserTenantDto(
                     Id: Guid.NewGuid(),

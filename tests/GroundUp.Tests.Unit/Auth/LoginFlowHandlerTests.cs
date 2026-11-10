@@ -24,6 +24,7 @@ public sealed class LoginFlowHandlerTests
     private readonly ISettingsService _settingsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<LoginFlowHandler> _logger;
+    private readonly GroundUp.Core.TenantContext _tenantContext = new();
     private readonly LoginFlowHandler _sut;
 
     // Reusable test data
@@ -69,6 +70,7 @@ public sealed class LoginFlowHandlerTests
             _authFlowStateService,
             _settingsService,
             _httpContextAccessor,
+            _tenantContext,
             _logger);
     }
 
@@ -133,6 +135,36 @@ public sealed class LoginFlowHandlerTests
                 ut.TenantId == TestTenantId1 &&
                 ut.IsActive),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroMembershipsWithDefaultTenant_PointsTenantContextAtDefaultTenantBeforeCreatingMembership()
+    {
+        // Arrange — the real membership repository stamps the current tenant onto new rows,
+        // so the context must name the default tenant when the membership is written
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupZeroActiveMemberships();
+        SetupDefaultTenantSlugSetting("default-org");
+        SetupDefaultTenantLookup("default-org");
+        SetupDefaultRoleNotConfigured();
+        SetupSuccessfulTokenGeneration();
+
+        Guid? tenantContextAtInsert = null;
+        _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                tenantContextAtInsert = _tenantContext.TenantId;
+                return OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0));
+            });
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        tenantContextAtInsert.Should().Be(TestTenantId1);
     }
 
     #endregion
