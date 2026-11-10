@@ -31,4 +31,19 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
     Task<OperationResult<List<UserTenantDto>>> GetAllMembershipsForUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deactivates a user's membership in the specified tenant (the user leaves the tenant).
+    /// This is a system-level bypass that targets <paramref name="tenantId"/> explicitly instead
+    /// of the current tenant context, because a user may leave a tenant other than the one their
+    /// session is scoped to. Callers must verify the user is allowed to leave first.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="tenantId">The tenant whose membership is deactivated.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Success, NotFound if no membership exists, or a 409 conflict if the save fails.</returns>
+    Task<OperationResult> DeactivateMembershipAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
 }

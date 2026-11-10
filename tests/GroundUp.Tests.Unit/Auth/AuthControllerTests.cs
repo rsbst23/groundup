@@ -949,8 +949,8 @@ public sealed class AuthControllerTests
         _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
 
-        _userTenantRepository.UpdateAsync(membershipId, Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserTenantDto>.Ok(memberships[0] with { IsActive = false }));
+        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
 
         // Act
         var result = await _sut.LeaveTenant(targetTenantId);
@@ -961,10 +961,77 @@ public sealed class AuthControllerTests
         body["success"].Should().Be(true);
 
         // Verify membership was deactivated
-        await _userTenantRepository.Received(1).UpdateAsync(
-            membershipId,
-            Arg.Is<UserTenantDto>(dto => dto.IsActive == false),
-            Arg.Any<CancellationToken>());
+        await _userTenantRepository.Received(1).DeactivateMembershipAsync(
+            TestUserId, targetTenantId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_DeactivationFails_ReturnsErrorInsteadOfSuccess()
+    {
+        // Arrange
+        var targetTenantId = Guid.NewGuid();
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", Guid.NewGuid().ToString())
+        });
+
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
+            {
+                new(Guid.NewGuid(), TestUserId, targetTenantId, "ext-1", true)
+            }));
+        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserRoleDto>>.Ok(new List<UserRoleDto>()));
+        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Fail("A conflict occurred while leaving the tenant.", 409));
+
+        // Act
+        var result = await _sut.LeaveTenant(targetTenantId);
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task LeaveTenant_RegularMemberOfTenantWithOneAdmin_DeactivatesMembershipAndReturnsSuccess()
+    {
+        // Arrange — the leaving user is not an admin; the tenant has exactly one other admin
+        var targetTenantId = Guid.NewGuid();
+        var membershipId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", otherTenantId.ToString())
+        });
+
+        var memberships = new List<UserTenantDto>
+        {
+            new(membershipId, TestUserId, targetTenantId, "ext-1", true),
+            new(Guid.NewGuid(), TestUserId, otherTenantId, "ext-2", true)
+        };
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+
+        var adminHolders = new List<UserRoleDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
+        };
+        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
+
+        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
+
+        // Act
+        var result = await _sut.LeaveTenant(targetTenantId);
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+        await _userTenantRepository.Received(1).DeactivateMembershipAsync(
+            TestUserId, targetTenantId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -996,8 +1063,8 @@ public sealed class AuthControllerTests
         _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
 
-        _userTenantRepository.UpdateAsync(membershipId, Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserTenantDto>.Ok(memberships[0] with { IsActive = false }));
+        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
 
         // Act
         var result = await _sut.LeaveTenant(targetTenantId);

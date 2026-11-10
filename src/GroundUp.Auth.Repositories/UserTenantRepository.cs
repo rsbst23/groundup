@@ -61,4 +61,40 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         var dtos = entities.Select(AuthUserTenantMapper.ToDto).ToList();
         return OperationResult<List<UserTenantDto>>.Ok(dtos);
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: Targets the given tenant explicitly rather than the current tenant
+    /// context, so a user can leave a tenant other than the one their session is scoped to.
+    /// </remarks>
+    public async Task<OperationResult> DeactivateMembershipAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await Context.Set<UserTenant>()
+            .FirstOrDefaultAsync(ut => ut.UserId == userId && ut.TenantId == tenantId, cancellationToken);
+
+        if (entity is null)
+            return OperationResult.NotFound();
+
+        if (!entity.IsActive)
+            return OperationResult.Ok();
+
+        entity.IsActive = false;
+
+        try
+        {
+            await Context.SaveChangesAsync(cancellationToken);
+            return OperationResult.Ok();
+        }
+        catch (DbUpdateException)
+        {
+            DiscardRejectedChanges(entity);
+            return OperationResult.Fail(
+                "A conflict occurred while leaving the tenant.",
+                409,
+                GroundUp.Core.ErrorCodes.Conflict);
+        }
+    }
 }

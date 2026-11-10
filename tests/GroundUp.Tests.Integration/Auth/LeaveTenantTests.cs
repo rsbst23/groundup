@@ -252,6 +252,63 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // 8. Two admins — after the first leaves, the second is the last admin
+    // ────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LeaveTenant_SecondAdminAfterFirstLeft_Returns403BecauseOnlyOneActiveAdminRemains()
+    {
+        // Arrange — two TenantAdmins; leaving keeps the departed admin's role row in the database
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var tenantId = await SeedTenantAsync($"Departing Admins {suffix}", $"departing-admins-{suffix}");
+        var admin1Id = await SeedUserAsync($"sub-dep1-{suffix}", $"dep1-{suffix}@example.com");
+        var admin2Id = await SeedUserAsync($"sub-dep2-{suffix}", $"dep2-{suffix}@example.com");
+        await SeedMembershipAsync(admin1Id, tenantId);
+        await SeedMembershipAsync(admin2Id, tenantId);
+
+        var adminRoleId = await SeedRoleAsync(tenantId, AuthRoleNames.TenantAdmin, isSystem: true);
+        await AssignRoleToUserAsync(admin1Id, adminRoleId, tenantId);
+        await AssignRoleToUserAsync(admin2Id, adminRoleId, tenantId);
+
+        var firstLeave = await Client.SendAsync(CreateBearerRequest(
+            HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", Fixture.GenerateTestToken(admin1Id, tenantId)));
+        firstLeave.StatusCode.Should().Be(HttpStatusCode.OK, "a second active admin remains");
+
+        // Act — the remaining admin tries to leave
+        var secondLeave = await Client.SendAsync(CreateBearerRequest(
+            HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", Fixture.GenerateTestToken(admin2Id, tenantId)));
+
+        // Assert — the departed admin must not count; the tenant would otherwise have no admin
+        secondLeave.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var admin2Memberships = await GetAllMembershipsForUserAsync(admin2Id);
+        admin2Memberships.First(m => m.TenantId == tenantId).IsActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LeaveTenant_RegularMemberOfTenantWithOneAdmin_Returns200()
+    {
+        // Arrange — the normal case: one admin and a regular member who wants to leave
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var tenantId = await SeedTenantAsync($"One Admin {suffix}", $"one-admin-{suffix}");
+        var adminId = await SeedUserAsync($"sub-oa-admin-{suffix}", $"oa-admin-{suffix}@example.com");
+        var memberId = await SeedUserAsync($"sub-oa-member-{suffix}", $"oa-member-{suffix}@example.com");
+        await SeedMembershipAsync(adminId, tenantId);
+        await SeedMembershipAsync(memberId, tenantId);
+
+        var adminRoleId = await SeedRoleAsync(tenantId, AuthRoleNames.TenantAdmin, isSystem: true);
+        await AssignRoleToUserAsync(adminId, adminRoleId, tenantId);
+
+        // Act
+        var response = await Client.SendAsync(CreateBearerRequest(
+            HttpMethod.Post, $"/auth/tenants/{tenantId}/leave", Fixture.GenerateTestToken(memberId, tenantId)));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var memberships = await GetAllMembershipsForUserAsync(memberId);
+        memberships.First(m => m.TenantId == tenantId).IsActive.Should().BeFalse();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Helper: gets ALL memberships (active and inactive) for assertion
     // ────────────────────────────────────────────────────────────────────────
 

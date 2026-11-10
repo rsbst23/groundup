@@ -523,16 +523,19 @@ public sealed class AuthController : ControllerBase
             return NotFound(new { error = "User is not a member of this tenant." });
         }
 
-        // Check last-admin guard
-        var guardResult = await _lastAdminGuard.CanRemoveTenantAdminAsync(userId.Value, tenantId, cancellationToken);
+        // Check last-admin guard: only the last active TenantAdmin is blocked from leaving
+        var guardResult = await _lastAdminGuard.CanLeaveTenantAsync(userId.Value, tenantId, cancellationToken);
         if (!guardResult.Success)
         {
             return StatusCode(403, new { error = guardResult.Message, errorCode = guardResult.ErrorCode });
         }
 
-        // Deactivate membership
-        var deactivatedDto = membership with { IsActive = false };
-        await _userTenantRepository.UpdateAsync(membership.Id, deactivatedDto, cancellationToken);
+        // Deactivate membership. Targets the tenant explicitly: the session may be scoped to a different tenant.
+        var deactivateResult = await _userTenantRepository.DeactivateMembershipAsync(userId.Value, tenantId, cancellationToken);
+        if (!deactivateResult.Success)
+        {
+            return StatusCode(deactivateResult.StatusCode, new { error = deactivateResult.Message });
+        }
 
         // Determine if the user was viewing the left tenant
         var options = _authOptions.Value;
