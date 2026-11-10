@@ -329,17 +329,37 @@ Tests signing up without creating an organization — the user is auto-joined to
 
 ### 5.1 Configure the Default Tenant
 
-First, ensure a tenant exists (from Phase 2). Then set the `auth.application.default-tenant-slug` setting in the database to point to it. The easiest way is to insert it directly via psql or by having the seeder pick it up — for now, create it via the settings API if available, or insert via Swagger or psql:
+First, ensure a tenant exists (from Phase 2). Then set the `auth.application.default-tenant-slug` setting to that tenant's slug. There is no API for setting values yet, so do it in the database (pgAdmin/DBeaver query tool, `groundup` database).
+
+The seeder only creates the setting *definition* (with an empty default). There is normally no value row yet, so an `UPDATE` alone changes nothing. Check first, then insert or update:
 
 ```sql
--- Quick dev approach: update the setting value directly
-UPDATE "SettingValues"
-SET "Value" = 'my-test-org'
-WHERE "SettingDefinitionId" = (
-  SELECT "Id" FROM "SettingDefinitions" WHERE "Key" = 'auth.application.default-tenant-slug'
-)
-AND "ScopeId" IS NULL;
+-- 1. Is there already a system-level value row?
+SELECT v."Id", v."Value"
+FROM "SettingValues" v
+JOIN "SettingDefinitions" d ON d."Id" = v."SettingDefinitionId"
+WHERE d."Key" = 'auth.application.default-tenant-slug' AND v."ScopeId" IS NULL;
+
+-- 2a. No row returned: insert one
+INSERT INTO "SettingValues" ("Id", "SettingDefinitionId", "LevelId", "ScopeId", "Value", "CreatedAt")
+SELECT gen_random_uuid(), d."Id", l."Id", NULL, 'my-test-org', now()
+FROM "SettingDefinitions" d
+CROSS JOIN "SettingLevels" l
+WHERE d."Key" = 'auth.application.default-tenant-slug'
+  AND lower(l."Name") = 'system';
+
+-- 2b. A row was returned: update it instead
+UPDATE "SettingValues" v
+SET "Value" = 'my-test-org', "UpdatedAt" = now()
+FROM "SettingDefinitions" d
+WHERE d."Id" = v."SettingDefinitionId"
+  AND d."Key" = 'auth.application.default-tenant-slug'
+  AND v."ScopeId" IS NULL;
 ```
+
+**Restart the app after changing it.** Setting values are cached in memory for 15 minutes, so a direct database edit is not seen by a running app.
+
+> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 3's "no memberships → 403" case no longer applies). Set the value back to `''` and restart to undo.
 
 ### 5.2 Initiate Simple Signup
 
