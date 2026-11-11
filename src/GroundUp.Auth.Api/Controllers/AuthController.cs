@@ -4,6 +4,7 @@ using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -24,6 +25,7 @@ public sealed class AuthController : ControllerBase
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly LastAdminGuard _lastAdminGuard;
+    private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
     private readonly IAntiforgery? _antiforgery;
@@ -38,6 +40,7 @@ public sealed class AuthController : ControllerBase
     /// <param name="userTenantRepository">Repository for querying and managing user-tenant memberships.</param>
     /// <param name="tenantRepository">Repository for loading tenant details.</param>
     /// <param name="lastAdminGuard">Guard for preventing removal of the last TenantAdmin.</param>
+    /// <param name="organizationProvisioningService">Creates organizations for authenticated users.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
     /// <param name="antiforgery">Optional antiforgery service for CSRF token provisioning.</param>
@@ -49,6 +52,7 @@ public sealed class AuthController : ControllerBase
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
         LastAdminGuard lastAdminGuard,
+        IOrganizationProvisioningService organizationProvisioningService,
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
         IAntiforgery? antiforgery = null)
@@ -60,6 +64,7 @@ public sealed class AuthController : ControllerBase
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
         _lastAdminGuard = lastAdminGuard;
+        _organizationProvisioningService = organizationProvisioningService;
         _authOptions = authOptions;
         _keycloakOptions = keycloakOptions;
         _antiforgery = antiforgery;
@@ -479,6 +484,78 @@ public sealed class AuthController : ControllerBase
         }).ToList();
 
         return Ok(tenantList);
+    }
+
+    /// <summary>
+    /// Creates an additional standard organization for the authenticated user, who becomes its
+    /// TenantAdmin. No identity-provider round-trip is made. The session stays scoped to the
+    /// current tenant; the user switches to the new organization with <c>POST /auth/set-tenant</c>.
+    /// </summary>
+    /// <param name="request">The request body containing the organization name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// HTTP 201 with <c>{ id, name, slug }</c> on success;
+    /// HTTP 400 when the name is missing, blank or longer than 200 characters;
+    /// HTTP 401 when unauthenticated, when no tenant is selected yet, or when the user cannot be resolved;
+    /// HTTP 409 with <c>SLUG_COLLISION</c> when no unique slug could be found.
+    /// </returns>
+    [HttpPost("organizations")]
+    public async Task<IActionResult> CreateOrganization(
+        [FromBody] CreateOrganizationRequestDto? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            return Unauthorized();
+        }
+
+        // Require a fully established session: a pending-selection principal (no tid) must pick a tenant first
+        var options = _authOptions.Value;
+        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
+        if (string.IsNullOrEmpty(tidClaim) || !Guid.TryParse(tidClaim, out _))
+        {
+            return Unauthorized();
+        }
+
+        var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        // The membership row stores the user's identity-provider subject, which the token does not carry
+        var userResult = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (!userResult.Success || userResult.Data is null || !userResult.Data.IsActive)
+        {
+            return Unauthorized();
+        }
+
+        var organizationName = request?.OrganizationName?.Trim();
+        if (string.IsNullOrEmpty(organizationName))
+        {
+            return BadRequest(new { error = "Organization name is required." });
+        }
+
+        if (organizationName.Length > 200)
+        {
+            return BadRequest(new { error = "Organization name must not exceed 200 characters." });
+        }
+
+        var result = await _organizationProvisioningService.ProvisionAsync(
+            new OrganizationProvisioningRequest(userId, userResult.Data.ExternalUserId, organizationName),
+            cancellationToken);
+
+        if (!result.Success || result.Data is null)
+        {
+            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
+        }
+
+        return StatusCode(StatusCodes.Status201Created, new
+        {
+            id = result.Data.TenantId,
+            name = result.Data.Name,
+            slug = result.Data.Slug
+        });
     }
 
     /// <summary>

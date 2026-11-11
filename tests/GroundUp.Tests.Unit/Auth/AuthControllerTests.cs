@@ -28,6 +28,8 @@ public sealed class AuthControllerTests
     private readonly KeycloakOptions _keycloakOptions;
     private readonly IAntiforgery _antiforgery;
     private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IOrganizationProvisioningService _organizationProvisioningService =
+        Substitute.For<IOrganizationProvisioningService>();
     private readonly AuthController _sut;
 
     // Reusable test data
@@ -849,6 +851,264 @@ public sealed class AuthControllerTests
 
     #endregion
 
+    #region POST /auth/organizations
+
+    private const string TestExternalUserId = "keycloak-sub-org-creator";
+
+    [Fact]
+    public async Task CreateOrganization_Unauthenticated_Returns401()
+    {
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_PendingSelectionPrincipalWithoutTid_Returns401()
+    {
+        // Arrange — Keycloak token during tenant selection: identity only, no tid
+        SetAuthenticatedUser(new[] { new Claim("sub", "keycloak-external-sub") });
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_SubIsNotAGuid_Returns401()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", "not-a-guid"),
+            new Claim("tid", TestTenantId.ToString())
+        });
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_UserNotFound_Returns401()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.NotFound());
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_UserInactive_Returns401()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.Ok(
+                new UserDto(TestUserId, TestExternalUserId, "creator@example.com", "Creator", IsActive: false)));
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task CreateOrganization_MissingOrBlankName_Returns400(string? organizationName)
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(organizationName));
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_NullBody_Returns400()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+
+        // Act
+        var result = await _sut.CreateOrganization(null);
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_NameLongerThan200Characters_Returns400()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(new string('a', 201)));
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+        await AssertNotProvisionedAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_NameExactly200Characters_IsAccepted()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+        SetupSuccessfulProvisioning();
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(new string('a', 200)));
+
+        // Assert
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(201);
+    }
+
+    [Fact]
+    public async Task CreateOrganization_ValidRequest_Returns201WithIdNameAndSlug()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+        var newTenantId = SetupSuccessfulProvisioning();
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(201);
+        var body = GetAnonymousObjectProperties(objectResult.Value!);
+        body["id"].Should().Be(newTenantId);
+        body["name"].Should().Be("Acme Corp");
+        body["slug"].Should().Be("acme-corp");
+    }
+
+    [Fact]
+    public async Task CreateOrganization_ValidRequest_ProvisionsForResolvedUserWithTrimmedName()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+        SetupSuccessfulProvisioning();
+
+        // Act
+        await _sut.CreateOrganization(new CreateOrganizationRequestDto("  Acme Corp  "));
+
+        // Assert
+        await _organizationProvisioningService.Received(1).ProvisionAsync(
+            Arg.Is<OrganizationProvisioningRequest>(r =>
+                r.UserId == TestUserId &&
+                r.ExternalUserId == TestExternalUserId &&
+                r.OrganizationName == "Acme Corp"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateOrganization_ValidRequest_DoesNotChangeTheSessionToken()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+        SetupSuccessfulProvisioning();
+
+        // Act
+        await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
+
+        // Assert — the active tenant stays as is; the user switches later via set-tenant
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        await _authSessionService.DidNotReceive().SetTenantAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
+    }
+
+    [Fact]
+    public async Task CreateOrganization_SlugCollision_Returns409WithErrorCode()
+    {
+        // Arrange
+        SetAuthenticatedOrgCreator();
+        SetupOrgCreator();
+        _organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<OrganizationProvisioningResult>.Fail(
+                "Unable to create organization — slug unavailable after retries.", 409, "SLUG_COLLISION"));
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(409);
+        GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be("SLUG_COLLISION");
+    }
+
+    private void SetAuthenticatedOrgCreator()
+    {
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", TestTenantId.ToString())
+        });
+    }
+
+    private void SetupOrgCreator()
+    {
+        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.Ok(
+                new UserDto(TestUserId, TestExternalUserId, "creator@example.com", "Creator", IsActive: true)));
+    }
+
+    private Guid SetupSuccessfulProvisioning()
+    {
+        var newTenantId = Guid.NewGuid();
+        _organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var request = callInfo.ArgAt<OrganizationProvisioningRequest>(0);
+                return OperationResult<OrganizationProvisioningResult>.Ok(
+                    new OrganizationProvisioningResult(newTenantId, request.OrganizationName, "acme-corp"));
+            });
+        return newTenantId;
+    }
+
+    private async Task AssertNotProvisionedAsync()
+    {
+        await _organizationProvisioningService.DidNotReceive().ProvisionAsync(
+            Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    #endregion
+
     #region POST /auth/tenants/{id}/leave
 
     [Fact]
@@ -1091,6 +1351,7 @@ public sealed class AuthControllerTests
             _userTenantRepository,
             _tenantRepository,
             _lastAdminGuard,
+            _organizationProvisioningService,
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),
             _antiforgery);

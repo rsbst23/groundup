@@ -51,17 +51,18 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Not changed: `SettingsService` and `IdentityBootstrapService` catch `DbUpdateException` inside their own transactions; review separately
   - **Manual re-test needed after this group:** MANUAL_TESTING.md Phase 2 (brand-new user + first org through Keycloak)
 
-- [ ] 3. Add `POST /auth/organizations` to `AuthController`
-  - [ ] 3.1 Add `CreateOrganizationRequestDto(string OrganizationName)` in `GroundUp.Auth.Core.Dtos` (next to `SignupRequestDto`)
-  - [ ] 3.2 Inject `IOrganizationProvisioningService` into `AuthController`; update the `CreateController` helper in `AuthControllerTests`
-  - [ ] 3.3 Implement `CreateOrganization`
+- [x] 3. Add `POST /auth/organizations` to `AuthController`
+  - [x] 3.1 Add `CreateOrganizationRequestDto(string? OrganizationName)` in `GroundUp.Auth.Core.Dtos` (next to `SignupRequestDto`)
+  - [x] 3.2 Inject `IOrganizationProvisioningService` into `AuthController`; update the `CreateController` helper in `AuthControllerTests`
+  - [x] 3.3 Implement `CreateOrganization`
     - 401 if unauthenticated, if no valid `tid` claim (pending-selection), or if the `sub` user id cannot be parsed
-    - Load the user with `IUserRepository.GetByIdAsync` to obtain `ExternalUserId`; 401 if not found
+    - Load the user with `IUserRepository.GetByIdAsync` to obtain `ExternalUserId`; 401 if not found or inactive
+    - The name is trimmed before validation and storage
     - 400 if `organizationName` is null, empty or whitespace, or longer than 200 characters (same inline check style as `Signup`)
     - Call `ProvisionAsync`; on success return `201` with `{ id, name, slug }`
     - On failure return the result's status code with `{ error, errorCode }`
     - No cookie write and no token reissue (the active `tid` is unchanged)
-  - [ ] 3.4 Controller unit tests
+  - [x] 3.4 Controller unit tests
     - Unauthenticated returns 401
     - Pending-selection (no `tid`) returns 401
     - Unparseable `sub` returns 401
@@ -70,7 +71,7 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Valid request returns 201 with id, name and slug, and the service receives the resolved user id and external id
     - `SLUG_COLLISION` from the service returns 409
     - Cookie writer is never invoked (active tenant unchanged)
-  - [ ] 3.5 Build, run all auth unit tests, commit
+  - [x] 3.5 Build, run all auth unit tests, commit
 
 - [ ] 4. Integration tests for `POST /auth/organizations` (Docker required)
   - [ ] 4.1 Add `CreateOrganizationTests` using `AuthFlowTestBase` and `Fixture.GenerateTestToken`
