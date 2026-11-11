@@ -84,12 +84,13 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Slug collision produces a disambiguated slug for the second org with the same name
   - [x] 4.2 Build, run the new integration tests plus the existing auth integration tests, commit
 
-- [ ] 5. Update MANUAL_TESTING.md
-  - [ ] 5.1 Phase 4.1: create the second org with `POST /auth/organizations` (authenticated, no Keycloak round-trip) instead of a second signup
+- [x] 5. Update MANUAL_TESTING.md
+  - [x] 5.1 Phase 4.1: create the second org with `POST /auth/organizations` (authenticated, no Keycloak round-trip) instead of a second signup
     - Note that the new org does not change the active tenant; use `set-tenant` to switch
     - Note the `kc_action=register` problem for already-authenticated users and that this endpoint avoids it
-  - [ ] 5.2 Add a short "Create another organization" subsection covering the 401, 400 and 201 cases
-  - [ ] 5.3 Commit
+  - [x] 5.2 Add a short "Create another organization" subsection covering the 401, 400 and 201 cases (error table in 4.1)
+  - [x] 5.3 Commit
+  - Also updated (found while writing 5.1): Phase 4.3/4.4 and Phase 7 send POSTs from PowerShell with a Bearer token, because cookie-authenticated POSTs need an antiforgery token Swagger cannot send; Phase 7 rewritten for the last-TenantAdmin rule; CSRF troubleshooting row added
 
 - [ ] 6. Final checkpoint
   - [ ] 6.1 Full solution build and the full auth unit and integration suites pass (pre-existing unrelated failures noted separately)
