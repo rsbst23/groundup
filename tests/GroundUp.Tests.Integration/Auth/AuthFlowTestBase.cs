@@ -194,9 +194,10 @@ public abstract class AuthFlowTestBase
 
     /// <summary>
     /// Creates an HTTP request authenticated with an <c>Authorization: Bearer</c> header.
-    /// Use this for state-changing requests (POST, PUT, DELETE): cookie-authenticated ones must also
-    /// carry an antiforgery token or <c>CsrfProtectionMiddleware</c> returns 403, while bearer
-    /// requests are exempt from CSRF checks.
+    /// <c>CsrfProtectionMiddleware</c> skips bearer-authenticated requests, so tests of state-changing
+    /// endpoints (POST, PUT, DELETE) stay independent of CSRF handling. Note: the Sample app currently
+    /// does not register antiforgery services, so the middleware also skips cookie-authenticated
+    /// requests today; this is tracked as a separate CSRF follow-up.
     /// </summary>
     protected HttpRequestMessage CreateBearerRequest(HttpMethod method, string url, string token)
     {

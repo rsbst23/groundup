@@ -90,7 +90,14 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Note the `kc_action=register` problem for already-authenticated users and that this endpoint avoids it
   - [x] 5.2 Add a short "Create another organization" subsection covering the 401, 400 and 201 cases (error table in 4.1)
   - [x] 5.3 Commit
-  - Also updated (found while writing 5.1): Phase 4.3/4.4 and Phase 7 send POSTs from PowerShell with a Bearer token, because cookie-authenticated POSTs need an antiforgery token Swagger cannot send; Phase 7 rewritten for the last-TenantAdmin rule; CSRF troubleshooting row added
+  - Also updated: Phase 7 rewritten for the last-TenantAdmin rule (regular member leaves; sole admin is blocked)
+  - Correction: an earlier revision told readers to send POSTs from PowerShell because of a supposed CSRF 403. Manual testing showed cookie POSTs succeed, because antiforgery services are not registered and `CsrfProtectionMiddleware` silently skips. The guide is back on Swagger.
+
+## Follow-ups (outside this spec)
+
+- **CSRF protection spec (agreed with the user).** CSRF protection is currently inactive: nothing calls `AddAntiforgery()`, so `CsrfProtectionMiddleware` skips every request, and even when registered, `ProvisionAntiforgeryToken` discards the request token so a front end could never send it. Requirements must keep every cookie HttpOnly (compliance scanners flag non-HttpOnly cookies), state the expected header name explicitly (the middleware doc says `X-CSRF-Token`; nothing configures it), and add integration tests for the cookie path a real front end uses. Also review: broad cookie Domain (`.<default-domain>`), persistent cookie expiry, SameSite Lax vs Strict.
+- **Pre-existing failing tests not investigated:** `AuthorizationProxyIntegrationTests`, `PermissionResolutionTests`, four AuthFlowState repository/sweeper tests, `SecurityControlsTests` (still expects a 302), plus 13 unit tests (Setup wizard, `KeycloakStartupValidatorPropertyTests`, `DefaultScopeChainProviderTests`).
+- **Transaction-scoped `DbUpdateException` handlers** in `SettingsService` and `IdentityBootstrapService` were not reviewed for the change-tracker issue fixed in `BaseRepository`.
 
 - [ ] 6. Final checkpoint
   - [ ] 6.1 Full solution build and the full auth unit and integration suites pass (pre-existing unrelated failures noted separately)

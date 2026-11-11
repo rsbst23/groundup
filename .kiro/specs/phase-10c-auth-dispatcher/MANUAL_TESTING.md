@@ -266,41 +266,33 @@ You are already logged in (Phase 3), so create the second org directly with `POS
 
 > **Why not sign up again?** `POST /auth/signup` sends `kc_action=register`, which asks Keycloak to show its registration form. For a user who is already logged into Keycloak, that fails with *"Unexpected error when handling authentication request to identity provider"*. Sign-up is for new people; existing users create organizations with this endpoint.
 
-**Use PowerShell, not Swagger.** This is a state-changing request. When it is authenticated by the browser's `AuthToken` cookie, the API also requires an antiforgery token (CSRF protection), which Swagger does not send, so Swagger would get `403 CSRF_VALIDATION_FAILED`. A request with an `Authorization: Bearer` header and no cookies is exempt. `Invoke-RestMethod` sends no browser cookies.
+Run these in Swagger, in the same browser you logged in with. The browser sends your `AuthToken` cookie automatically.
 
-1. Copy the `token` value from the Phase 3 callback response. Tokens last 60 minutes; if yours is older, repeat Phase 3 to get a fresh one.
-
-2. Create the organization:
-```powershell
-$token = "<paste token here>"
-$base  = "http://localhost:<port>"
-
-Invoke-RestMethod -Method Post -Uri "$base/auth/organizations" `
-  -Headers @{ Authorization = "Bearer $token" } `
-  -ContentType "application/json" `
-  -Body '{"organizationName":"Second Org"}'
+1. Create the organization:
 ```
-Expected (HTTP 201):
-```
-id                                   name       slug
---                                   ----       ----
-01a1...                              Second Org second-org
-```
+POST /auth/organizations
+Content-Type: application/json
 
-3. Confirm your session did **not** switch, and that you now have two memberships:
-```powershell
-Invoke-RestMethod -Uri "$base/auth/me/tenants" -Headers @{ Authorization = "Bearer $token" }
+{
+  "organizationName": "Second Org"
+}
 ```
-Expected: two tenants. `My Test Org` has `current: True`, `Second Org` has `current: False`. You switch to the new org later with `POST /auth/set-tenant` (step 4.3).
+Expected: **201** with `{ "id": "...", "name": "Second Org", "slug": "second-org" }`.
 
-**Optional error checks.** `Invoke-RestMethod` throws on a non-2xx response; the status is shown in the error.
+2. Confirm your session did **not** switch, and that you now have two memberships:
+```
+GET /auth/me/tenants
+```
+Expected: two tenants. `My Test Org` has `"current": true`, `Second Org` has `"current": false`. You switch to the new org with `POST /auth/set-tenant` in step 4.3.
+
+**Optional error checks:**
 
 | Request | Expected |
 |---|---|
-| Same command again with the same name | 201, slug `second-org-2` (a third org) |
-| `-Body '{"organizationName":"   "}'` | 400 — name is required |
+| Same request again with the same name | 201, slug `second-org-2` (a third org) |
+| `{ "organizationName": "   " }` | 400 — name is required |
 | A name longer than 200 characters | 400 |
-| No `Authorization` header | 401 |
+| After `POST /auth/logout` (not logged in) | 401 |
 
 ### 4.2 Log In and Get the Picker
 
@@ -322,25 +314,21 @@ At this point the auth cookie holds a Keycloak token (identity-only, no `tid`) �
 
 ### 4.3 Select a Tenant
 
-The picker response does not include a token. The pending-selection Keycloak token is only in the `AuthToken` cookie, which is HttpOnly. Copy its value from browser DevTools → Application → Cookies → `http://localhost:<port>` → `AuthToken`.
-
-This is a POST, so send it from PowerShell (Swagger would hit the CSRF check, see Phase 4.1):
-```powershell
-$pendingToken = "<AuthToken cookie value from DevTools>"
-$response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$base/auth/set-tenant" `
-  -Headers @{ Authorization = "Bearer $pendingToken" } `
-  -ContentType "application/json" `
-  -Body '{"tenantId":"<id from the tenants array>"}'
-$response.StatusCode
-$response.Headers["Set-Cookie"]
+In Swagger (same browser — the pending-selection token travels in the `AuthToken` cookie):
 ```
-Expected: `200`, and a `Set-Cookie: AuthToken=...` header holding the new GroundUp token scoped to the selected tenant. Copy that token value (between `AuthToken=` and the first `;`) for 4.4.
+POST /auth/set-tenant
+Content-Type: application/json
+
+{
+  "tenantId": "<id from the tenants array>"
+}
+```
+Expected: 200 OK, and the browser's `AuthToken` cookie is replaced with a GroundUp token scoped to the selected tenant. Swagger does not show `Set-Cookie`; check DevTools → Application → Cookies if you want to see the value change.
 
 ### 4.4 Verify
 
-```powershell
-$token = "<new token from the 4.3 Set-Cookie header>"
-Invoke-RestMethod -Uri "$base/auth/me" -Headers @{ Authorization = "Bearer $token" }
+```
+GET /auth/me
 ```
 Should now show the selected `tenantId`.
 
@@ -442,39 +430,28 @@ Tests `POST /auth/tenants/{id}/leave`.
 - A regular member can always leave.
 - A TenantAdmin can leave only if another active TenantAdmin remains in that tenant.
 
-Send these from PowerShell with a Bearer token (see Phase 4.1 for why Swagger gets a CSRF 403). `$base` is `http://localhost:<port>`.
+Run these in Swagger. Each request runs as whoever is logged into the browser, so the steps are ordered to match.
 
-### 7.1 The Last TenantAdmin Cannot Leave
+### 7.1 A Regular Member Can Leave
 
-Your Phase 2 user created both `My Test Org` and `Second Org`, so they are the **only** TenantAdmin of each.
+Right after Phase 5 the browser is logged in as the user you signed up there. That user joined `My Test Org` as a **regular member** (no admin role), and it is their only membership.
 
-1. Get the tenant ids:
-```powershell
-Invoke-RestMethod -Uri "$base/auth/me/tenants" -Headers @{ Authorization = "Bearer $token" }
-```
-2. Try to leave `Second Org`:
-```powershell
-Invoke-RestMethod -Method Post -Uri "$base/auth/tenants/<second-org-id>/leave" `
-  -Headers @{ Authorization = "Bearer $token" }
-```
-Expected: the call throws with **403**, body `{ "error": "You are the only TenantAdmin of this organization...", "errorCode": "LAST_ADMIN" }`. Run `GET /auth/me/tenants` again: both orgs are still listed.
+1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
+2. `POST /auth/tenants/{tenantId}/leave` with that id.
 
-### 7.2 A Regular Member Can Leave
+Expected: **200** `{ "noTenants": true }`, and the `AuthToken` cookie is cleared, so `GET /auth/me` now returns 401. In the database, that user's `UserTenants` row for `My Test Org` has `IsActive = false`.
 
-The user you signed up in Phase 5 joined `My Test Org` as a **regular member** (no admin role). It is their only membership, so leaving it also clears their session.
+> `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked, because the old check refused any leave when a tenant had only one admin.
 
-1. Copy the `token` from the Phase 5 callback response (repeat Phase 5's login if it is older than 60 minutes).
-2. Leave `My Test Org`:
-```powershell
-$memberToken = "<Phase 5 user's token>"
-Invoke-RestMethod -Method Post -Uri "$base/auth/tenants/<my-test-org-id>/leave" `
-  -Headers @{ Authorization = "Bearer $memberToken" }
-```
-Expected (HTTP 200): `{ "noTenants": true }`. The response also expires the `AuthToken` cookie.
+### 7.2 The Last TenantAdmin Cannot Leave
 
-3. Verify in the database: that user's `UserTenants` row for `My Test Org` now has `IsActive = false`.
+Now switch back to your Phase 2 user, who created both `My Test Org` and `Second Org` and is the **only** TenantAdmin of each.
 
-> Note: `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked because the old check refused any leave when a tenant had only one admin.
+1. Log out fully (Phase 9, including opening the `logoutUrl`), then log in as your Phase 2 user (Phase 3). You get the tenant picker; select a tenant with `POST /auth/set-tenant` (Phase 4.3).
+2. `GET /auth/me/tenants` → note the `id` of `Second Org`.
+3. `POST /auth/tenants/{tenantId}/leave` with that id.
+
+Expected: **403** `{ "error": "You are the only TenantAdmin of this organization. Assign another TenantAdmin before leaving.", "errorCode": "LAST_ADMIN" }`. `GET /auth/me/tenants` still lists both orgs.
 
 ### 7.3 Paths Covered by Integration Tests
 
@@ -610,7 +587,6 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 | No Register link on Keycloak login page | User registration is disabled. Go to Keycloak admin → groundup realm → Realm settings → Login → toggle User registration On |
 | Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
 | Callback returns 410 Gone | You already consumed this auth flow. Start over |
-| A POST (`/auth/organizations`, `/auth/set-tenant`, `/auth/tenants/{id}/leave`, `/auth/logout`) returns `403 CSRF_VALIDATION_FAILED` | The request was authenticated by the browser's `AuthToken` cookie, which requires an antiforgery token that Swagger does not send. Send it from PowerShell with `Invoke-RestMethod` and `-Headers @{ Authorization = "Bearer $token" }` instead (see Phase 4.1). Note: if the browser has no `AuthToken` cookie at all, Swagger POSTs are anonymous and are not CSRF-checked, so this only appears when the cookie is present |
 | Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
 | `/auth/me` returns 401 after successful callback | The browser didn't store the cookie. The callback sets `Set-Cookie` on the response — make sure you're sending the request through a browser or a cookie-aware client, not a plain REST client |
 
