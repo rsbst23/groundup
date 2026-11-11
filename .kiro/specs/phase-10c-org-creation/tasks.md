@@ -73,8 +73,8 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Cookie writer is never invoked (active tenant unchanged)
   - [x] 3.5 Build, run all auth unit tests, commit
 
-- [ ] 4. Integration tests for `POST /auth/organizations` (Docker required)
-  - [ ] 4.1 Add `CreateOrganizationTests` using `AuthFlowTestBase` and `Fixture.GenerateTestToken`
+- [x] 4. Integration tests for `POST /auth/organizations` (Docker required)
+  - [x] 4.1 Add `CreateOrganizationTests` using `AuthFlowTestBase` and `Fixture.GenerateTestToken`
     - Happy path: user in tenant A creates org B; assert 201, and that tenant, membership, TenantAdmin role and user-role rows exist for B
     - Active tenant unchanged: no `AuthToken` Set-Cookie on the response
     - Created org appears in `GET /auth/me/tenants` for that user
@@ -82,7 +82,7 @@ Extracts organization provisioning out of `NewOrganizationFlowHandler` into a re
     - Pending-selection token (no `tid`) returns 401
     - Invalid name returns 400
     - Slug collision produces a disambiguated slug for the second org with the same name
-  - [ ] 4.2 Build, run the new integration tests plus the existing auth integration tests, commit
+  - [x] 4.2 Build, run the new integration tests plus the existing auth integration tests, commit
 
 - [ ] 5. Update MANUAL_TESTING.md
   - [ ] 5.1 Phase 4.1: create the second org with `POST /auth/organizations` (authenticated, no Keycloak round-trip) instead of a second signup
