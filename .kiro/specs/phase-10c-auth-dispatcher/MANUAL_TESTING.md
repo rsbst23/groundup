@@ -255,6 +255,29 @@ GET /auth/me
 ```
 Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [...] }`
 
+### 3.4 Log In With No Organization and No Default Tenant
+
+Tests the case where a signed-in user has nowhere to go. It used to return `403 ACCESS_DENIED`; it now signs the user in with **no current tenant** (a tenantless session).
+
+**Setup:** you need a user with zero active memberships, and `auth.application.default-tenant-slug` must be empty (its state before Phase 5, or `''` after undoing Phase 5.1; restart the app after changing it). The easiest user to use is the one in Phase 7.1 right after leaving their only organization, so do this after Phase 7.1 with the default tenant cleared. Log out fully first (Phase 9).
+
+1. `POST /auth/login` → open the `redirectUrl` in the browser and sign in.
+2. Expected callback response: **200**
+```json
+{
+  "requiresTenantSelection": false,
+  "tenants": []
+}
+```
+There is **no** `token` field. The `AuthToken` cookie is still set, and it holds a tenantless token.
+3. `GET /auth/me` → 200 with `"tenantId": null` and `"roles": []`.
+4. `GET /auth/me/tenants` → `[]`.
+5. `GET /api/projects` → **403** with `TENANT_REQUIRED`.
+
+What you do next (create an organization, or enter one) is covered in Phase 7.4.
+
+> **Still a 403:** if `default-tenant-slug` is set to a slug that does not exist (or is inactive), login returns `403 ACCESS_DENIED` ("The default organization is not available"). That is a configuration fault, not "no default".
+
 ---
 
 ## Phase 4: Tenant Selection (Multi-Tenant Users)
@@ -311,11 +334,11 @@ Now log in fresh so the callback evaluates membership count:
   ]
 }
 ```
-At this point the auth cookie holds a Keycloak token (identity-only, no `tid`) — the GroundUp token is not issued until you select a tenant.
+At this point the auth cookie holds a **tenantless** GroundUp token: it proves who you are but has no `tid` and no roles. The token scoped to a tenant is not issued until you select one. While you are on the picker, `GET /auth/me` returns `"tenantId": null`, and any tenant-scoped endpoint (for example `GET /api/projects`) returns `403` with `TENANT_REQUIRED`.
 
 ### 4.3 Select a Tenant
 
-In Swagger (same browser — the pending-selection token travels in the `AuthToken` cookie):
+In Swagger (same browser — the tenantless token travels in the `AuthToken` cookie):
 ```
 POST /auth/set-tenant
 Content-Type: application/json
@@ -324,7 +347,7 @@ Content-Type: application/json
   "tenantId": "<id from the tenants array>"
 }
 ```
-Expected: 200 OK, and the browser's `AuthToken` cookie is replaced with a GroundUp token scoped to the selected tenant. Swagger does not show `Set-Cookie`; check DevTools → Application → Cookies if you want to see the value change.
+Expected: 200 OK, and the browser's `AuthToken` cookie is replaced with a GroundUp token scoped to the selected tenant (your original sign-in time is kept). Swagger does not show `Set-Cookie`; check DevTools → Application → Cookies if you want to see the value change.
 
 ### 4.4 Verify
 
@@ -371,7 +394,7 @@ WHERE d."Id" = v."SettingDefinitionId"
 
 **Restart the app after changing it.** Setting values are cached in memory for 15 minutes, so a direct database edit is not seen by a running app.
 
-> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 3's "no memberships → 403" case no longer applies). Set the value back to `''` and restart to undo.
+> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 3.4's "no tenant to enter" case no longer applies). A user who left that tenant earlier is put back into the **same membership row**, with no roles. Set the value back to `''` and restart to undo.
 
 ### 5.2 Initiate Simple Signup
 
@@ -431,6 +454,13 @@ Tests `POST /auth/tenants/{id}/leave`.
 - A regular member can always leave.
 - A TenantAdmin can leave only if another active TenantAdmin remains in that tenant.
 
+**What happens to your session:**
+- Leaving the tenant you are currently working in leaves you **signed in with no current tenant**. You are never moved into another organization automatically, however many you still belong to.
+- Leaving a different tenant changes nothing about your session.
+- Leaving also removes your roles in that tenant, so rejoining later starts with none.
+
+The response is `{ "success": true, "currentTenantId": ... }`. `currentTenantId` is `null` when you no longer have a current tenant, otherwise it is the tenant your session is still on.
+
 Run these in Swagger. Each request runs as whoever is logged into the browser, so the steps are ordered to match.
 
 ### 7.1 A Regular Member Can Leave
@@ -440,7 +470,11 @@ Right after Phase 5 the browser is logged in as the user you signed up there. Th
 1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
 2. `POST /auth/tenants/{tenantId}/leave` with that id.
 
-Expected: **200** `{ "noTenants": true }`, and the `AuthToken` cookie is cleared, so `GET /auth/me` now returns 401. In the database, that user's `AuthUserTenants` row for `My Test Org` has `IsActive = false`.
+Expected: **200** `{ "success": true, "currentTenantId": null }`. You are **still signed in**: the `AuthToken` cookie now holds a tenantless token, so `GET /auth/me` returns 200 with `"tenantId": null` (before this change the cookie was cleared and `/auth/me` returned 401). In the database, that user's `AuthUserTenants` row for `My Test Org` has `IsActive = false`, and their `AuthUserRoles` rows for that tenant are gone.
+
+Continue with Phase 7.4 while you are in this state.
+
+> If `default-tenant-slug` is still set to `my-test-org` from Phase 5, logging in again puts this user back into `My Test Org` through the same membership row (no roles), instead of leaving them with no tenant. Clear the setting (Phase 5.1) and restart the app to see the no-tenant case at login (Phase 3.4).
 
 > `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked, because the old check refused any leave when a tenant had only one admin.
 
@@ -459,7 +493,34 @@ Expected: **403** `{ "error": "You are the only TenantAdmin of this organization
 These need extra setup (a second admin, or a regular member of two tenants) that the API can't create yet without editing the database. `LeaveTenantTests` covers them against a real database:
 - One of two admins leaves (allowed), then the remaining admin tries (blocked, because the departed admin no longer counts).
 - Leaving a tenant other than the one your session is on (membership deactivated, no new cookie).
-- Leaving your current tenant while you have another (new `AuthToken` cookie for the next tenant).
+- Leaving your current tenant while you belong to 0, 1 or 3 other tenants (new `AuthToken` cookie with no `tid`, the other memberships untouched, no automatic move; `GET /auth/me/tenants` on the new session lists the remaining tenants with none marked `current`).
+- Leaving removes the leaver's roles in that tenant only.
+
+### 7.4 After Leaving: The Tenantless Session
+
+Continue as the user from 7.1, still in the browser session right after leaving. Run these in Swagger.
+
+1. `GET /auth/me` → **200**, `"tenantId": null`, `"roles": []`.
+2. `GET /auth/me/tenants` → `[]` (this user has no other organizations).
+3. `GET /api/projects` (any tenant-scoped endpoint) → **403** with `TENANT_REQUIRED`. Nothing is written or read without a tenant.
+4. Create an organization:
+```
+POST /auth/organizations
+Content-Type: application/json
+
+{ "organizationName": "Tenantless Org" }
+```
+Expected: **201** with `{ "id": "...", "name": "Tenantless Org", "slug": "tenantless-org" }`. The session is **still tenantless**: `GET /auth/me` still shows `"tenantId": null`.
+5. Enter it:
+```
+POST /auth/set-tenant
+Content-Type: application/json
+
+{ "tenantId": "<id from step 4>" }
+```
+Expected: **200**. `GET /auth/me` now shows that `tenantId` and `"roles": ["TenantAdmin"]`.
+
+> A tenantless session lasts as long as any token (`TokenExpirationMinutes`) and is never refreshed. If it expires, sign in again. Keycloak's session is still active, so that is silent.
 
 ---
 
@@ -591,6 +652,7 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 | Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
 | Callback returns 410 Gone | You already consumed this auth flow. Start over |
 | Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
+| A tenant-scoped endpoint (for example `GET /api/projects`) returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Phase 7.4) |
 | `/auth/me` returns 401 after successful callback | The browser didn't store the cookie. The callback sets `Set-Cookie` on the response — make sure you're sending the request through a browser or a cookie-aware client, not a plain REST client |
 
 ---

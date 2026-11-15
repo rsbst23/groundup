@@ -203,19 +203,19 @@ sequenceDiagram
     GroundUpAPI->>Database: Find User by sub
     GroundUpAPI->>Database: Get active memberships
     Note over GroundUpAPI: User has 3 standard memberships → picker
-    GroundUpAPI->>GroundUpAPI: Write Keycloak token as cookie<br/>(identity-only, no tid)
-    GroundUpAPI-->>ClientApp: 200 { requiresTenantSelection: true,<br/>tenants: [...], user }
+    GroundUpAPI->>GroundUpAPI: Write a tenantless GroundUp token as cookie<br/>(identity only: no tid, no roles)
+    GroundUpAPI-->>ClientApp: 200 { requiresTenantSelection: true,<br/>tenants: [...] }
     ClientApp->>User: Show tenant picker UI
     User->>ClientApp: Selects "Acme Corp"
     ClientApp->>GroundUpAPI: POST /auth/set-tenant<br/>{ tenantId: "..." }
     GroundUpAPI->>Database: Verify membership exists
     GroundUpAPI->>GroundUpAPI: Generate GroundUp token (sub + tid)
-    GroundUpAPI-->>ClientApp: 200 { token, tenant }<br/>+ Set-Cookie (replaces Keycloak token)
+    GroundUpAPI-->>ClientApp: 200 + Set-Cookie (replaces the tenantless token<br/>with one scoped to Acme Corp, same auth_time)
     ClientApp->>User: Show Acme Corp dashboard
 ```
 
 **Notes:**
-- During the picker phase, the user is "identity-authenticated" only — the Keycloak token cookie proves who they are, but they have no tenant context and cannot access any tenant data.
+- During the picker phase the session is **tenantless**: the cookie holds a GroundUp token that proves who the user is (`sub`, `email`, `name`, `auth_time`) but has no `tid` and no roles. The Keycloak access token is not stored. A tenantless session can call `/auth/me`, `/auth/me/tenants`, `/auth/set-tenant`, `/auth/organizations` and `/auth/logout`. Tenant-scoped data returns `403 TENANT_REQUIRED` (see "Tenantless sessions" below).
 - Enterprise tenants (with `RealmName` set) are excluded from the picker — they're reached via their own subdomain.
 - The picker shows only standard-realm tenants where the user has active membership.
 
@@ -655,7 +655,7 @@ sequenceDiagram
 **What the user sees:**
 1. In org settings, clicks "Leave Organization"
 2. Confirms the action
-3. Membership is removed; user is redirected to another org or the login screen
+3. Membership is removed. If the user was working in that org, they stay signed in with no current organization and choose (or create) another; they are never moved into one automatically
 
 ```mermaid
 sequenceDiagram
@@ -676,15 +676,14 @@ sequenceDiagram
     else Can leave
         GroundUpAPI->>Database: Deactivate UserTenant membership<br/>(IsActive = false)
         GroundUpAPI->>Database: Remove role assignments for this tenant
-        GroundUpAPI->>GroundUpAPI: Get remaining memberships
-        alt Has other memberships
-            GroundUpAPI->>GroundUpAPI: Generate token scoped to first remaining tenant
-            GroundUpAPI-->>ClientApp: 200 { token, tenant, user }
-            ClientApp->>User: Switch to next org
-        else No remaining memberships
-            GroundUpAPI->>GroundUpAPI: Clear auth cookie
-            GroundUpAPI-->>ClientApp: 200 { noTenants: true }
-            ClientApp->>User: Show "You've left all organizations" page
+        alt The left tenant is the one the session is scoped to (tid)
+            GroundUpAPI->>GroundUpAPI: Replace the cookie with a tenantless token<br/>(same user, same auth_time)
+            GroundUpAPI-->>ClientApp: 200 { success: true, currentTenantId: null }
+            ClientApp->>GroundUpAPI: GET /auth/me/tenants
+            ClientApp->>User: Show the picker, or "create an organization" if the list is empty
+        else Left a different tenant (or the session was already tenantless)
+            GroundUpAPI-->>ClientApp: 200 { success: true, currentTenantId: <unchanged> }
+            Note over ClientApp: Session and cookie unchanged
         end
     end
 ```
@@ -693,7 +692,9 @@ sequenceDiagram
 - Leaving an org removes the membership — it does NOT delete the user account.
 - The last admin of an org cannot leave until they transfer the admin role.
 - Soft-delete: `UserTenant.IsActive = false` — membership history is preserved.
-- If the user was viewing the left tenant, they're automatically switched to another org or shown a "no orgs" state.
+- The response is `{ success, currentTenantId }`. `currentTenantId` is `null` when the session no longer has a current tenant. The old `noTenants` field is gone, and so is the automatic switch to the first remaining tenant (it picked an arbitrary one when the user had three or more).
+- The old tenant-scoped token is always replaced (or the cookie cleared if issuing the tenantless token fails); it is never left in the cookie. A copy of the old token held elsewhere (for example a script's Bearer token) stays valid until it expires. Closing that gap is the job of the token-revocation spec (`phase-10c-token-revocation`).
+- Rejoining later reactivates the same `UserTenant` row (one row per user and tenant). Roles were removed on leave, so the user comes back with none.
 
 ### 14. Logout
 
@@ -1193,7 +1194,9 @@ sequenceDiagram
         Note over GroundUpAPI: Auto-join to default tenant
         GroundUpAPI-->>ClientApp: 200 { token, tenant }
     else Zero memberships, no default tenant
-        GroundUpAPI-->>ClientApp: 200 { noAccess: true,<br/>message: "You don't belong to any organization." }
+        Note over GroundUpAPI: Signed in with no tenant to enter:<br/>write a tenantless token as the cookie
+        GroundUpAPI-->>ClientApp: 200 { requiresTenantSelection: false,<br/>tenants: [] }
+        Note over ClientApp: No token in the body. The client offers<br/>"create an organization" (POST /auth/organizations)
     end
 ```
 
@@ -1349,7 +1352,7 @@ For the common case (user belongs to multiple standard tenants), switching is a 
 | `POST` | `/auth/logout` | Clear session | `{ logoutUrl? }` |
 | `GET` | `/auth/me` | Get current user info | `{ user, tenant, roles }` |
 | `GET` | `/auth/me/tenants` | List user's memberships | `{ tenants: [...] }` |
-| `POST` | `/auth/tenants/{id}/leave` | Leave an organization | `{ token, tenant }` or `{ noTenants: true }` |
+| `POST` | `/auth/tenants/{id}/leave` | Leave an organization | `{ success, currentTenantId }` (`null` = no current tenant) |
 | `GET` | `/auth/invitations/{token}/validate` | Validate invitation | `{ valid, org, role }` |
 | `POST` | `/auth/invitations/{token}/accept` | Accept invitation | `{ redirectUrl }` |
 | `GET` | `/auth/join-links/{code}/validate` | Validate join link | `{ valid, org }` |
@@ -1402,12 +1405,30 @@ This prevents token injection attacks (attacker can't replay an `id_token` from 
 ```
 Keycloak Token (identity only)
   ↓ (exchanged at callback)
-GroundUp Token (identity + tenant + roles)
-  ↓ (refreshed via sliding window)
-GroundUp Token (same identity + same tenant + updated roles)
+  ├─ one tenant to enter ─→ GroundUp Token (identity + tenant + roles)
+  │                            ↓ (refreshed via sliding window)
+  │                         GroundUp Token (same identity + same tenant + updated roles)
+  │
+  └─ picker / nothing to enter ─→ Tenantless GroundUp Token (identity only: no tid, no roles)
+                                    ↓ POST /auth/set-tenant (same auth_time)
+                                 GroundUp Token (identity + tenant + roles)
+
+GroundUp Token (tenant-scoped) ── leave the current tenant ──→ Tenantless GroundUp Token (same auth_time)
 ```
 
-The GroundUp token is the authority for application access. Keycloak tokens are only used during the authentication ceremony and during the brief picker phase.
+The GroundUp token is the authority for application access. Keycloak tokens are only used during the authentication ceremony; the picker no longer stores one.
+
+### Tenantless sessions
+
+A tenantless session is a signed-in user whose GroundUp token has no `tid` claim.
+
+- **Issued** after login when the user has 2+ standard memberships (picker), or zero memberships with no default tenant configured; and after the user leaves the tenant their session was scoped to.
+- **Contents:** `sub` (GroundUp user id), `email`, `name`, `iat`, `exp`, `auth_time`. No `tid`, no `role` claims (not even system roles). Signed with the system key (`ISigningKeyProvider.GetSigningKeyAsync(Guid.Empty)`).
+- **Lifetime:** the same `TokenExpirationMinutes` as any token, and never refreshed (`TokenRefreshMiddleware` skips tokens without `tid`). `auth_time` is carried over, so the absolute session limit still counts from the original sign-in. `POST /auth/set-tenant` refuses (401) once `AbsoluteSessionLifetimeMinutes` has passed since `auth_time`.
+- **Can call:** `GET /auth/me` (`tenantId` is null), `GET /auth/me/tenants` (none marked `current`), `POST /auth/set-tenant`, `POST /auth/organizations`, `POST /auth/logout`, `POST /auth/tenants/{id}/leave`.
+- **Cannot use tenant data:** `BaseTenantRepository` returns `403 TENANT_REQUIRED` on every operation when the tenant is empty, before touching the database. The check lives in the repository so SDK callers get it too, and controllers stay free of security logic.
+- **Limit of that guard:** a service that never uses a tenant-aware repository (for example one that only calls an external API) is not covered. Such a service must check `ITenantContext.TenantId` itself and return a forbidden result when it is `Guid.Empty`.
+- **Telling principals apart:** the middleware marks principals built from an identity-provider token with authentication type `ExternalIdP` (`AuthConstants.IsExternalIdp`). A GroundUp token without `tid` is a tenantless session, not an identity-provider principal, and its `sub` is the GroundUp user id.
 
 ---
 
@@ -1456,9 +1477,10 @@ User authenticates at Keycloak
   ├─ Not host-pinned → Get all standard memberships
   │   ├─ 0 memberships → Check default tenant setting
   │   │   ├─ Default configured → Auto-join + issue token
-  │   │   └─ No default → Access denied
+  │   │   ├─ No default → Tenantless session (no token in the response)
+  │   │   └─ Default configured but not found → Access denied (configuration fault)
   │   ├─ 1 membership → Auto-select + issue token
-  │   └─ 2+ memberships → Return picker (Keycloak token as cookie)
+  │   └─ 2+ memberships → Return picker (tenantless GroundUp token as cookie)
   │
   └─ Done
 ```
@@ -1475,10 +1497,17 @@ Callback (success, single tenant):
 
 Callback (success, picker needed):
   → Clear state cookie
-  → Set auth cookie (Keycloak token, identity-only)
+  → Set auth cookie (tenantless GroundUp token: identity-only, no tid)
+  → Set IdToken cookie (for id_token_hint at logout)
+
+Callback (success, no tenant to enter):
+  → Same as the picker case, with an empty tenant list
 
 Set-tenant:
-  → Replace auth cookie (GroundUp JWT with tid)
+  → Replace auth cookie (GroundUp JWT with tid; auth_time preserved)
+
+Leave (the tenant the session is scoped to):
+  → Replace auth cookie (tenantless GroundUp token; auth_time preserved)
 
 Refresh:
   → Replace auth cookie (new GroundUp JWT, same tid)

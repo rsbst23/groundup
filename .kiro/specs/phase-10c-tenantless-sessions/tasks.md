@@ -65,12 +65,12 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [x] 5.5 Login with zero memberships and no default tenant returns a tenantless session (in `LoginFlowTests`)
   - [x] 5.6 Run the full auth integration suite; only the 7 known failures remain; commit
 
-- [ ] 6. Documentation and final checkpoint
-  - [ ] 6.1 `MANUAL_TESTING.md`: Phase 3 (login with no memberships and no default tenant), Phase 7 (leave current vs other tenant, no automatic switch, new response shape), and a new tenantless-session section
-  - [ ] 6.2 Update `auth-flows-design.md` for the tenantless state and the new leave behavior
-  - [ ] 6.3 Document the guard's limit: custom services that never use a tenant-aware repository must check `ITenantContext.TenantId` themselves
-  - [ ] 6.4 Full build, full unit and integration runs compared against the baseline; list follow-ups
-  - [ ] 6.5 Commit and stop for review
+- [x] 6. Documentation and final checkpoint
+  - [x] 6.1 `MANUAL_TESTING.md`: Phase 3 (login with no memberships and no default tenant), Phase 7 (leave current vs other tenant, no automatic switch, new response shape), and a new tenantless-session section
+  - [x] 6.2 Update `auth-flows-design.md` for the tenantless state and the new leave behavior
+  - [x] 6.3 Document the guard's limit: custom services that never use a tenant-aware repository must check `ITenantContext.TenantId` themselves
+  - [x] 6.4 Full build, full unit and integration runs compared against the baseline; list follow-ups
+  - [x] 6.5 Commit and stop for review
 
 ## Follow-ups found during this spec (not part of it)
 
