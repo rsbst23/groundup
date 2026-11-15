@@ -247,7 +247,7 @@ public sealed class AuthUrlBuilderTests
     }
 
     [Fact]
-    public async Task BuildAuthorizationUrlAsync_IsSignupTrue_UrlContainsKcActionRegister()
+    public async Task BuildAuthorizationUrlAsync_IsSignupTrue_UrlRequestsRegistrationWithPromptCreate()
     {
         // Arrange
         var request = new AuthUrlRequest(
@@ -258,13 +258,33 @@ public sealed class AuthUrlBuilderTests
         // Act
         var result = await _sut.BuildAuthorizationUrlAsync(request);
 
-        // Assert
+        // Assert — prompt=create (Keycloak 26.1+) opens the registration form directly
         result.Success.Should().BeTrue();
-        result.Data!.AuthorizationUrl.Should().Contain("kc_action=register");
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["prompt"].Should().Be("create");
     }
 
     [Fact]
-    public async Task BuildAuthorizationUrlAsync_IsSignupFalse_UrlDoesNotContainKcActionRegister()
+    public async Task BuildAuthorizationUrlAsync_IsSignupTrue_DoesNotUseKcActionRegister()
+    {
+        // Arrange — kc_action=register was the wrong mechanism: kc_action runs a required action
+        // for an existing account, and "register" is not one, so Keycloak ignored it
+        var request = new AuthUrlRequest(
+            RealmOverride: null,
+            RedirectUri: "https://app.example.com/auth/callback",
+            IsSignup: true);
+
+        // Act
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["kc_action"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_IsSignupFalse_UrlHasNoPromptParameter()
     {
         // Arrange
         var request = new AuthUrlRequest(
@@ -275,13 +295,14 @@ public sealed class AuthUrlBuilderTests
         // Act
         var result = await _sut.BuildAuthorizationUrlAsync(request);
 
-        // Assert
+        // Assert — login keeps Keycloak's standard login form
         result.Success.Should().BeTrue();
-        result.Data!.AuthorizationUrl.Should().NotContain("kc_action");
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["prompt"].Should().BeNull();
     }
 
     [Fact]
-    public async Task BuildAuthorizationUrlAsync_IsSignupDefault_UrlDoesNotContainKcActionRegister()
+    public async Task BuildAuthorizationUrlAsync_IsSignupDefault_UrlHasNoPromptParameter()
     {
         // Arrange — IsSignup defaults to false
         var request = new AuthUrlRequest(
@@ -293,6 +314,7 @@ public sealed class AuthUrlBuilderTests
 
         // Assert
         result.Success.Should().BeTrue();
-        result.Data!.AuthorizationUrl.Should().NotContain("kc_action");
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["prompt"].Should().BeNull();
     }
 }

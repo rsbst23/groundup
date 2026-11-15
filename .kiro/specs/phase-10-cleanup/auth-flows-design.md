@@ -28,10 +28,12 @@ The framework supports all three patterns. The consuming app's configuration det
 
 ### Sign-Up vs Login Distinction
 
-- **Sign-up** implies creating a new identity (user doesn't exist in Keycloak yet). The API includes `kc_action=register` in the redirect URL so users land on Keycloak's registration form directly.
+- **Sign-up** implies creating a new identity (user doesn't exist in Keycloak yet). The API includes `prompt=create` in the redirect URL so users land on Keycloak's registration form directly.
 - **Login** implies the user already exists. The redirect URL points to Keycloak's standard login form.
 
-Both go through Keycloak's OAuth flow — the difference is whether Keycloak shows the registration form or the login form. The `kc_action=register` query parameter controls this.
+Both go through Keycloak's OAuth flow — the difference is whether Keycloak shows the registration form or the login form. The `prompt=create` query parameter controls this.
+
+> **Keycloak version:** `prompt=create` requires Keycloak **26.1 or later**. An earlier revision of this design used `kc_action=register`, which does not work: `kc_action` triggers a required action on an *existing* account, `register` is not one, and Keycloak ignores it (the user lands on the login page). On Keycloak older than 26.1 the legacy `/realms/{realm}/protocol/openid-connect/registrations` endpoint opens the registration form, but it is deprecated.
 
 ### Architectural Constraints
 
@@ -98,8 +100,8 @@ sequenceDiagram
     GroundUpAPI->>Database: Read setting: auth.application.default-tenant-slug
     Note over GroundUpAPI: Setting = "community" → simple sign-up flow
     GroundUpAPI->>Database: Create AuthFlowState<br/>(FlowType=SimpleSignup,<br/>stateToken, nonce,<br/>codeVerifier, redirectUri)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/realms/shared/auth?...&kc_action=register" }
-    Note over GroundUpAPI: kc_action=register ensures<br/>Keycloak shows the registration form
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/realms/shared/auth?...&prompt=create" }
+    Note over GroundUpAPI: prompt=create ensures<br/>Keycloak shows the registration form
     ClientApp->>User: Navigate to Keycloak
     User->>Keycloak: Registers (email/password or social)
     Keycloak-->>ClientApp: Redirect to callback with ?code=...&state=...
@@ -167,7 +169,7 @@ sequenceDiagram
 **Notes:**
 - Zero friction for the common case. Most users belong to one org.
 - If the user's only membership is in a standard tenant, they land directly in it.
-- Login does NOT include `kc_action=register` — Keycloak shows its standard login form.
+- Login does NOT include `prompt=create` — Keycloak shows its standard login form.
 
 ### 3. Login (Multiple Memberships — Picker)
 
@@ -286,8 +288,8 @@ sequenceDiagram
     User->>ClientApp: Clicks "Create Organization"
     ClientApp->>GroundUpAPI: POST /auth/signup<br/>{ organizationName: "Acme Corp" }
     GroundUpAPI->>Database: Create AuthFlowState<br/>(FlowType=NewOrganization,<br/>orgName, stateToken, nonce,<br/>codeVerifier, redirectUri)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/realms/shared/auth?...&kc_action=register" }
-    Note over GroundUpAPI: kc_action=register ensures<br/>Keycloak shows the registration form
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/realms/shared/auth?...&prompt=create" }
+    Note over GroundUpAPI: prompt=create ensures<br/>Keycloak shows the registration form
     ClientApp->>User: Navigate to Keycloak
     User->>Keycloak: Authenticates (register/login/social)
     Keycloak-->>ClientApp: Redirect to callback with ?code=...&state=...
@@ -341,7 +343,7 @@ sequenceDiagram
     Note over GroundUpAPI: User may or may not have valid token.<br/>Flow works regardless of auth state.
     GroundUpAPI->>Database: Create AuthFlowState (NewOrganization)
     GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/..." }
-    Note over GroundUpAPI: No kc_action=register here —<br/>user already has a Keycloak account
+    Note over GroundUpAPI: No prompt=create here —<br/>user already has a Keycloak account
     ClientApp->>User: Navigate to Keycloak
     Note over User,Keycloak: Keycloak has active SSO session —<br/>auto-approves, no credential entry
     Keycloak-->>ClientApp: Redirect to callback (instant)
@@ -359,7 +361,7 @@ sequenceDiagram
 - The user doesn't re-enter credentials because Keycloak's browser session is still alive.
 - From the user's perspective, this feels like "create and switch" in one action.
 - The old org still exists — they can switch back via tenant switch (Scenario 12).
-- No `kc_action=register` is included since the user already has a Keycloak account — they just need to prove identity via the existing SSO session.
+- No `prompt=create` is included since the user already has a Keycloak account — they just need to prove identity via the existing SSO session.
 
 ### 7. Invitation Acceptance — New User
 
@@ -391,8 +393,8 @@ sequenceDiagram
     User->>ClientApp: Clicks "Accept Invitation"
     ClientApp->>GroundUpAPI: POST /auth/invitations/{token}/accept
     GroundUpAPI->>Database: Create AuthFlowState<br/>(FlowType=InvitationAcceptance,<br/>invitationId, stateToken, etc.)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/...&kc_action=register" }
-    Note over GroundUpAPI: kc_action=register for new users
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/...&prompt=create" }
+    Note over GroundUpAPI: prompt=create for new users
     ClientApp->>User: Navigate to Keycloak
     User->>Keycloak: Registers new account (or social login)
     Keycloak-->>ClientApp: Redirect to callback
@@ -440,7 +442,7 @@ sequenceDiagram
     ClientApp->>GroundUpAPI: POST /auth/invitations/{token}/accept
     GroundUpAPI->>Database: Create AuthFlowState (InvitationAcceptance)
     GroundUpAPI-->>ClientApp: 200 { redirectUrl }
-    Note over GroundUpAPI: No kc_action=register — user may already exist
+    Note over GroundUpAPI: No prompt=create — user may already exist
     ClientApp->>User: Navigate to Keycloak
     Note over User,Keycloak: Existing Keycloak session → auto-approves
     Keycloak-->>ClientApp: Redirect to callback (instant)
@@ -495,8 +497,8 @@ sequenceDiagram
     User->>ClientApp: Clicks "Join Acme Corp"
     ClientApp->>GroundUpAPI: POST /auth/join-links/{joinCode}/join
     GroundUpAPI->>Database: Create AuthFlowState<br/>(FlowType=JoinLink, joinLinkId)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/...&kc_action=register" }
-    Note over GroundUpAPI: kc_action=register for new users
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "https://keycloak/...&prompt=create" }
+    Note over GroundUpAPI: prompt=create for new users
     ClientApp->>User: Navigate to Keycloak
     User->>Keycloak: Registers new account
     Keycloak-->>ClientApp: Redirect to callback
@@ -799,7 +801,7 @@ sequenceDiagram
     ClientApp->>GroundUpAPI: POST /auth/invitations/{token}/accept<br/>(Host: megacorp.myapp.com)
     Note over GroundUpAPI: Host resolves to MegaCorp tenant.<br/>Tenant.RealmName = "megacorp"
     GroundUpAPI->>Database: Create AuthFlowState<br/>(FlowType=EnterpriseFirstAdmin,<br/>realm="megacorp", invitationId)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl:<br/>"https://keycloak/realms/megacorp/auth?...&kc_action=register" }
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl:<br/>"https://keycloak/realms/megacorp/auth?...&prompt=create" }
     ClientApp->>User: Navigate to enterprise Keycloak realm
     User->>Keycloak: Registers in enterprise realm<br/>(creates a NEW Keycloak account here)
     Keycloak-->>ClientApp: Redirect to callback
@@ -965,7 +967,7 @@ sequenceDiagram
     ClientApp->>GroundUpAPI: POST /auth/invitations/{token}/accept<br/>(Host: megacorp.myapp.com)
     Note over GroundUpAPI: Host resolves MegaCorp.<br/>MegaCorp.RealmName = "megacorp"<br/>→ redirect to enterprise realm
     GroundUpAPI->>Database: Create AuthFlowState<br/>(InvitationAcceptance, realm="megacorp")
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl:<br/>"https://keycloak/realms/megacorp/auth?...&kc_action=register" }
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl:<br/>"https://keycloak/realms/megacorp/auth?...&prompt=create" }
     ClientApp->>Invitee: Navigate to enterprise realm
     Invitee->>Keycloak: Registers or authenticates<br/>(via corporate SSO if configured)
     Keycloak-->>ClientApp: Redirect to callback
@@ -1077,7 +1079,7 @@ sequenceDiagram
     User->>ClientApp: "Create Organization" → "Acme Corp"
     ClientApp->>GroundUpAPI: POST /auth/signup { organizationName: "Acme Corp" }
     GroundUpAPI->>Database: Create AuthFlowState (NewOrganization)
-    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "...&kc_action=register" }
+    GroundUpAPI-->>ClientApp: 200 { redirectUrl: "...&prompt=create" }
     ClientApp->>User: Navigate to Keycloak shared realm
     User->>Keycloak: Clicks "Sign in with Google"
     Keycloak->>Google: OAuth redirect

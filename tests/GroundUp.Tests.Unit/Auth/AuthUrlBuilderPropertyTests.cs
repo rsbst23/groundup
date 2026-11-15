@@ -134,16 +134,17 @@ public sealed class AuthUrlBuilderPropertyTests
             .ToProperty();
     }
 
-    // --- Signup Flag (kc_action=register) ---
+    // --- Signup Flag (prompt=create) ---
 
     /// <summary>
     /// Feature: phase-10c-api-alignment, Property: Signup Flag
-    /// When IsSignup is true, the authorization URL SHALL contain the query parameter kc_action=register.
+    /// When IsSignup is true, the authorization URL SHALL carry the query parameter prompt=create
+    /// (Keycloak 26.1+), which opens the registration form directly.
     /// **Validates: Requirements 2.1**
     /// </summary>
     [Property(MaxTest = 100, Arbitrary = new[] { typeof(AuthUrlBuilderArbitraries) },
-        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=true always appends kc_action=register")]
-    public Property IsSignupTrue_AlwaysContainsKcActionRegister(ValidRedirectUri input)
+        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=true always sets prompt=create")]
+    public Property IsSignupTrue_AlwaysSetsPromptCreate(ValidRedirectUri input)
     {
         var sut = CreateSut();
         var request = new AuthUrlRequest(RealmOverride: null, RedirectUri: input.Uri, IsSignup: true);
@@ -151,18 +152,19 @@ public sealed class AuthUrlBuilderPropertyTests
         var result = sut.BuildAuthorizationUrlAsync(request).GetAwaiter().GetResult();
 
         return (result.Success
-            && result.Data!.AuthorizationUrl.Contains("kc_action=register"))
+            && QueryOf(result.Data!.AuthorizationUrl)["prompt"] == "create"
+            && QueryOf(result.Data.AuthorizationUrl)["kc_action"] is null)
             .ToProperty();
     }
 
     /// <summary>
     /// Feature: phase-10c-api-alignment, Property: Signup Flag
-    /// When IsSignup is false (or default), the authorization URL SHALL NOT contain kc_action.
+    /// When IsSignup is false (or default), the authorization URL SHALL NOT carry a prompt parameter.
     /// **Validates: Requirements 2.1**
     /// </summary>
     [Property(MaxTest = 100, Arbitrary = new[] { typeof(AuthUrlBuilderArbitraries) },
-        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=false never contains kc_action")]
-    public Property IsSignupFalse_NeverContainsKcAction(ValidRedirectUri input)
+        DisplayName = "Feature: phase-10c-api-alignment: IsSignup=false never sets prompt")]
+    public Property IsSignupFalse_NeverSetsPrompt(ValidRedirectUri input)
     {
         var sut = CreateSut();
         var request = new AuthUrlRequest(RealmOverride: null, RedirectUri: input.Uri, IsSignup: false);
@@ -170,9 +172,16 @@ public sealed class AuthUrlBuilderPropertyTests
         var result = sut.BuildAuthorizationUrlAsync(request).GetAwaiter().GetResult();
 
         return (result.Success
-            && !result.Data!.AuthorizationUrl.Contains("kc_action"))
+            && QueryOf(result.Data!.AuthorizationUrl)["prompt"] is null)
             .ToProperty();
     }
+
+    /// <summary>
+    /// Parses the query string of an authorization URL so assertions look at parameter names,
+    /// not at substrings that a redirect URI could happen to contain.
+    /// </summary>
+    private static System.Collections.Specialized.NameValueCollection QueryOf(string url) =>
+        System.Web.HttpUtility.ParseQueryString(new Uri(url).Query);
 
     // --- Property 6: PKCE Round-Trip Integrity ---
 

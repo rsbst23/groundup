@@ -172,12 +172,11 @@ Content-Type: application/json
 ```
 Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/auth?..." }`
 
-2. **Copy the `redirectUrl`** and paste it into the address bar of the same browser you ran Swagger in. This opens the Keycloak login page.
+2. **Copy the `redirectUrl`** and paste it into the address bar of the same browser you ran Swagger in. The URL contains `prompt=create`, so Keycloak opens the **registration form** directly (this needs Keycloak 26.1 or later; the dev compose file pins 26.3).
 
 ### 2.2 Register a New Account
 
-On the Keycloak login page:
-- Click **Register** (or the form opens directly on the registration tab)
+On the Keycloak registration form (if you instead land on the login page, see Troubleshooting):
 - Fill in: email `testuser@example.com`, password `Test123!`, first name `Test`, last name `User`
 - Submit
 
@@ -194,7 +193,7 @@ The callback returns JSON instead of redirecting. The browser will show raw JSON
 }
 ```
 
-The callback URL may also contain `kc_action_status=error` — this is harmless. It means Keycloak received the `kc_action=register` hint after you had already registered (a no-op). The flow still completes successfully as long as a `token` is present in the response.
+The callback URL should contain only `code`, `state`, `session_state` and `iss`. If you see a `kc_action_status=error` parameter, you are running an old build that still sends `kc_action=register`; that parameter was harmless but is gone now that signup uses `prompt=create`.
 
 ### 2.4 Verify Results
 
@@ -266,7 +265,7 @@ Tests the multi-membership tenant picker. The user from Phase 2 only belongs to 
 
 You are already logged in (Phase 3), so create the second org directly with `POST /auth/organizations`. There is no Keycloak round-trip: you become TenantAdmin of the new org, and your session stays on your current org.
 
-> **Why not sign up again?** `POST /auth/signup` sends `kc_action=register`, which asks Keycloak to show its registration form. For a user who is already logged into Keycloak, that fails with *"Unexpected error when handling authentication request to identity provider"*. Sign-up is for new people; existing users create organizations with this endpoint.
+> **Why not sign up again?** `POST /auth/signup` is for new people: it sends them to Keycloak's registration form (`prompt=create`) and ties the new identity to the organization. Someone who is already logged in has nothing to register, and an earlier version of the API (which sent `kc_action=register`) failed outright for logged-in users with *"Unexpected error when handling authentication request to identity provider"*. Existing users create organizations with this endpoint instead.
 
 Run these in Swagger, in the same browser you logged in with. The browser sends your `AuthToken` cookie automatically.
 
@@ -587,6 +586,7 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 | `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | Keycloak 26 does not honour port wildcards. Add the explicit URL (e.g. `http://localhost:5000/auth/callback`) to the `groundup-app` client's Valid redirect URIs in Keycloak admin → Clients → groundup-app → Settings |
 | Callback returns `CSRF_STATE_MISMATCH` | You opened the `redirectUrl` in a different browser than the one that called the API. The `AuthState` cookie was set in browser A but the callback came back in browser B. Use the same browser for both steps |
 | No Register link on Keycloak login page | User registration is disabled. Go to Keycloak admin → groundup realm → Realm settings → Login → toggle User registration On |
+| `POST /auth/signup` opens the login page instead of the registration form | Either the running Keycloak is older than 26.1 (check `docker compose ps`; the dev file pins 26.3; recreate with `docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d`), or the app is an old build that still sends `kc_action=register`. Check the `redirectUrl`: it should contain `prompt=create` |
 | Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
 | Callback returns 410 Gone | You already consumed this auth flow. Start over |
 | Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
