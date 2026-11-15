@@ -993,7 +993,7 @@ Set up automated build, test, pack, and publish via GitHub Actions.
 ## Future Phases (Planned — Build When Needed)
 
 ### Phase 15: Caching Module
-Build ICache abstraction with in-memory default. Migrate permission service from direct IMemoryCache to ICache. Future: GroundUp.Caching.Redis for distributed caching. Multi-tenant cache key scoping.
+Build ICache abstraction with in-memory default. Migrate permission service from direct IMemoryCache to ICache. Future: GroundUp.Caching.Redis for distributed caching. Multi-tenant cache key scoping. **Also required:** replace the in-memory token revocation store (`phase-10c-token-revocation`) with an `ICache`-backed implementation so revocations are visible across all application instances. Until then revocation is immediate only on the instance that handled the leave/removal, and bounded by `TokenExpirationMinutes` elsewhere.
 
 ### Phase 16: File Storage Module
 Build IFileStorageService abstraction with local disk implementation. Future: GroundUp.FileStorage.S3 for AWS, GroundUp.FileStorage.AzureBlob. File metadata tracking, multi-tenant file scoping, integration with Security module for file-level access control.

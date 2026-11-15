@@ -32,7 +32,7 @@ Leaving does not revoke anything. The GroundUp token is a signed JWT that names 
 - Enterprise tenants and their separate Keycloak realms.
 - CSRF protection and cookie hardening (separate spec).
 - Invitations and join links (they will build on this state, but are not part of it).
-- Token revocation infrastructure (see Open Questions).
+- Token revocation (own spec: `phase-10c-token-revocation`). Tenantless tokens must be covered by its user-wide cutoff.
 
 ## Requirements
 
@@ -107,7 +107,7 @@ Agreed with the project owner:
 
 ## Open Questions
 
-1. **Per-request membership checks or token revocation?** A copied token (for example a Bearer token held by a script) outlives a leave until it expires. Options: shorter lifetimes, check membership on each request, or a token version on the user. This matters for compliance reviews and should be decided alongside the CSRF and cookie work. The project owner is concerned about the performance and scaling cost of a per-request check, so this needs further discussion before the design.
+None. The per-request membership question was resolved by splitting it into its own spec, `phase-10c-token-revocation` (cutoff list checked in memory, shorter token lifetime, ICache-backed store in Phase 15).
 
 ## Manual Re-Testing Required After Implementation
 
