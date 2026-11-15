@@ -62,7 +62,7 @@ Leaving does not revoke anything. The GroundUp token is a signed JWT that names 
    - `POST /auth/set-tenant`: selects one of the user's memberships and returns a tenant-scoped token, preserving `auth_time`.
    - `POST /auth/organizations`: creates an organization (see Requirement 4).
    - `POST /auth/logout`.
-3. Tenant-scoped endpoints SHALL reject a tenantless session the same way they reject a missing tenant today.
+3. Tenant-scoped endpoints SHALL reject a tenantless session with `403 Forbidden`. The caller is authenticated but has no tenant, so 401 would be wrong.
 4. A tenantless session SHALL expire with the same limits as any other session: token lifetime, and the absolute session lifetime measured from `auth_time`.
 5. A tenantless session SHALL NOT be refreshed into a tenant-scoped session without the user choosing a tenant through `set-tenant`.
 
@@ -74,7 +74,7 @@ Leaving does not revoke anything. The GroundUp token is a signed JWT that names 
 
 1. WHEN a user signs in with zero active memberships and a default tenant is configured THEN the existing behavior SHALL stand: the user is added to the default tenant (reusing a previous membership row if they left it earlier) and receives a token for it.
 2. WHEN a user signs in with zero active memberships and **no** default tenant is configured THEN the system SHALL issue a tenantless session instead of returning `403 ACCESS_DENIED`.
-3. WHEN a user signs in with two or more standard-tenant memberships THEN the existing picker response SHALL stand. See Open Question 2 for whether the picker should use the same tenantless token.
+3. WHEN a user signs in with two or more standard-tenant memberships THEN the existing picker response SHALL stand. The picker SHALL use the same tenantless GroundUp-issued token instead of parking a Keycloak token in the cookie (decided; see Decisions).
 4. Enterprise tenants remain excluded from standard sign-in and from the picker.
 
 ### Requirement 4: A tenantless user can create an organization
@@ -96,13 +96,18 @@ Leaving does not revoke anything. The GroundUp token is a signed JWT that names 
 2. A tenantless token SHALL be rejected by tenant-scoped endpoints in an integration test, not only in unit tests.
 3. MANUAL_TESTING.md SHALL be updated: Phase 7 (leave) and Phase 3 (login with no memberships), plus a new section for the tenantless session.
 
+## Decisions
+
+Agreed with the project owner:
+
+1. **Tenantless token (was Q1):** a GroundUp-issued token without `tid`. The token service gets a new path for it.
+2. **Picker (was Q2):** the multi-membership picker uses the same tenantless token.
+3. **Roles on leave (was Q3):** leaving removes the user's role assignments in that tenant, so rejoining starts clean. Implemented in commit e4e2143 (`UserTenantRepository.DeactivateMembershipAsync`).
+4. **No-membership login (was Q5):** confirmed. Zero memberships and no default tenant gives a tenantless session. Tenant-scoped endpoints answer a tenantless session with 403.
+
 ## Open Questions
 
-1. **What is the tenantless token?** Either a GroundUp-issued token without `tid` (the token service currently requires a tenant, so it needs a new path), or reusing the Keycloak access token that the picker already parks in the cookie. The Keycloak token expires in minutes and is not available at leave time, which favors a GroundUp-issued token. Decide in the design.
-2. **Should the multi-membership picker use the same tenantless token?** Today it writes the Keycloak token to the cookie. Using one tenantless state for "signed in, no tenant chosen yet" would remove a special case. Recommended: yes.
-3. **Should leaving remove the user's role assignments in that tenant?** Today they stay. Reactivating a membership (added for the default tenant) then silently restores old roles, including TenantAdmin. Recommended: remove roles on leave so rejoining starts clean. Needs the project owner's decision.
-4. **Per-request membership checks or token revocation?** A copied token (for example a Bearer token held by a script) outlives a leave until it expires. Options: shorter lifetimes, check membership on each request, or a token version on the user. This matters for compliance reviews and should be decided alongside the CSRF and cookie work.
-5. **Confirm Requirement 3.2.** Turning "no memberships and no default tenant" from a 403 into a tenantless session extends the rule above to login. It follows naturally from the project owner's reasoning, but was not stated explicitly.
+1. **Per-request membership checks or token revocation?** A copied token (for example a Bearer token held by a script) outlives a leave until it expires. Options: shorter lifetimes, check membership on each request, or a token version on the user. This matters for compliance reviews and should be decided alongside the CSRF and cookie work. The project owner is concerned about the performance and scaling cost of a per-request check, so this needs further discussion before the design.
 
 ## Manual Re-Testing Required After Implementation
 
