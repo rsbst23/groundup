@@ -28,12 +28,12 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
     - Generated tenant-scoped tokens carry `iat` (guards the revocation spec's assumption)
   - [x] 1.5 Build, run auth unit tests, commit
 
-- [ ] 2. Reject tenantless callers at the tenant repository
-  - [ ] 2.1 Add `ErrorCodes.TenantRequired` and a resource string for its message
-  - [ ] 2.2 In `BaseTenantRepository`, return `OperationResult.Forbidden` with `TenantRequired` (403) before any database access when `TenantContext.TenantId == Guid.Empty`, for `GetAllAsync`, `GetByIdAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync` and export
-  - [ ] 2.3 Unit tests: each entry point returns 403 `TENANT_REQUIRED` for an empty tenant and does not touch the database; behavior with a real tenant is unchanged
-  - [ ] 2.4 Run the **full** unit and integration suites. Fix every newly broken caller by using the existing explicit-tenant or bypass methods, never by weakening the guard. List each fixed caller in the commit message
-  - [ ] 2.5 Commit
+- [x] 2. Reject tenantless callers at the tenant repository
+  - [x] 2.1 Add `ErrorCodes.TenantRequired` and a resource string for its message
+  - [x] 2.2 In `BaseTenantRepository`, return `OperationResult.Forbidden` with `TenantRequired` (403) before any database access when `TenantContext.TenantId == Guid.Empty`, for `GetAllAsync`, `GetByIdAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync` and export
+  - [x] 2.3 Unit tests: each entry point returns 403 `TENANT_REQUIRED` for an empty tenant and does not touch the database; behavior with a real tenant is unchanged
+  - [x] 2.4 Run the **full** unit and integration suites. Fix every newly broken caller by using the existing explicit-tenant or bypass methods, never by weakening the guard. List each fixed caller in the commit message
+  - [x] 2.5 Commit
 
 - [ ] 3. Principal classification, `FlowResult` and `LoginFlowHandler`
   - [ ] 3.1 Add `AuthConstants.ExternalIdpAuthenticationType` (`"ExternalIdP"`) and use it in `JwtAuthenticationMiddleware`; add an `IsExternalIdp(ClaimsPrincipal)` helper
@@ -61,7 +61,7 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [ ] 5.1 Rewrite `PendingSelectionTests` for the tenantless token (cookie holds a GroundUp token, not Keycloak's)
   - [ ] 5.2 `LeaveTenantTests`: leave current tenant with 0, 1 and 3 other memberships (tenantless afterwards, no switch); leave a non-current tenant (cookie unchanged); old `noTenants` assertions replaced
   - [ ] 5.3 New `TenantlessSessionTests`: `me` (null tenant), `me/tenants` (none current), `set-tenant` from tenantless, `organizations` from tenantless (201, still tenantless, `set-tenant` enters it), `logout`
-  - [ ] 5.4 A tenant-scoped endpoint over HTTP returns 403 `TENANT_REQUIRED` for a tenantless session and does not insert a row
+  - [ ] 5.4 A tenant-scoped endpoint over HTTP returns 403 `TENANT_REQUIRED` for a tenantless session and does not insert a row (already covered for the sample `/api/projects` endpoint in group 2 by `TenantIsolationTests.NoCurrentTenant_CreateAndRead_Return403TenantRequiredAndWriteNothing`; add an auth-suite equivalent only if it adds coverage)
   - [ ] 5.5 Login with zero memberships and no default tenant returns a tenantless session (in `LoginFlowTests`)
   - [ ] 5.6 Run the full auth integration suite; only the 7 known failures remain; commit
 

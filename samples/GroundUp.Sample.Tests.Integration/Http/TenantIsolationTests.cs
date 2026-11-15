@@ -33,12 +33,13 @@ public sealed class TenantIsolationTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// Sends an HTTP request with the X-Tenant-Id header set.
+    /// Sends an HTTP request authenticated with a Bearer token scoped to the given tenant.
     /// </summary>
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, Guid tenantId, HttpContent? content = null)
     {
         var request = new HttpRequestMessage(method, url);
-        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", TestTokens.Create(tenantId));
         if (content != null) request.Content = content;
         return await Client.SendAsync(request);
     }
@@ -62,6 +63,39 @@ public sealed class TenantIsolationTests : IntegrationTestBase
         }
 
         return (response, null);
+    }
+
+    [Fact]
+    public async Task NoCurrentTenant_CreateAndRead_Return403TenantRequiredAndWriteNothing()
+    {
+        // Arrange — a valid token with no tid claim (a session with no current tenant)
+        var uniqueName = $"Orphan_{Guid.NewGuid():N}";
+        var tenantlessToken = TestTokens.Create(tenantId: null);
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new ProjectDto { Name = uniqueName, Description = "x" }, JsonOptions),
+                Encoding.UTF8, "application/json")
+        };
+        createRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tenantlessToken);
+
+        var readRequest = new HttpRequestMessage(HttpMethod.Get, $"{Endpoint}?Filters[Name]={uniqueName}");
+        readRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tenantlessToken);
+
+        // Act
+        var createResponse = await Client.SendAsync(createRequest);
+        var readResponse = await Client.SendAsync(readRequest);
+
+        // Assert — both rejected with TENANT_REQUIRED
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await createResponse.Content.ReadAsStringAsync()).Should().Contain("TENANT_REQUIRED");
+        readResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // Assert — nothing was written: a real tenant cannot see an orphan row either
+        var checkResponse = await SendAsync(HttpMethod.Get, $"{Endpoint}?Filters[Name]={uniqueName}", TenantA);
+        var body = await checkResponse.Content.ReadAsStringAsync();
+        body.Should().NotContain(uniqueName);
     }
 
     [Fact]
