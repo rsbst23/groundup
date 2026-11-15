@@ -76,7 +76,7 @@ The in-memory store is per process. With several application instances, only the
 3. The check SHALL fail closed if the store throws: the request is rejected and the failure is logged without the token or other sensitive data.
 4. A revoked token SHALL NOT be refreshed. `TokenRefreshMiddleware` and `POST /auth/refresh` SHALL treat it as unauthenticated.
 5. The rejection response SHALL carry the correlation ID like other auth errors.
-6. Tokens issued by GroundUp SHALL include an `iat` claim so the comparison does not depend on parsing other claims. `auth_time` keeps its current meaning (original sign-in) and is not used for revocation.
+6. The comparison SHALL use the `iat` claim. The JWT library emits `iat` by default (verified); a test SHALL assert that generated tokens carry it so a library change cannot silently disable revocation. `auth_time` keeps its current meaning (original sign-in) and is not used for revocation.
 
 ### Requirement 4: Permission cache eviction on the same events
 
@@ -108,11 +108,11 @@ The in-memory store is per process. With several application instances, only the
 2. Integration tests SHALL cover, over HTTP: a token held before a leave is rejected with 401 afterwards; the same for admin removal; leave, rejoin and new sign-in succeeds; a token for another tenant of the same user keeps working after a leave from the first; a failed leave (last admin) leaves the token valid; a revoked token cannot be refreshed.
 3. MANUAL_TESTING.md SHALL gain a step that saves a Bearer token, leaves the tenant, and confirms the saved token is rejected.
 
-## Open Questions for the Design
+## Decisions Made for the Design
 
-1. **Clock precision.** `iat` is whole seconds. A token issued in the same second as the cutoff needs a defined rule (reject tokens with `iat` at or before the cutoff second, and make the leave path never issue a new token in that second without first advancing).
-2. **Multi-instance before Phase 15.** Is a database-backed store with periodic polling worth building now as an optional implementation, or is the documented limitation enough until the caching module? Default recommendation: documented limitation.
-3. **Where the check runs.** In `JwtBearerEvents.OnTokenValidated` for both schemes, or in a middleware after authentication. The design decides based on how the dual-scheme setup is wired.
+1. **Clock precision.** `iat` has whole-second precision. The cutoff time is rounded up to the next whole second and a token is revoked when `iat < cutoff`. A token issued in the same second as the leave is revoked, which is the safe direction. A rejoin followed by a new sign-in goes through Keycloak and takes longer than a second, so legitimate tokens are not affected.
+2. **Multi-instance before Phase 15.** No database-backed store. The documented limitation stands. The feature is not enabled in production until the caching module is done (project owner).
+3. **Where the check runs.** In `JwtAuthenticationMiddleware`, directly after `TokenService.ValidateTokenAsync` succeeds and before the identity-provider fallback. This project authenticates with custom middleware and has no ASP.NET `JwtBearerEvents`, and the middleware already handles cookie and header tokens in one place.
 
 ## Manual Re-Testing Required After Implementation
 
