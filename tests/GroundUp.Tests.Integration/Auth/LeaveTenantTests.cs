@@ -363,6 +363,63 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // Leaving the current tenant never moves the user into another tenant
+    // ────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task LeaveTenant_CurrentTenant_WithOtherMemberships_LeavesNoCurrentTenantAndKeepsTheOthers(int otherTenantCount)
+    {
+        // Arrange — the user works in tenant A and also belongs to N other tenants
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var leftTenantId = await SeedTenantAsync($"Leave Matrix {suffix}", $"leave-matrix-{suffix}");
+        var userId = await SeedUserAsync($"sub-matrix-{suffix}", $"matrix-{suffix}@example.com");
+        await SeedMembershipAsync(userId, leftTenantId);
+
+        var otherTenantIds = new List<Guid>();
+        for (var i = 0; i < otherTenantCount; i++)
+        {
+            var otherId = await SeedTenantAsync($"Other {i} {suffix}", $"other-{i}-{suffix}");
+            await SeedMembershipAsync(userId, otherId);
+            otherTenantIds.Add(otherId);
+        }
+
+        var token = Fixture.GenerateTestToken(userId, leftTenantId);
+
+        // Act
+        var response = await Client.SendAsync(CreateBearerRequest(
+            HttpMethod.Post, $"/auth/tenants/{leftTenantId}/leave", token));
+
+        // Assert — no current tenant, whatever the number of other memberships
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        json.GetProperty("currentTenantId").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var newCookie = ExtractAuthCookie(response);
+        newCookie.Should().NotBeNullOrEmpty();
+        new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(newCookie)
+            .Claims.Should().NotContain(c => c.Type == "tid", "the user must not be moved into another tenant");
+
+        // Assert — the other memberships are untouched
+        var memberships = await GetAllMembershipsForUserAsync(userId);
+        memberships.First(m => m.TenantId == leftTenantId).IsActive.Should().BeFalse();
+        memberships.Count(m => otherTenantIds.Contains(m.TenantId)).Should().Be(otherTenantCount);
+        memberships.Where(m => otherTenantIds.Contains(m.TenantId)).All(m => m.IsActive).Should().BeTrue();
+
+        // Assert — the new tenantless session still lists the remaining tenants, none marked current
+        var listResponse = await Client.SendAsync(CreateAuthenticatedRequest(HttpMethod.Get, "/auth/me/tenants", newCookie!));
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var tenants = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync()).RootElement;
+        tenants.GetArrayLength().Should().Be(otherTenantCount);
+        foreach (var tenant in tenants.EnumerateArray())
+        {
+            tenant.GetProperty("current").GetBoolean().Should().BeFalse();
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Helper: gets ALL memberships (active and inactive) for assertion
     // ────────────────────────────────────────────────────────────────────────
 

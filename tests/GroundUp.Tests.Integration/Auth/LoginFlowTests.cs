@@ -237,6 +237,11 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         // Assert — signed in with no current tenant: 200 and a tenantless GroundUp token in the cookie
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
+        var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("requiresTenantSelection").GetBoolean().Should().BeFalse();
+        body.GetProperty("tenants").GetArrayLength().Should().Be(0);
+        body.TryGetProperty("token", out _).Should().BeFalse("no tenant-scoped token is handed out");
+
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty("the user is signed in even though there is no tenant to enter");
 

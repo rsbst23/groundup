@@ -57,13 +57,13 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [x] 4.6 Update `AuthControllerTests`; add cases for leaving with 0, 1 and 3 other memberships (never an automatic switch), leaving a non-current tenant, tenantless `set-tenant`, tenantless `organizations`, identity-provider principal handling
   - [x] 4.7 Build, run auth unit tests, commit
 
-- [ ] 5. Integration tests
-  - [ ] 5.1 Rewrite `PendingSelectionTests` for the tenantless token (cookie holds a GroundUp token, not Keycloak's)
-  - [ ] 5.2 `LeaveTenantTests`: leave current tenant with 0, 1 and 3 other memberships (tenantless afterwards, no switch); leave a non-current tenant (cookie unchanged); old `noTenants` assertions replaced
-  - [ ] 5.3 New `TenantlessSessionTests`: `me` (null tenant), `me/tenants` (none current), `set-tenant` from tenantless, `organizations` from tenantless (201, still tenantless, `set-tenant` enters it), `logout`
-  - [ ] 5.4 A tenant-scoped endpoint over HTTP returns 403 `TENANT_REQUIRED` for a tenantless session and does not insert a row (already covered for the sample `/api/projects` endpoint in group 2 by `TenantIsolationTests.NoCurrentTenant_CreateAndRead_Return403TenantRequiredAndWriteNothing`; add an auth-suite equivalent only if it adds coverage)
-  - [ ] 5.5 Login with zero memberships and no default tenant returns a tenantless session (in `LoginFlowTests`)
-  - [ ] 5.6 Run the full auth integration suite; only the 7 known failures remain; commit
+- [x] 5. Integration tests
+  - [x] 5.1 Rewrite `PendingSelectionTests` for the tenantless token (cookie holds a GroundUp token, not Keycloak's)
+  - [x] 5.2 `LeaveTenantTests`: leave current tenant with 0, 1 and 3 other memberships (tenantless afterwards, no switch); leave a non-current tenant (cookie unchanged); old `noTenants` assertions replaced
+  - [x] 5.3 New `TenantlessSessionTests`: `me` (null tenant), `me/tenants` (none current), `set-tenant` from tenantless, `organizations` from tenantless (201, still tenantless, `set-tenant` enters it), `logout`
+  - [x] 5.4 A tenant-scoped endpoint over HTTP returns 403 `TENANT_REQUIRED` for a tenantless session and does not insert a row (already covered for the sample `/api/projects` endpoint in group 2 by `TenantIsolationTests.NoCurrentTenant_CreateAndRead_Return403TenantRequiredAndWriteNothing`; add an auth-suite equivalent only if it adds coverage)
+  - [x] 5.5 Login with zero memberships and no default tenant returns a tenantless session (in `LoginFlowTests`)
+  - [x] 5.6 Run the full auth integration suite; only the 7 known failures remain; commit
 
 - [ ] 6. Documentation and final checkpoint
   - [ ] 6.1 `MANUAL_TESTING.md`: Phase 3 (login with no memberships and no default tenant), Phase 7 (leave current vs other tenant, no automatic switch, new response shape), and a new tenantless-session section
