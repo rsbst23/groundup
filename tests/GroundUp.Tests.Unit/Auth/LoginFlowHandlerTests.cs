@@ -167,6 +167,90 @@ public sealed class LoginFlowHandlerTests
         tenantContextAtInsert.Should().Be(TestTenantId1);
     }
 
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroActiveMembershipsButPreviouslyLeftDefaultTenant_ReactivatesInsteadOfCreating()
+    {
+        // Arrange — leaving a tenant keeps the membership row with IsActive = false, and a user has one
+        // row per tenant, so inserting a second one would violate the unique index
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupInactiveMembershipInDefaultTenant();
+        SetupDefaultTenantSlugSetting("default-org");
+        SetupDefaultTenantLookup("default-org");
+        SetupDefaultRoleNotConfigured();
+        SetupSuccessfulTokenGeneration();
+        _userTenantRepository.ReactivateMembershipAsync(TestUserId, TestTenantId1, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Token.Should().Be(TestGeneratedToken);
+        await _userTenantRepository.Received(1).ReactivateMembershipAsync(
+            TestUserId, TestTenantId1, Arg.Any<CancellationToken>());
+        await _userTenantRepository.DidNotReceive().AddAsync(
+            Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ReactivatingPreviousMembershipFails_ReturnsAutoJoinFailed()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupInactiveMembershipInDefaultTenant();
+        SetupDefaultTenantSlugSetting("default-org");
+        SetupDefaultTenantLookup("default-org");
+        SetupSuccessfulTokenGeneration();
+        _userTenantRepository.ReactivateMembershipAsync(TestUserId, TestTenantId1, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Fail("A conflict occurred while rejoining the tenant.", 409));
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert — no token is issued for a membership that was not restored
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("AUTO_JOIN_FAILED");
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroMembershipsNeverInDefaultTenant_StillCreatesNewMembership()
+    {
+        // Arrange — an old inactive membership in a DIFFERENT tenant must not block a fresh join
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
+            {
+                new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, false)
+            }));
+        SetupDefaultTenantSlugSetting("default-org");
+        SetupDefaultTenantLookup("default-org");
+        SetupSuccessfulMembershipCreation();
+        SetupDefaultRoleNotConfigured();
+        SetupSuccessfulTokenGeneration();
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        await _userTenantRepository.Received(1).AddAsync(
+            Arg.Is<UserTenantDto>(m => m.TenantId == TestTenantId1), Arg.Any<CancellationToken>());
+        await _userTenantRepository.DidNotReceive().ReactivateMembershipAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region Access Denied (Zero Memberships + No Default Tenant)
@@ -556,6 +640,19 @@ public sealed class LoginFlowHandlerTests
 
         _userRepository.GetByExternalUserIdAsync(TestExternalUserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<UserDto>.Ok(user));
+    }
+
+    /// <summary>
+    /// The user once belonged to the default tenant (<c>TestTenantId1</c>) and left, so the row
+    /// still exists but is inactive. The user has no active memberships.
+    /// </summary>
+    private void SetupInactiveMembershipInDefaultTenant()
+    {
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
+            {
+                new(Guid.NewGuid(), TestUserId, TestTenantId1, TestExternalUserId, false)
+            }));
     }
 
     private void SetupZeroActiveMemberships()

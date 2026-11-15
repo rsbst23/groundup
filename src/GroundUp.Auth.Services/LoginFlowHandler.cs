@@ -134,7 +134,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         // 8. Non-host-pinned scenarios based on membership count
         return activeMemberships.Count switch
         {
-            0 => await HandleZeroMembershipsAsync(user, tokenResponse.IdToken),
+            0 => await HandleZeroMembershipsAsync(user, membershipsResult.Data, tokenResponse.IdToken),
             1 => await HandleSingleMembershipAsync(user, activeMemberships[0], tokenResponse.IdToken),
             _ => await HandleMultipleMembershipsAsync(user, activeMemberships, tokenResponse)
         };
@@ -176,9 +176,15 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Handles the zero-memberships scenario: auto-join if default tenant configured, else access-denied.
+    /// Handles the zero-active-memberships scenario: auto-join if default tenant configured, else access-denied.
+    /// A user who previously left the default tenant still has a deactivated membership row, and a
+    /// user has only one row per tenant, so that row is reactivated instead of inserting a new one.
     /// </summary>
-    private async Task<FlowResult> HandleZeroMembershipsAsync(UserDto user, string? idToken)
+    /// <param name="allMemberships">All of the user's membership rows, active or not.</param>
+    private async Task<FlowResult> HandleZeroMembershipsAsync(
+        UserDto user,
+        List<UserTenantDto> allMemberships,
+        string? idToken)
     {
         // Check for default tenant configuration
         var defaultTenantSlugResult = await _settingsService.GetAsync<string>(
@@ -211,28 +217,45 @@ public sealed class LoginFlowHandler : IFlowHandler
 
         var defaultTenant = tenantResult.Data;
 
-        // The membership repository stamps the current tenant onto new rows. During a sign-in
-        // callback no tenant is selected yet, so point the context at the tenant being joined.
-        _tenantContext.TenantId = defaultTenant.Id;
-
-        // Auto-join: create membership
-        var membershipDto = new UserTenantDto(
-            Id: Guid.NewGuid(),
-            UserId: user.Id,
-            TenantId: defaultTenant.Id,
-            ExternalUserId: user.ExternalUserId,
-            IsActive: true);
-
-        var membershipResult = await _userTenantRepository.AddAsync(membershipDto);
-        if (!membershipResult.Success)
+        var previousMembership = allMemberships.FirstOrDefault(m => m.TenantId == defaultTenant.Id);
+        if (previousMembership is not null)
         {
-            _logger.LogError("Login flow: failed to create membership for user {UserId} in tenant {TenantId}",
-                user.Id, defaultTenant.Id);
-            return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to join the default organization.");
+            // The user left this tenant earlier. Rejoin through the same row (unique per user and tenant).
+            // Leaving removed their roles, so they come back with none. The default role is not assigned here.
+            var reactivateResult = await _userTenantRepository.ReactivateMembershipAsync(user.Id, defaultTenant.Id);
+            if (!reactivateResult.Success)
+            {
+                _logger.LogError(
+                    "Login flow: failed to reactivate membership for user {UserId} in tenant {TenantId}",
+                    user.Id, defaultTenant.Id);
+                return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to rejoin the default organization.");
+            }
         }
+        else
+        {
+            // The membership repository stamps the current tenant onto new rows. During a sign-in
+            // callback no tenant is selected yet, so point the context at the tenant being joined.
+            _tenantContext.TenantId = defaultTenant.Id;
 
-        // Assign default role from cascade (if configured)
-        await AssignDefaultRoleAsync(user.Id, defaultTenant.Id);
+            // Auto-join: create membership
+            var membershipDto = new UserTenantDto(
+                Id: Guid.NewGuid(),
+                UserId: user.Id,
+                TenantId: defaultTenant.Id,
+                ExternalUserId: user.ExternalUserId,
+                IsActive: true);
+
+            var membershipResult = await _userTenantRepository.AddAsync(membershipDto);
+            if (!membershipResult.Success)
+            {
+                _logger.LogError("Login flow: failed to create membership for user {UserId} in tenant {TenantId}",
+                    user.Id, defaultTenant.Id);
+                return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to join the default organization.");
+            }
+
+            // Assign default role from cascade (if configured)
+            await AssignDefaultRoleAsync(user.Id, defaultTenant.Id);
+        }
 
         // Issue token scoped to the default tenant
         var token = await GenerateTokenWithAuthTimeAsync(user.Id, defaultTenant.Id);

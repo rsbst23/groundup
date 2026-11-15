@@ -165,6 +165,59 @@ public sealed class SimpleSignupFlowHandlerTests
         tenantContextAtInsert.Should().Be(TestDefaultTenantId);
     }
 
+    [Fact]
+    public async Task HandleCallbackAsync_UserPreviouslyLeftDefaultTenant_ReactivatesInsteadOfCreating()
+    {
+        // Arrange — leaving keeps the membership row with IsActive = false, and a user has one row
+        // per tenant, so inserting a second one would violate the unique index
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupDefaultTenantSlugSetting("community");
+        SetupDefaultTenantLookup("community");
+        SetupInactiveMembershipInDefaultTenant();
+        SetupSuccessfulTokenGeneration();
+        _userTenantRepository.ReactivateMembershipAsync(TestUserId, TestDefaultTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Token.Should().Be(TestGeneratedToken);
+        await _userTenantRepository.Received(1).ReactivateMembershipAsync(
+            TestUserId, TestDefaultTenantId, Arg.Any<CancellationToken>());
+        await _userTenantRepository.DidNotReceive().AddAsync(
+            Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ReactivatingPreviousMembershipFails_ReturnsErrorAndNoToken()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupDefaultTenantSlugSetting("community");
+        SetupDefaultTenantLookup("community");
+        SetupInactiveMembershipInDefaultTenant();
+        SetupSuccessfulTokenGeneration();
+        _userTenantRepository.ReactivateMembershipAsync(TestUserId, TestDefaultTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Fail("A conflict occurred while rejoining the tenant.", 409));
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("MEMBERSHIP_CREATION_FAILED");
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+    }
+
     #endregion
 
     #region Happy Path: Existing User Already a Member (Idempotent)
@@ -448,6 +501,18 @@ public sealed class SimpleSignupFlowHandlerTests
     {
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>()));
+    }
+
+    /// <summary>
+    /// The user once belonged to the default tenant and left, so the row still exists but is inactive.
+    /// </summary>
+    private void SetupInactiveMembershipInDefaultTenant()
+    {
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
+            {
+                new(Guid.NewGuid(), TestUserId, TestDefaultTenantId, TestExternalUserId, false)
+            }));
     }
 
     private void SetupExistingMembershipInDefaultTenant()

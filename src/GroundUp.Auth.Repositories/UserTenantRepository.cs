@@ -67,10 +67,32 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     /// SYSTEM BYPASS: Targets the given tenant explicitly rather than the current tenant
     /// context, so a user can leave a tenant other than the one their session is scoped to.
     /// </remarks>
-    public async Task<OperationResult> DeactivateMembershipAsync(
+    public Task<OperationResult> DeactivateMembershipAsync(
         Guid userId,
         Guid tenantId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SetMembershipActiveAsync(userId, tenantId, isActive: false, removeRoles: true,
+            "A conflict occurred while leaving the tenant.", cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: Targets the given tenant explicitly rather than the current tenant
+    /// context, because sign-in callbacks run before any tenant is selected.
+    /// </remarks>
+    public Task<OperationResult> ReactivateMembershipAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default) =>
+        SetMembershipActiveAsync(userId, tenantId, isActive: true, removeRoles: false,
+            "A conflict occurred while rejoining the tenant.", cancellationToken);
+
+    private async Task<OperationResult> SetMembershipActiveAsync(
+        Guid userId,
+        Guid tenantId,
+        bool isActive,
+        bool removeRoles,
+        string conflictMessage,
+        CancellationToken cancellationToken)
     {
         var entity = await Context.Set<UserTenant>()
             .FirstOrDefaultAsync(ut => ut.UserId == userId && ut.TenantId == tenantId, cancellationToken);
@@ -78,10 +100,21 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         if (entity is null)
             return OperationResult.NotFound();
 
-        if (!entity.IsActive)
+        if (entity.IsActive == isActive)
             return OperationResult.Ok();
 
-        entity.IsActive = false;
+        entity.IsActive = isActive;
+
+        // Leaving also removes the user's role assignments in that tenant, in the same save, so a
+        // later rejoin starts clean and a former TenantAdmin does not silently regain admin rights.
+        List<UserRole> removedRoles = [];
+        if (removeRoles)
+        {
+            removedRoles = await Context.Set<UserRole>()
+                .Where(ur => ur.UserId == userId && ur.TenantId == tenantId)
+                .ToListAsync(cancellationToken);
+            Context.Set<UserRole>().RemoveRange(removedRoles);
+        }
 
         try
         {
@@ -91,8 +124,14 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         catch (DbUpdateException)
         {
             DiscardRejectedChanges(entity);
+            foreach (var role in removedRoles)
+            {
+                // Restore the tracked state so a retry on this context is not poisoned
+                Context.Entry(role).State = EntityState.Unchanged;
+            }
+
             return OperationResult.Fail(
-                "A conflict occurred while leaving the tenant.",
+                conflictMessage,
                 409,
                 GroundUp.Core.ErrorCodes.Conflict);
         }

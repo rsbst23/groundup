@@ -137,9 +137,29 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         if (membershipsResult.Success && membershipsResult.Data is not null)
         {
             var existingMembership = membershipsResult.Data
-                .FirstOrDefault(m => m.TenantId == defaultTenant.Id && m.IsActive);
+                .FirstOrDefault(m => m.TenantId == defaultTenant.Id);
 
-            if (existingMembership is null)
+            if (existingMembership is not null && !existingMembership.IsActive)
+            {
+                // The user left this tenant earlier. A user has one membership row per tenant, so
+                // rejoin through the same row. Leaving removed their roles, so they come back with
+                // none. The default role is not assigned here.
+                var reactivateResult = await _userTenantRepository.ReactivateMembershipAsync(
+                    user.Id, defaultTenant.Id);
+                if (!reactivateResult.Success)
+                {
+                    _logger.LogError(
+                        "SimpleSignup flow failed: could not reactivate membership for user {UserId} in tenant {TenantId}",
+                        user.Id, defaultTenant.Id);
+                    return FlowResult.Error("MEMBERSHIP_CREATION_FAILED",
+                        "Failed to rejoin the default organization.");
+                }
+
+                _logger.LogInformation(
+                    "SimpleSignup flow: reactivated membership for user {UserId} in default tenant {TenantId}",
+                    user.Id, defaultTenant.Id);
+            }
+            else if (existingMembership is null)
             {
                 // The membership repository stamps the current tenant onto new rows. During a
                 // sign-in callback no tenant is selected yet, so point the context at the default tenant.

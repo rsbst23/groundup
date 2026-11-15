@@ -309,6 +309,45 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // 10. Leaving removes the leaver's roles in that tenant, and only theirs
+    // ────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LeaveTenant_RemovesTheLeavingUsersRolesInThatTenantOnly()
+    {
+        // Arrange — admin1 is an admin of tenant A (with admin2) and has an Editor role in tenant B
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var tenantA = await SeedTenantAsync($"Roles A {suffix}", $"roles-a-{suffix}");
+        var tenantB = await SeedTenantAsync($"Roles B {suffix}", $"roles-b-{suffix}");
+        var admin1 = await SeedUserAsync($"sub-roles1-{suffix}", $"roles1-{suffix}@example.com");
+        var admin2 = await SeedUserAsync($"sub-roles2-{suffix}", $"roles2-{suffix}@example.com");
+        await SeedMembershipAsync(admin1, tenantA);
+        await SeedMembershipAsync(admin1, tenantB);
+        await SeedMembershipAsync(admin2, tenantA);
+
+        var adminRoleA = await SeedRoleAsync(tenantA, AuthRoleNames.TenantAdmin, isSystem: true);
+        var editorRoleB = await SeedRoleAsync(tenantB, "Editor");
+        await AssignRoleToUserAsync(admin1, adminRoleA, tenantA);
+        await AssignRoleToUserAsync(admin2, adminRoleA, tenantA);
+        await AssignRoleToUserAsync(admin1, editorRoleB, tenantB);
+
+        // Act — admin1 is working in tenant B and leaves tenant A
+        var response = await Client.SendAsync(CreateBearerRequest(
+            HttpMethod.Post, $"/auth/tenants/{tenantA}/leave", Fixture.GenerateTestToken(admin1, tenantB)));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.UserRoles.AsNoTracking().CountAsync(ur => ur.UserId == admin1 && ur.TenantId == tenantA))
+            .Should().Be(0, "leaving removes the leaver's roles in the tenant they left");
+        (await context.UserRoles.AsNoTracking().CountAsync(ur => ur.UserId == admin1 && ur.TenantId == tenantB))
+            .Should().Be(1, "roles in other tenants are untouched");
+        (await context.UserRoles.AsNoTracking().CountAsync(ur => ur.UserId == admin2 && ur.TenantId == tenantA))
+            .Should().Be(1, "other members' roles are untouched");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Helper: gets ALL memberships (active and inactive) for assertion
     // ────────────────────────────────────────────────────────────────────────
 
