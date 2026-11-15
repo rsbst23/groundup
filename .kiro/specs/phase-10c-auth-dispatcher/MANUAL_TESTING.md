@@ -440,18 +440,31 @@ Not changed by the tenantless-session work. Run it as Alice: log out fully, log 
 
 Not changed by the tenantless-session work, and not re-run while this guide was rewritten. It pins a user to a tenant by host name. Run it as Alice, scoped to `My Test Org` (as in Part 11).
 
-1. Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
+The examples use the slugs `my-test-org` and `second-org`. If your organizations have different slugs (check `AuthTenants.Slug`), use those in every step below. The host name must be exactly `<slug>.localhost`.
+
+1. **Hosts file.** Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add one line per organization:
    ```
    127.0.0.1  my-test-org.localhost
    127.0.0.1  second-org.localhost
    ```
-2. **Host-pinned login.** `POST http://my-test-org.localhost:<port>/auth/login`, open the `redirectUrl`, and sign in. As a **member** of `my-test-org` you get a token scoped to it with no picker, even though you belong to two orgs. A non-member would get **403**.
-3. **Mismatch.** With that `My Test Org` token, request the other subdomain:
+2. **Allow the subdomain callbacks in Keycloak.** The callback address is built from the host you call, so each subdomain needs its own entry. Keycloak admin → groundup realm → Clients → groundup-app → Settings → **Valid redirect URIs**, add:
    ```
-   GET http://second-org.localhost:<port>/api/projects
+   http://my-test-org.localhost:5000/auth/callback
+   http://second-org.localhost:5000/auth/callback
+   ```
+   (use your port, and your slugs). Without this, Keycloak shows "Invalid redirect_uri" when you open the login URL.
+3. **Host-pinned login.** `/auth/login` is a **POST**, so typing its URL in the address bar fails with **HTTP 405**. Do it from Swagger **served from the subdomain**:
+   1. Open `http://my-test-org.localhost:<port>/swagger/index.html`.
+   2. Run `POST /auth/login` there, copy the `redirectUrl`, and open it in the same browser.
+   3. Sign in as Alice.
+
+   As a **member** of `my-test-org` you get a token scoped to it with no picker, even though you belong to two orgs. A non-member would get **403**. The cookie is set for `.localhost`, so it is sent to every `*.localhost` subdomain.
+4. **Mismatch.** With that `My Test Org` token, request the other subdomain. Open `http://second-org.localhost:<port>/swagger/index.html` (the cookie is sent because it covers `.localhost`) and run:
+   ```
+   GET /api/projects
    ```
    Expected: **409** `TENANT_SWITCH_REQUIRED` (you are a member of `second-org`; a non-member would get 403).
-4. **Resolve it** without logging in again:
+5. **Resolve it** without logging in again (still on the `second-org.localhost` Swagger page):
    ```
    POST /auth/set-tenant
    { "tenantId": "<Second Org id>" }
