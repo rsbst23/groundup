@@ -4,8 +4,8 @@ namespace GroundUp.Auth.Services;
 
 /// <summary>
 /// Result returned by an <see cref="IFlowHandler"/> after processing an OAuth callback.
-/// Represents one of three outcomes: success (token issued), tenant selection required
-/// (pending-selection state), or error (flow failed).
+/// Represents one of three outcomes: success (tenant-scoped token issued), tenantless (signed in,
+/// no current tenant: tenant selection required or nothing to enter), or error (flow failed).
 /// </summary>
 public sealed record FlowResult
 {
@@ -26,8 +26,15 @@ public sealed record FlowResult
     public string? RedirectUrl { get; init; }
 
     /// <summary>
+    /// When true, the user is signed in but has no current tenant. A tenantless GroundUp token
+    /// was written to the auth cookie by the handler (identity only: no <c>tid</c>, no roles).
+    /// <see cref="Token"/> stays null because the response must not hand out a tenant-scoped token.
+    /// </summary>
+    public bool IsTenantless { get; init; }
+
+    /// <summary>
     /// When true, the user has multiple eligible memberships and must select a tenant.
-    /// No GroundUp token is issued — the Keycloak token is retained as the auth cookie.
+    /// The session is tenantless until <c>POST /auth/set-tenant</c> selects one.
     /// </summary>
     public bool RequiresTenantSelection { get; init; }
 
@@ -62,14 +69,22 @@ public sealed record FlowResult
         new() { IsSuccess = true, Token = token, RedirectUrl = redirectUrl };
 
     /// <summary>
-    /// Creates a pending-selection result. NO GroundUp token is issued — the Keycloak token
-    /// (already validated at callback) is retained as the auth cookie by the handler.
-    /// The principal stays identity-only (no tid) until POST /auth/set-tenant.
+    /// Creates a pending-selection result. The handler has written a tenantless GroundUp token
+    /// to the auth cookie: the session is identity-only (no tid) until POST /auth/set-tenant.
     /// </summary>
     /// <param name="tenants">The list of eligible tenants for selection.</param>
     /// <returns>A tenant-selection-required <see cref="FlowResult"/>.</returns>
     public static FlowResult TenantSelectionRequired(List<TenantListItemDto> tenants) =>
-        new() { IsSuccess = true, RequiresTenantSelection = true, TenantList = tenants };
+        new() { IsSuccess = true, IsTenantless = true, RequiresTenantSelection = true, TenantList = tenants };
+
+    /// <summary>
+    /// Creates a result for a signed-in user who has no tenant to enter (zero memberships and no
+    /// default tenant configured). The handler has written a tenantless GroundUp token to the auth
+    /// cookie. The user can create an organization or be invited into one later.
+    /// </summary>
+    /// <returns>A tenantless <see cref="FlowResult"/> with an empty tenant list.</returns>
+    public static FlowResult NoCurrentTenant() =>
+        new() { IsSuccess = true, IsTenantless = true, TenantList = new List<TenantListItemDto>() };
 
     /// <summary>
     /// Creates an error result indicating the flow failed.

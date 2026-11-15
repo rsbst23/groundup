@@ -22,6 +22,8 @@ namespace GroundUp.Tests.Unit.Auth;
 [Trait("Category", "Property")]
 public sealed class LoginFlowHandlerPropertyTests
 {
+    private const string TenantlessTokenValue = "generated-tenantless-token";
+
     // --- Helpers ---
 
     /// <summary>
@@ -121,6 +123,9 @@ public sealed class LoginFlowHandlerPropertyTests
         tokenService.GenerateTokenAsync(
                 Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
             .Returns("generated-groundup-token");
+        tokenService.GenerateTenantlessTokenAsync(
+                Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
+            .Returns(TenantlessTokenValue);
 
         var authCookieWriter = Substitute.For<IAuthCookieWriter>();
 
@@ -284,9 +289,8 @@ public sealed class LoginFlowHandlerPropertyTests
 
     /// <summary>
     /// Feature: phase-10c-auth-dispatcher, Property 14: Pending-Selection Authentication
-    /// When 2+ standard tenant memberships exist (no host-pin), the handler retains the
-    /// Keycloak access token as the auth cookie (via WriteAuthCookie) and the FlowResult
-    /// has RequiresTenantSelection=true with no Token field set (no GroundUp JWT issued).
+    /// When 2+ standard tenant memberships exist (no host-pin), the FlowResult has
+    /// RequiresTenantSelection=true with no Token field set (no tenant-scoped JWT issued).
     /// The result should have a non-empty TenantList.
     /// **Validates: Requirements 8.9, 8.10**
     /// </summary>
@@ -341,14 +345,13 @@ public sealed class LoginFlowHandlerPropertyTests
     }
 
     /// <summary>
-    /// Feature: phase-10c-auth-dispatcher, Property 14: Pending-Selection Authentication
-    /// The handler writes the Keycloak access token (not a GroundUp JWT) to the auth cookie
-    /// during the pending-selection flow.
-    /// **Validates: Requirements 8.9, 8.10**
+    /// Feature: phase-10c-tenantless-sessions: Pending-Selection Authentication
+    /// The handler writes a tenantless GroundUp token to the auth cookie during the
+    /// pending-selection flow and never stores the Keycloak access token.
     /// </summary>
     [Property(MaxTest = 100, Arbitrary = new[] { typeof(LoginFlowArbitraries) },
-        DisplayName = "Feature: phase-10c-auth-dispatcher, Property 14: Keycloak token retained as cookie")]
-    public Property PendingSelection_KeycloakTokenRetainedAsCookie(TenantMembershipSet input)
+        DisplayName = "Feature: phase-10c-tenantless-sessions: Tenantless token written as cookie, Keycloak token never stored")]
+    public Property PendingSelection_TenantlessTokenWrittenAndKeycloakTokenNeverStored(TenantMembershipSet input)
     {
         var standardTenants = input.Tenants.Where(t => t.RealmName is null).ToList();
         if (standardTenants.Count < 2)
@@ -374,14 +377,15 @@ public sealed class LoginFlowHandlerPropertyTests
         // Act
         var result = handler.HandleCallbackAsync(context).GetAwaiter().GetResult();
 
-        // Assert — verify the Keycloak token was written as the cookie value
+        // Assert — the cookie holds the tenantless GroundUp token, never the Keycloak token
         if (!result.RequiresTenantSelection)
         {
             return result.IsSuccess.ToProperty();
         }
 
-        cookieWriter.Received().WriteAuthCookie(Arg.Any<HttpContext>(), keycloakToken);
-        return true.ToProperty();
+        cookieWriter.Received().WriteAuthCookie(Arg.Any<HttpContext>(), TenantlessTokenValue);
+        cookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), keycloakToken);
+        return (result.IsTenantless && result.Token is null).ToProperty();
     }
 }
 

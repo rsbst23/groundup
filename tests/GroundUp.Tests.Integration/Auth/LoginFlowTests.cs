@@ -220,7 +220,7 @@ public sealed class LoginFlowTests : AuthFlowTestBase
     // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Callback_ZeroMembershipsNoDefaultTenant_Returns403Forbidden()
+    public async Task Callback_ZeroMembershipsNoDefaultTenant_IssuesTenantlessSession()
     {
         // Arrange — seed a user with no memberships and no default tenant configured
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -234,8 +234,16 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         var request = CreateCallbackRequest("auth-code-nomember", flowState.StateToken);
         var response = await Client.SendAsync(request);
 
-        // Assert — 403 access denied (no memberships, no default tenant)
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // Assert — signed in with no current tenant: 200 and a tenantless GroundUp token in the cookie
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var authCookie = ExtractAuthCookie(response);
+        authCookie.Should().NotBeNullOrEmpty("the user is signed in even though there is no tenant to enter");
+
+        var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(authCookie);
+        jwt.Issuer.Should().Be("GroundUp");
+        jwt.Claims.Should().NotContain(c => c.Type == "tid");
+        jwt.Claims.Should().NotContain(c => c.Type == "role");
     }
 
 }

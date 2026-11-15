@@ -35,15 +35,15 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [x] 2.4 Run the **full** unit and integration suites. Fix every newly broken caller by using the existing explicit-tenant or bypass methods, never by weakening the guard. List each fixed caller in the commit message
   - [x] 2.5 Commit
 
-- [ ] 3. Principal classification, `FlowResult` and `LoginFlowHandler`
-  - [ ] 3.1 Add `AuthConstants.ExternalIdpAuthenticationType` (`"ExternalIdP"`) and use it in `JwtAuthenticationMiddleware`; add an `IsExternalIdp(ClaimsPrincipal)` helper
-  - [ ] 3.2 `FlowResult`: add `IsTenantless` and a `NoCurrentTenant()` factory; `TenantSelectionRequired(list)` also sets `IsTenantless`
-  - [ ] 3.3 `LoginFlowHandler`
+- [x] 3. Principal classification, `FlowResult` and `LoginFlowHandler`
+  - [x] 3.1 Add `AuthConstants.ExternalIdpAuthenticationType` (`"ExternalIdP"`) and use it in `JwtAuthenticationMiddleware`; add an `IsExternalIdp(ClaimsPrincipal)` helper
+  - [x] 3.2 `FlowResult`: add `IsTenantless` and a `NoCurrentTenant()` factory; `TenantSelectionRequired(list)` also sets `IsTenantless`
+  - [x] 3.3 `LoginFlowHandler`
     - 2+ standard tenants: issue a tenantless token, write the auth cookie **and** the `IdToken` cookie, return `TenantSelectionRequired(list)`. Stop writing the Keycloak access token
     - 0 memberships and no default tenant configured: issue a tenantless token, write both cookies, return `NoCurrentTenant()`
     - A configured default tenant that does not resolve to an active tenant stays `ACCESS_DENIED` 403. Enterprise-only memberships stay 403
-  - [ ] 3.4 Unit tests for each branch above, including that no Keycloak token is written to the cookie
-  - [ ] 3.5 Build, run auth unit tests, commit
+  - [x] 3.4 Unit tests for each branch above, including that no Keycloak token is written to the cookie
+  - [x] 3.5 Build, run auth unit tests, commit
 
 - [ ] 4. `AuthController` changes
   - [ ] 4.1 `Callback`: for `NoCurrentTenant`, respond `{ requiresTenantSelection: false, tenants: [] }`; picker response unchanged
@@ -71,6 +71,12 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [ ] 6.3 Document the guard's limit: custom services that never use a tenant-aware repository must check `ITenantContext.TenantId` themselves
   - [ ] 6.4 Full build, full unit and integration runs compared against the baseline; list follow-ups
   - [ ] 6.5 Commit and stop for review
+
+## Follow-ups found during this spec (not part of it)
+
+- 41 failing `GroundUp.Tests.Integration.Setup.*` tests. They fail on a clean checkout with `System.InvalidOperationException: Scheme already exists: BootstrapAdminToken` while the test host builds its authentication options. Needs its own investigation.
+- 13 failing unit tests (11 `SetupWizard*`, `KeycloakStartupValidatorPropertyTests.StartAsync_BootstrapIncompletePartialSettings_ThrowsForMissing`, `DefaultScopeChainProviderTests.GetScopeChainAsync_TenantLevelNotFound_ReturnsEmptyList`).
+- 7 failing auth integration tests (listed in the baseline above).
 
 ## Manual re-testing required after implementation
 

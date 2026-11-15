@@ -33,6 +33,7 @@ public sealed class LoginFlowHandlerTests
     private const string TestRedirectUri = "https://app.example.com/auth/callback";
     private const string TestNonce = "expected-nonce-value";
     private const string TestAccessToken = "keycloak-access-token-abc";
+    private const string TestTenantlessToken = "groundup-tenantless-token";
     private const string TestExternalUserId = "keycloak-sub-99999";
     private const string TestEmail = "user@example.com";
     private const string TestDisplayName = "Test User";
@@ -59,6 +60,10 @@ public sealed class LoginFlowHandlerTests
 
         var httpContext = new DefaultHttpContext();
         _httpContextAccessor.HttpContext.Returns(httpContext);
+
+        // Tenantless token issuance succeeds unless a test says otherwise
+        _tokenService.GenerateTenantlessTokenAsync(Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
+            .Returns(TestTenantlessToken);
 
         _sut = new LoginFlowHandler(
             _identityProviderService,
@@ -253,10 +258,10 @@ public sealed class LoginFlowHandlerTests
 
     #endregion
 
-    #region Access Denied (Zero Memberships + No Default Tenant)
+    #region Tenantless Session (Zero Memberships + No Default Tenant)
 
     [Fact]
-    public async Task HandleCallbackAsync_ZeroMembershipsNoDefaultTenant_ReturnsAccessDenied()
+    public async Task HandleCallbackAsync_ZeroMembershipsNoDefaultTenant_IssuesTenantlessSession()
     {
         // Arrange
         var context = CreateCallbackContext();
@@ -270,13 +275,17 @@ public sealed class LoginFlowHandlerTests
         var result = await _sut.HandleCallbackAsync(context);
 
         // Assert
-        result.IsSuccess.Should().BeFalse();
-        result.ErrorCode.Should().Be("ACCESS_DENIED");
-        result.HttpStatus.Should().Be(403);
+        result.IsSuccess.Should().BeTrue();
+        result.IsTenantless.Should().BeTrue();
+        result.RequiresTenantSelection.Should().BeFalse();
+        result.TenantList.Should().BeEmpty();
+        result.Token.Should().BeNull();
+        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
+        _authCookieWriter.Received(1).WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_ZeroMembershipsEmptyDefaultTenantSlug_ReturnsAccessDenied()
+    public async Task HandleCallbackAsync_ZeroMembershipsEmptyDefaultTenantSlug_IssuesTenantlessSession()
     {
         // Arrange
         var context = CreateCallbackContext();
@@ -293,8 +302,79 @@ public sealed class LoginFlowHandlerTests
         var result = await _sut.HandleCallbackAsync(context);
 
         // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.IsTenantless.Should().BeTrue();
+        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroMembershipsNoDefaultTenant_TokenIsTenantlessWithAuthTimeAndNoTenantScopedToken()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupZeroActiveMemberships();
+        SetupNoDefaultTenantSlug();
+        IEnumerable<Claim>? captured = null;
+        _tokenService.GenerateTenantlessTokenAsync(TestUserId, Arg.Do<IEnumerable<Claim>?>(c => captured = c))
+            .Returns(TestTenantlessToken);
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        var authTime = long.Parse(captured!.Single(c => c.Type == "auth_time").Value);
+        authTime.Should().BeInRange(before, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        await _tokenService.DidNotReceive()
+            .GenerateTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroMembershipsNoDefaultTenant_TokenGenerationFails_ReturnsErrorAndWritesNoCookie()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupZeroActiveMemberships();
+        SetupNoDefaultTenantSlug();
+        _tokenService.GenerateTenantlessTokenAsync(Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
+            .Returns((string?)null);
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ZeroMembershipsDefaultTenantConfiguredButNotFound_StaysAccessDenied()
+    {
+        // Arrange — a configured default that does not resolve is a configuration fault, not "no default"
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupZeroActiveMemberships();
+        SetupDefaultTenantSlugSetting("missing-org");
+        _tenantRepository.GetBySlugBypassFilterAsync("missing-org", Arg.Any<CancellationToken>())
+            .Returns(OperationResult<TenantDto>.NotFound("Tenant not found"));
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be("ACCESS_DENIED");
+        result.HttpStatus.Should().Be(403);
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion
@@ -524,10 +604,10 @@ public sealed class LoginFlowHandlerTests
 
     #endregion
 
-    #region Keycloak Token Retained During Pending-Selection
+    #region Tenantless Token During Pending-Selection
 
     [Fact]
-    public async Task HandleCallbackAsync_PendingSelection_WritesKeycloakTokenNotGroundUpToken()
+    public async Task HandleCallbackAsync_PendingSelection_WritesTenantlessGroundUpTokenNotKeycloakToken()
     {
         // Arrange
         var context = CreateCallbackContext();
@@ -538,14 +618,17 @@ public sealed class LoginFlowHandlerTests
         SetupTenantDetailsForMultipleMemberships();
 
         // Act
-        await _sut.HandleCallbackAsync(context);
+        var result = await _sut.HandleCallbackAsync(context);
 
-        // Assert — the Keycloak access token is written as the cookie, NOT a GroundUp token
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestAccessToken);
+        // Assert — the cookie holds a GroundUp tenantless token; the Keycloak access token is never stored
+        result.IsTenantless.Should().BeTrue();
+        result.RequiresTenantSelection.Should().BeTrue();
+        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), TestAccessToken);
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_PendingSelection_DoesNotGenerateGroundUpToken()
+    public async Task HandleCallbackAsync_PendingSelection_WritesIdTokenCookieForLogout()
     {
         // Arrange
         var context = CreateCallbackContext();
@@ -558,9 +641,51 @@ public sealed class LoginFlowHandlerTests
         // Act
         await _sut.HandleCallbackAsync(context);
 
-        // Assert — no GroundUp token should be generated
+        // Assert
+        _authCookieWriter.Received(1).WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_PendingSelection_DoesNotGenerateTenantScopedToken()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupMultipleActiveMemberships();
+        SetupTenantDetailsForMultipleMemberships();
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert — no tenant-scoped token should be generated
         await _tokenService.DidNotReceive()
             .GenerateTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+        await _tokenService.Received(1)
+            .GenerateTenantlessTokenAsync(TestUserId, Arg.Any<IEnumerable<Claim>?>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_PendingSelection_TokenGenerationFails_ReturnsErrorAndWritesNoCookie()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupMultipleActiveMemberships();
+        SetupTenantDetailsForMultipleMemberships();
+        _tokenService.GenerateTenantlessTokenAsync(Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
+            .Returns((string?)null);
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion

@@ -14,8 +14,8 @@ namespace GroundUp.Auth.Services;
 /// <summary>
 /// Handles the <see cref="FlowType.Login"/> callback flow.
 /// Resolves user memberships and routes to the correct scenario:
-/// auto-join (zero memberships + default tenant), access-denied (zero memberships + no default),
-/// auto-select (single membership), tenant-selection picker (2+ memberships),
+/// auto-join (zero memberships + default tenant), tenantless session (zero memberships + no default),
+/// auto-select (single membership), tenantless session with a tenant picker (2+ memberships),
 /// host-pinned login, or enterprise "not yet implemented" stub.
 /// </summary>
 public sealed class LoginFlowHandler : IFlowHandler
@@ -176,7 +176,9 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Handles the zero-active-memberships scenario: auto-join if default tenant configured, else access-denied.
+    /// Handles the zero-active-memberships scenario: auto-join if a default tenant is configured,
+    /// issue a tenantless session if none is configured, access-denied if the configured default
+    /// tenant does not resolve to an active tenant (a configuration fault that should stay visible).
     /// A user who previously left the default tenant still has a deactivated membership row, and a
     /// user has only one row per tenant, so that row is reactivated instead of inserting a new one.
     /// </summary>
@@ -193,12 +195,17 @@ public sealed class LoginFlowHandler : IFlowHandler
         if (!defaultTenantSlugResult.Success
             || string.IsNullOrWhiteSpace(defaultTenantSlugResult.Data))
         {
+            // Nothing to enter. The user is still signed in: a tenantless session lets them
+            // create an organization (or accept an invitation later) instead of hitting a dead end.
+            if (!await TryWriteTenantlessSessionAsync(user.Id, idToken))
+            {
+                return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
+            }
+
             _logger.LogInformation(
-                "Login flow: user {UserId} has zero memberships and no default tenant configured",
+                "Login flow: user {UserId} has zero memberships and no default tenant configured, issued tenantless session",
                 user.Id);
-            return FlowResult.Error("ACCESS_DENIED",
-                "You do not have access to any organization. Please contact an administrator.",
-                httpStatus: 403);
+            return FlowResult.NoCurrentTenant();
         }
 
         // Resolve default tenant by slug
@@ -292,8 +299,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Handles the multi-membership scenario: return tenant selection list,
-    /// retain Keycloak token as auth cookie (no GroundUp token issued).
+    /// Handles the multi-membership scenario: return tenant selection list and
+    /// write a tenantless GroundUp token as the auth cookie.
     /// Enterprise tenants (RealmName ≠ null) are excluded from the picker.
     /// </summary>
     private async Task<FlowResult> HandleMultipleMembershipsAsync(
@@ -344,10 +351,13 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Success(token);
         }
 
-        // 2+ standard tenants: write Keycloak token as auth cookie (no GroundUp token issued).
-        // The JwtAuthenticationMiddleware's IdP-fallback path will authenticate this token
-        // as an identity-only principal (no tid) until POST /auth/set-tenant selects a tenant.
-        WriteCookie(tokenResponse.AccessToken);
+        // 2+ standard tenants: issue a tenantless GroundUp token (identity only, no tid, no roles).
+        // The session stays tenantless until POST /auth/set-tenant selects a tenant. The Keycloak
+        // access token is not kept: it is short-lived and cannot be used to look up the user's roles.
+        if (!await TryWriteTenantlessSessionAsync(user.Id, tokenResponse.IdToken))
+        {
+            return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
+        }
 
         var tenantList = standardTenants
             .Select(t => new TenantListItemDto(t.Id, t.Name, null))
@@ -427,6 +437,28 @@ public sealed class LoginFlowHandler : IFlowHandler
             "Login flow: default role '{RoleName}' configured for auto-join but role lookup by name " +
             "within tenant is not yet available. Role assignment skipped.",
             defaultRoleResult.Data);
+    }
+
+    /// <summary>
+    /// Issues a tenantless token (auth_time = now) and writes it, plus the id_token cookie used for
+    /// logout, to the response. Returns false when the token could not be generated.
+    /// </summary>
+    private async Task<bool> TryWriteTenantlessSessionAsync(Guid userId, string? idToken)
+    {
+        var authTimeClaim = new Claim(
+            "auth_time",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+            ClaimValueTypes.Integer64);
+
+        var token = await _tokenService.GenerateTenantlessTokenAsync(userId, new[] { authTimeClaim });
+        if (token is null)
+        {
+            return false;
+        }
+
+        WriteCookie(token);
+        WriteIdTokenCookie(idToken);
+        return true;
     }
 
     /// <summary>
