@@ -1,351 +1,64 @@
-# Phase 10 — Manual Testing Guide
+# Auth — Manual Testing Guide
 
-This document walks through manually testing the auth system end-to-end. Follow the steps in order — each section builds on the previous.
+A single script for testing the auth system by hand. **Run Parts 2 to 10 in order, once, from a clean start.** Each part says who you are, what state you start in, and what state you leave behind, so the next part can rely on it.
 
-> **Updated for Phase 10C API Alignment.** All auth endpoints now return JSON instead of 302 redirects. The `/auth/register` endpoint has been renamed to `/auth/signup`. Test using Swagger or a REST client (Bruno, Postman, curl) — not a browser address bar.
-
----
-
-## Prerequisites
-
-**Start Docker infrastructure** from PowerShell in `d:\_Rob\github\groundup`:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
-```
-
-**Wait ~15 seconds** for Keycloak to fully start, then verify both are healthy:
-
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.keycloak.yml ps
-```
-
-**Apply database migrations** (first time only, or after pulling new migrations):
-
-```powershell
-dotnet ef database update --project src/GroundUp.Data.Postgres --startup-project samples/GroundUp.Sample --context SampleDbContext
-dotnet ef database update --project src/GroundUp.Auth.Data.Postgres --startup-project samples/GroundUp.Sample --context AuthDbContext
-```
-
-**Run the sample app:** Hit F5 in Kiro. The browser will open and show you the port in the address bar — note it down, you'll use it throughout this guide. It's typically `5000` when launched via IIS Express.
-
-**URLs:**
-- Sample app Swagger: `http://localhost:<port>/swagger/index.html`
-- Keycloak admin: http://localhost:8080 (admin / admin)
+Use Swagger (or Bruno/Postman) against the sample app, not the browser address bar, except where a step says to open a URL in the browser.
 
 ---
 
-## Phase 1: Setup Wizard
+## How to Use This Guide
 
-The setup wizard configures the Keycloak connection settings that the auth flows need. Without completing this, all `/auth/*` endpoints will return errors.
+### The two test users
 
-The `BootstrapAdminToken` is already set in `appsettings.Development.json`:
-```
-my-dev-bootstrap-token-at-least-32-chars-long!!
-```
+| Name | Email | Password | Role in this script |
+|---|---|---|---|
+| **Alice** | `testuser@example.com` | `Test123!` | Founds `My Test Org`, creates `Second Org`. The only TenantAdmin of both. |
+| **Bob** | `member@example.com` | `Test123!` | A regular member (no admin role) who joins through the default tenant, then leaves and rejoins. |
 
-### 1.1 Verify Setup Is Active
+### What state you are in after each part
 
-```
-GET /setup
-```
-Expected: `{ "code": "setup_active", ... }` — confirms setup mode is running.
+| Part | What it tests | You end as | Alice's orgs | Bob's memberships | `default-tenant-slug` |
+|---|---|---|---|---|---|
+| 1 | One-time setup (skip if done) | — | — | — | empty |
+| 2 | Sign up and create an organization | Alice, in My Test Org | My Test Org | — | empty |
+| 3 | Log in (one membership) | Alice, in My Test Org | My Test Org | — | empty |
+| 4 | Second org, tenant picker, select a tenant | Alice, in My Test Org | My Test Org, Second Org | — | empty |
+| 5 | Last TenantAdmin cannot leave | Alice, in My Test Org | unchanged | — | empty |
+| 6 | Default tenant and simple signup | Bob, in My Test Org | unchanged | My Test Org | `my-test-org` |
+| 7 | Leave (regular member) | Bob, **no current tenant** | unchanged | none (left) | `my-test-org` |
+| 8 | Log in again; rejoin through the default tenant | Bob, in My Test Org | unchanged | My Test Org (same row) | `my-test-org` |
+| 9 | Log in with nowhere to go | Bob, **no current tenant** | unchanged | none (left) | empty |
+| 10 | Create an organization from a tenantless session | Bob, in Tenantless Org | unchanged | Tenantless Org | empty |
+| 11, 12 | Optional: token refresh, subdomains | Alice | — | — | — |
 
-### 1.2 One-Time Keycloak Setup
+### Words used
 
-The `groundup` realm is imported from `realm.json` on first Keycloak startup. Two settings need to be verified or fixed manually because they are either not picked up from the import or are version-sensitive.
+- **Scoped / in an org:** your `AuthToken` cookie has a `tid` claim, so tenant-scoped endpoints work.
+- **Tenantless session / no current tenant:** you are signed in, but your token has no `tid` and no roles. It can call `/auth/me`, `/auth/me/tenants`, `/auth/set-tenant`, `/auth/organizations`, `/auth/logout` and `/auth/tenants/{id}/leave`. Tenant data (for example `GET /api/projects`) returns **403** with `TENANT_REQUIRED`.
 
-**Fix the redirect URI (Keycloak 26 port wildcard limitation):**
+### Running requests
 
-Keycloak 26 does not honour the `*` wildcard for ports in redirect URIs. Add the explicit callback URL:
+- Run requests in Swagger **in the same browser** you use for Keycloak. The browser sends your `AuthToken` cookie automatically. Swagger does not show `Set-Cookie`; use DevTools → Application → Cookies to watch it change.
+- With a REST client instead, send the cookie yourself: `Cookie: AuthToken=<value>`.
+- `GET /api/projects` is used throughout as an example of a tenant-scoped endpoint.
 
-1. Go to http://localhost:8080 → log in as `admin` / `admin`
-2. Select the **groundup** realm from the top-left dropdown
-3. Go to **Clients** → **groundup-app** → **Settings** tab
-4. Under **Valid redirect URIs**, click **Add valid redirect URIs** and add:
-   ```
-   http://localhost:5000/auth/callback
-   ```
-5. Save
+### Recipes (used by many parts)
 
-> If your app runs on a different port, add that port's URL instead (or add a few common ones: 5000, 5001, 7295).
+**Recipe 1 — Log in**
+1. `POST /auth/login` in Swagger. Copy `redirectUrl` from the response.
+2. Paste it into the address bar of **the same browser**. If Keycloak still has your session, you are signed in immediately without a form (that is SSO, and correct). Otherwise enter the user's email and password.
+3. Keycloak redirects to `/auth/callback`. The browser shows the JSON result. Each part says what it should be.
 
-**Enable user registration:**
+**Recipe 2 — Log out fully**
+1. `POST /auth/logout`. Copy `logoutUrl` from the response.
+2. Open `logoutUrl` in the same browser. It ends on `http://localhost:<port>/` with a **404 "page can't be found"**. That is normal: the sample app has no page at `/`.
+3. Check: `GET /auth/me` returns **401**, and the next Recipe 1 shows the Keycloak **login form**.
 
-The realm.json import is skipped if the realm already exists from a previous run, so this setting may not have been applied:
+Calling `POST /auth/logout` without opening `logoutUrl` clears only the GroundUp cookie. Keycloak keeps its session, and the next login signs you in without a form. Always do both halves when a part says "log out fully". It also avoids Keycloak's *"You are already authenticated as different user"* error when you register a second person.
 
-1. Still in the **groundup** realm, go to **Realm settings** → **Login** tab
-2. Toggle **User registration** to **On**
-3. Save
+**Recipe 3 — Set or clear the default tenant**
 
-**Create the Keycloak Admin Client:**
-
-You only need to create the confidential admin client once:
-
-1. Go to **Clients** → **Create client**
-   - Client ID: `groundup-admin`
-   - Client authentication: **ON**
-   - Standard flow: **OFF**
-   - Direct access grants: **OFF**
-   - Service account roles: **ON**
-   - Save
-4. Go to the **Credentials** tab → copy the **Client secret**
-5. Go to **Service account roles** tab → **Assign role** → Filter by clients → assign `realm-admin`
-
-### 1.3 Run Setup Wizard Steps
-
-All setup calls require the header: `Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!`
-
-**Step 1: Set App Identity**
-```
-POST /setup/app-identity
-Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
-Content-Type: application/json
-
-{
-  "applicationName": "GroundUp Dev",
-  "defaultDomain": "localhost"
-}
-```
-Expected: 200 OK.
-
-**Step 2: Set Identity Provider**
-```
-POST /setup/identity-provider
-Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
-Content-Type: application/json
-
-{
-  "publicBaseUrl": "http://localhost:8080",
-  "internalBaseUrl": "http://localhost:8080",
-  "sharedRealmName": "groundup",
-  "appClientId": "groundup-app"
-}
-```
-Expected: 200 OK.
-
-**Step 3: Bootstrap Keycloak Admin**
-```
-POST /setup/keycloak-bootstrap
-Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
-Content-Type: application/json
-
-{
-  "adminClientId": "groundup-admin",
-  "adminClientSecret": "<paste the secret from step 1.2>"
-}
-```
-Expected: 200 OK.
-
-**Step 4: Complete Setup**
-```
-POST /setup/complete
-Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!
-```
-Expected: 200 OK.
-
-### 1.4 Verify Setup Completed
-
-Restart the app (stop + F5). If it starts without Keycloak validation errors in the console, settings are configured correctly.
-
----
-
-## Phase 2: New Organization Signup Flow
-
-Tests the "create your own organization" path — a user signs up and a new tenant is created for them.
-
-### 2.1 Initiate Signup
-
-The signup flow sets an `AuthState` CSRF cookie when you call the API. That cookie must be present when Keycloak redirects back to the callback — which means the `redirectUrl` **must be opened in the same browser** that made the API call. Opening it in a different browser (or a browser that didn't make the original request) will cause a `CSRF_STATE_MISMATCH` error.
-
-The simplest way to ensure this: run `POST /auth/signup` from Swagger, then paste the `redirectUrl` into the address bar of **that same browser** (any tab is fine — cookies are shared across tabs within the same browser).
-
-1. **Call the API** to get the Keycloak URL:
-
-```
-POST /auth/signup
-Content-Type: application/json
-
-{
-  "organizationName": "My Test Org"
-}
-```
-Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/auth?..." }`
-
-2. **Copy the `redirectUrl`** and paste it into the address bar of the same browser you ran Swagger in. The URL contains `prompt=create`, so Keycloak opens the **registration form** directly (this needs Keycloak 26.1 or later; the dev compose file pins 26.3).
-
-### 2.2 Register a New Account
-
-On the Keycloak registration form (if you instead land on the login page, see Troubleshooting):
-- Fill in: email `testuser@example.com`, password `Test123!`, first name `Test`, last name `User`
-- Submit
-
-Keycloak will redirect the browser back to `http://localhost:<port>/auth/callback?code=...&state=...`
-
-### 2.3 Interpret the Callback Response
-
-The callback returns JSON instead of redirecting. The browser will show raw JSON:
-
-```json
-{
-  "token": "eyJhbGci...",
-  "redirectUrl": "/"
-}
-```
-
-The callback URL should contain only `code`, `state`, `session_state` and `iss`. If you see a `kc_action_status=error` parameter, you are running an old build that still sends `kc_action=register`; that parameter was harmless but is gone now that signup uses `prompt=create`.
-
-### 2.4 Verify Results
-
-**Check your identity** — use the token as a cookie header:
-```
-GET /auth/me
-Cookie: AuthToken=<paste token here>
-```
-Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [] }`
-
-If you completed the flow via the browser, the `AuthToken` cookie is already set. Check via browser DevTools → Application → Cookies → `AuthToken`.
-
-**Verify the database** — confirm these were created:
-- An `AuthTenants` row with slug `my-test-org`
-- An `AuthUsers` row with `ExternalUserId` matching the Keycloak sub
-- An `AuthUserTenants` membership row
-- An `AuthRoles` row for `TenantAdmin` in that tenant
-- An `AuthUserRoles` assignment for the founder
-
-> To rerun this phase with the same email, use **Resetting a Test User** at the end of this guide.
-
----
-
-## Phase 3: Login Flow
-
-Tests logging in to an existing account (created in Phase 2).
-
-> **If you just completed Phase 2:** You are still logged into Keycloak via SSO. Pasting the login `redirectUrl` into the browser will immediately issue a token without showing the login form — that is correct SSO behavior. To test the full login experience (entering credentials), run `POST /auth/logout` first (Phase 9) to clear both the GroundUp cookie and the Keycloak SSO session, then come back here.
-
-### 3.1 Initiate Login
-
-```
-POST /auth/login
-```
-No body needed. Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/..." }`
-
-Copy the `redirectUrl` and paste into your browser.
-
-### 3.2 Log In
-
-Enter `testuser@example.com` / `Test123!` on the Keycloak login page.
-
-Keycloak redirects back to `/auth/callback`. Since the user from Phase 2 has a single membership, the callback auto-selects that tenant and returns JSON:
-
-```json
-{
-  "token": "eyJhbGci...",
-  "redirectUrl": "/"
-}
-```
-A new `AuthToken` cookie is set. Done.
-
-> The multi-membership tenant picker is tested separately in Phase 4, which first creates a second organization so the picker becomes reachable.
-
-### 3.3 Verify
-
-```
-GET /auth/me
-```
-Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [...] }`
-
-> **Logging in with no organization and no default tenant** can't be tested yet: it needs a user who has left every organization. It is covered in Phase 7.5, after the leave tests.
-
----
-
-## Phase 4: Tenant Selection (Multi-Tenant Users)
-
-Tests the multi-membership tenant picker. The user from Phase 2 only belongs to one org, so this phase first creates a **second** organization for the same user — then logging in returns a tenant picker instead of auto-selecting.
-
-### 4.1 Create a Second Organization
-
-You are already logged in (Phase 3), so create the second org directly with `POST /auth/organizations`. There is no Keycloak round-trip: you become TenantAdmin of the new org, and your session stays on your current org.
-
-> **Why not sign up again?** `POST /auth/signup` is for new people: it sends them to Keycloak's registration form (`prompt=create`) and ties the new identity to the organization. Someone who is already logged in has nothing to register, and an earlier version of the API (which sent `kc_action=register`) failed outright for logged-in users with *"Unexpected error when handling authentication request to identity provider"*. Existing users create organizations with this endpoint instead.
-
-Run these in Swagger, in the same browser you logged in with. The browser sends your `AuthToken` cookie automatically.
-
-1. Create the organization:
-```
-POST /auth/organizations
-Content-Type: application/json
-
-{
-  "organizationName": "Second Org"
-}
-```
-Expected: **201** with `{ "id": "...", "name": "Second Org", "slug": "second-org" }`.
-
-2. Confirm your session did **not** switch, and that you now have two memberships:
-```
-GET /auth/me/tenants
-```
-Expected: two tenants. `My Test Org` has `"current": true`, `Second Org` has `"current": false`. You switch to the new org with `POST /auth/set-tenant` in step 4.3.
-
-**Optional error checks:**
-
-| Request | Expected |
-|---|---|
-| Same request again with the same name | 201, slug `second-org-2` (a third org) |
-| `{ "organizationName": "   " }` | 400 — name is required |
-| A name longer than 200 characters | 400 |
-| After `POST /auth/logout` (not logged in) | 401 |
-
-### 4.2 Log In and Get the Picker
-
-Now log in fresh so the callback evaluates membership count:
-
-1. `POST /auth/login` → copy `redirectUrl` → paste into browser.
-2. Keycloak (still SSO-authenticated) redirects back to the callback.
-3. Because the user now has 2+ standard-tenant memberships, the callback returns the picker instead of a token:
-```json
-{
-  "requiresTenantSelection": true,
-  "tenants": [
-    { "id": "...", "name": "My Test Org", "slug": "my-test-org" },
-    { "id": "...", "name": "Second Org", "slug": "second-org" }
-  ]
-}
-```
-At this point the auth cookie holds a **tenantless** GroundUp token: it proves who you are but has no `tid` and no roles. The token scoped to a tenant is not issued until you select one. While you are on the picker, `GET /auth/me` returns `"tenantId": null`, and any tenant-scoped endpoint (for example `GET /api/projects`) returns `403` with `TENANT_REQUIRED`.
-
-### 4.3 Select a Tenant
-
-In Swagger (same browser — the tenantless token travels in the `AuthToken` cookie):
-```
-POST /auth/set-tenant
-Content-Type: application/json
-
-{
-  "tenantId": "<id from the tenants array>"
-}
-```
-Expected: 200 OK, and the browser's `AuthToken` cookie is replaced with a GroundUp token scoped to the selected tenant (your original sign-in time is kept). Swagger does not show `Set-Cookie`; check DevTools → Application → Cookies if you want to see the value change.
-
-### 4.4 Verify
-
-```
-GET /auth/me
-```
-Should now show the selected `tenantId`.
-
----
-
-## Phase 5: Simple Signup Flow
-
-Tests signing up without creating an organization — the user is auto-joined to the configured default tenant. Requires a default tenant to be set up first.
-
-### 5.1 Configure the Default Tenant
-
-First, ensure a tenant exists (from Phase 2). Then set the `auth.application.default-tenant-slug` setting to that tenant's slug. There is no API for setting values yet, so do it in the database (pgAdmin/DBeaver query tool, `groundup` database).
-
-The seeder only creates the setting *definition* (with an empty default). There is normally no value row yet, so an `UPDATE` alone changes nothing. Check first, then insert or update:
+There is no API for settings yet, so use the database (pgAdmin/DBeaver, `groundup` database). Replace `'my-test-org'` with `''` to clear it.
 
 ```sql
 -- 1. Is there already a system-level value row?
@@ -371,273 +84,391 @@ WHERE d."Id" = v."SettingDefinitionId"
   AND v."ScopeId" IS NULL;
 ```
 
-**Restart the app after changing it.** Setting values are cached in memory for 15 minutes, so a direct database edit is not seen by a running app.
+Then **restart the app** (Shift+F5, then F5). Setting values are cached for 15 minutes, so a running app will not see the change.
 
-> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 7.5's "no tenant to enter" case no longer applies). A user who left that tenant earlier is put back into the **same membership row**, with no roles. Set the value back to `''` and restart to undo.
+---
 
-### 5.2 Initiate Simple Signup
+## Before You Start
+
+1. **Start Docker** from PowerShell in `d:\_Rob\github\groundup`:
+   ```powershell
+   docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
+   docker compose -f docker-compose.yml -f docker-compose.keycloak.yml ps
+   ```
+   Wait about 15 seconds for Keycloak, then check both containers are healthy.
+2. **Apply migrations** (first time, or after pulling new ones):
+   ```powershell
+   dotnet ef database update --project src/GroundUp.Data.Postgres --startup-project samples/GroundUp.Sample --context SampleDbContext
+   dotnet ef database update --project src/GroundUp.Auth.Data.Postgres --startup-project samples/GroundUp.Sample --context AuthDbContext
+   ```
+3. **Rebuild with the current code.** Stop the app (Shift+F5) before building, or the build fails on locked DLLs. Then run it with F5. The browser opens and shows the port in the address bar; note it, you use it throughout (typically `5000`).
+4. **Start from a clean state.** If you have run this guide (or tested signup) before:
+   - Reset both test users with **Resetting a Test User** at the end of this guide (run it for `testuser@example.com` and for `member@example.com`), including deleting them in Keycloak admin.
+   - Make sure `default-tenant-slug` is empty (Recipe 3 with `''`), then restart the app.
+   - Log out fully (Recipe 2) so Keycloak shows forms again.
+
+**URLs**
+- Swagger: `http://localhost:<port>/swagger/index.html`
+- Keycloak admin: http://localhost:8080 (admin / admin)
+
+---
+
+## Part 1: One-Time Setup (Skip If Already Done)
+
+Skip this part if the app starts without Keycloak validation errors in the console. The setup wizard configures the Keycloak connection that every `/auth/*` endpoint needs.
+
+The bootstrap token is already in `appsettings.Development.json`:
+```
+my-dev-bootstrap-token-at-least-32-chars-long!!
+```
+
+### 1.1 Verify setup mode is active
+```
+GET /setup
+```
+Expected: `{ "code": "setup_active", ... }`.
+
+### 1.2 Configure Keycloak (once)
+
+Go to http://localhost:8080 → log in as `admin` / `admin` → select the **groundup** realm (top-left dropdown).
+
+1. **Redirect URI.** Keycloak 26 ignores port wildcards. **Clients → groundup-app → Settings → Valid redirect URIs** → add `http://localhost:5000/auth/callback` (use your port; add a few common ones: 5000, 5001, 7295).
+2. **Post-logout redirect URI** (needed for Recipe 2). Same page → **Valid post logout redirect URIs** → add `http://localhost:5000/` (match your port). Without it the logout URL returns "Invalid redirect uri".
+3. **Save.**
+4. **Enable user registration.** **Realm settings → Login** → toggle **User registration** On. (The `realm.json` import is skipped if the realm already existed, so this may be off.)
+5. **Create the admin client.** **Clients → Create client**: Client ID `groundup-admin`, Client authentication **ON**, Standard flow **OFF**, Direct access grants **OFF**, Service account roles **ON** → Save. On the **Credentials** tab copy the **Client secret**. On **Service account roles** → **Assign role** → filter by clients → assign `realm-admin`.
+
+### 1.3 Run the wizard
+
+Every call needs the header `Authorization: Bearer my-dev-bootstrap-token-at-least-32-chars-long!!`.
+
+```
+POST /setup/app-identity
+{ "applicationName": "GroundUp Dev", "defaultDomain": "localhost" }
+
+POST /setup/identity-provider
+{ "publicBaseUrl": "http://localhost:8080", "internalBaseUrl": "http://localhost:8080",
+  "sharedRealmName": "groundup", "appClientId": "groundup-app" }
+
+POST /setup/keycloak-bootstrap
+{ "adminClientId": "groundup-admin", "adminClientSecret": "<secret from 1.2 step 5>" }
+
+POST /setup/complete
+```
+Each returns **200**.
+
+### 1.4 Verify
+Restart the app. It should start with no Keycloak validation errors in the console.
+
+---
+
+## Part 2: Alice Signs Up and Creates an Organization
+
+**Start:** nobody is logged in; `testuser@example.com` does not exist. **End:** Alice is logged in, scoped to `My Test Org`.
+
+### 2.1 Start the signup
+The flow sets an `AuthState` CSRF cookie, so the `redirectUrl` **must be opened in the same browser** that made the call (any tab). Otherwise the callback fails with `CSRF_STATE_MISMATCH`.
 
 ```
 POST /auth/signup
+Content-Type: application/json
+
+{ "organizationName": "My Test Org" }
 ```
-No body (or send `{}` with no `organizationName`). Expected: `200 { "redirectUrl": "..." }`
+Expected: `200 { "redirectUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/auth?..." }`. The URL contains `prompt=create`, so Keycloak opens the **registration form** directly (needs Keycloak 26.1+; the dev compose file pins 26.3).
 
-### 5.3 Complete the Flow
+### 2.2 Register
+Paste the `redirectUrl` into the same browser. Fill in email `testuser@example.com`, password `Test123!`, first name `Test`, last name `User`, and submit.
 
-Copy the `redirectUrl` into your browser → register a new user → callback returns:
+### 2.3 Check the callback
+The browser shows JSON:
 ```json
-{
-  "token": "eyJhbGci...",
-  "redirectUrl": "/"
-}
+{ "token": "eyJhbGci...", "redirectUrl": "/" }
 ```
-The new user is automatically a member of the default tenant — no organization creation, no slug selection.
+The callback URL should contain only `code`, `state`, `session_state` and `iss`.
+
+### 2.4 Verify
+```
+GET /auth/me
+```
+Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "<My Test Org id>", "roles": ["TenantAdmin"] }`. Note the `tenantId`.
+
+Database: an `AuthTenants` row with slug `my-test-org`; an `AuthUsers` row for Alice; an `AuthUserTenants` row; an `AuthRoles` row `TenantAdmin` for that tenant; an `AuthUserRoles` row linking Alice to it.
 
 ---
 
-## Phase 6: View Your Tenant List
+## Part 3: Alice Logs In (One Membership)
 
-Tests `GET /auth/me/tenants` — the endpoint that returns all tenants a user belongs to.
+**Start:** Alice is logged in. **End:** Alice is logged in again, scoped to `My Test Org`.
 
-### 6.1 Get Your Tenants
-
-```
-GET /auth/me/tenants
-Cookie: AuthToken=<your token>
-```
-
-Expected for a single standard tenant:
-```json
-[
-  {
-    "id": "...",
-    "name": "My Test Org",
-    "slug": "my-test-org",
-    "type": "standard",
-    "switchable": true,
-    "current": true
-  }
-]
-```
-
-The `current: true` flag appears on whichever tenant's ID is in your token's `tid` claim.
-Enterprise tenants (with a `realmName`) appear as `"type": "enterprise", "switchable": false` with a `subdomain` field instead of `current`.
+1. Log out fully (Recipe 2).
+2. Log in as Alice (Recipe 1). You see the Keycloak login form; enter `testuser@example.com` / `Test123!`.
+3. Alice has one membership, so the callback picks it for her:
+   ```json
+   { "token": "eyJhbGci...", "redirectUrl": "/" }
+   ```
+4. `GET /auth/me` → `tenantId` is `My Test Org`, `roles` is `["TenantAdmin"]`.
 
 ---
 
-## Phase 7: Leave a Tenant
+## Part 4: Second Organization, the Tenant Picker, and Selecting a Tenant
 
-Tests `POST /auth/tenants/{id}/leave`.
+**Start:** Alice, scoped to `My Test Org`. **End:** Alice, scoped to `My Test Org`, owning two organizations.
 
-**The rule:** every tenant must always keep at least one active TenantAdmin.
-- A regular member can always leave.
-- A TenantAdmin can leave only if another active TenantAdmin remains in that tenant.
+### 4.1 Create a second organization
+You are logged in, so create it directly. There is no Keycloak round trip; you become its TenantAdmin and your session stays where it is.
 
-**What happens to your session:**
-- Leaving the tenant you are currently working in leaves you **signed in with no current tenant**. You are never moved into another organization automatically, however many you still belong to.
-- Leaving a different tenant changes nothing about your session.
-- Leaving also removes your roles in that tenant, so rejoining later starts with none.
+> Existing users create organizations with this endpoint. `POST /auth/signup` is only for new people: it sends them to Keycloak's registration form, which fails for someone who is already logged in.
 
-The response is `{ "success": true, "currentTenantId": ... }`. `currentTenantId` is `null` when you no longer have a current tenant, otherwise it is the tenant your session is still on.
-
-Run these in Swagger. Each request runs as whoever is logged into the browser, so the steps are ordered to match.
-
-### 7.1 A Regular Member Can Leave
-
-Right after Phase 5 the browser is logged in as the user you signed up there. That user joined `My Test Org` as a **regular member** (no admin role), and it is their only membership.
-
-1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
-2. `POST /auth/tenants/{tenantId}/leave` with that id.
-
-Expected: **200** `{ "success": true, "currentTenantId": null }`. You are **still signed in**: the `AuthToken` cookie now holds a tenantless token, so `GET /auth/me` returns 200 with `"tenantId": null` (before this change the cookie was cleared and `/auth/me` returned 401). In the database, that user's `AuthUserTenants` row for `My Test Org` has `IsActive = false`, and their `AuthUserRoles` rows for that tenant are gone.
-
-Continue with Phase 7.4 while you are in this state.
-
-> If `default-tenant-slug` is still set to `my-test-org` from Phase 5, logging in again puts this user back into `My Test Org` through the same membership row (no roles), instead of leaving them with no tenant. Clear the setting (Phase 5.1) and restart the app to see the no-tenant case at login (Phase 7.5).
-
-> `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked, because the old check refused any leave when a tenant had only one admin.
-
-### 7.2 The Last TenantAdmin Cannot Leave
-
-Now switch back to your Phase 2 user, who created both `My Test Org` and `Second Org` and is the **only** TenantAdmin of each.
-
-1. Log out fully (Phase 9, including opening the `logoutUrl`), then log in as your Phase 2 user (Phase 3). You get the tenant picker; select a tenant with `POST /auth/set-tenant` (Phase 4.3).
-2. `GET /auth/me/tenants` → note the `id` of `Second Org`.
-3. `POST /auth/tenants/{tenantId}/leave` with that id.
-
-Expected: **403** `{ "error": "You are the only TenantAdmin of this organization. Assign another TenantAdmin before leaving.", "errorCode": "LAST_ADMIN" }`. `GET /auth/me/tenants` still lists both orgs.
-
-### 7.3 Paths Covered by Integration Tests
-
-These need extra setup (a second admin, or a regular member of two tenants) that the API can't create yet without editing the database. `LeaveTenantTests` covers them against a real database:
-- One of two admins leaves (allowed), then the remaining admin tries (blocked, because the departed admin no longer counts).
-- Leaving a tenant other than the one your session is on (membership deactivated, no new cookie).
-- Leaving your current tenant while you belong to 0, 1 or 3 other tenants (new `AuthToken` cookie with no `tid`, the other memberships untouched, no automatic move; `GET /auth/me/tenants` on the new session lists the remaining tenants with none marked `current`).
-- Leaving removes the leaver's roles in that tenant only.
-
-### 7.4 After Leaving: The Tenantless Session
-
-Continue as the user from 7.1, still in the browser session right after leaving. Run these in Swagger.
-
-> **Order:** step 4 creates an organization, which gives this user a membership again. If you also want to test login with no organization (7.5), do steps 1 to 3 here, then 7.5, then come back for steps 4 and 5. Logging in again in 7.5 gives you the same tenantless session.
-
-1. `GET /auth/me` → **200**, `"tenantId": null`, `"roles": []`.
-2. `GET /auth/me/tenants` → `[]` (this user has no other organizations).
-3. `GET /api/projects` (any tenant-scoped endpoint) → **403** with `TENANT_REQUIRED`. Nothing is written or read without a tenant.
-4. Create an organization:
 ```
 POST /auth/organizations
 Content-Type: application/json
 
-{ "organizationName": "Tenantless Org" }
+{ "organizationName": "Second Org" }
 ```
-Expected: **201** with `{ "id": "...", "name": "Tenantless Org", "slug": "tenantless-org" }`. The session is **still tenantless**: `GET /auth/me` still shows `"tenantId": null`.
-5. Enter it:
+Expected: **201** `{ "id": "...", "name": "Second Org", "slug": "second-org" }`.
+
+```
+GET /auth/me/tenants
+```
+Expected: two tenants. `My Test Org` has `"current": true`; `Second Org` has `"current": false`. Your session did **not** switch.
+
+Error checks (these create nothing):
+
+| Request | Expected |
+|---|---|
+| `{ "organizationName": "   " }` | 400, name is required |
+| A name longer than 200 characters | 400 |
+
+### 4.2 Log in and get the picker
+Alice now has two memberships, so login gives her a choice. Run Recipe 1 (no need to log out first; Keycloak signs you in silently). The callback returns:
+```json
+{
+  "requiresTenantSelection": true,
+  "tenants": [
+    { "id": "...", "name": "My Test Org", ... },
+    { "id": "...", "name": "Second Org", ... }
+  ]
+}
+```
+There is no `token` field.
+
+### 4.3 Check you are tenantless
+While you are on the picker your cookie holds a **tenantless** token (identity only; the Keycloak token is not stored):
+1. `GET /auth/me` → `"tenantId": null`, `"roles": []`.
+2. `GET /auth/me/tenants` → both orgs, **none** with `"current": true`.
+3. `GET /api/projects` → **403** with `TENANT_REQUIRED`.
+
+### 4.4 Select a tenant
 ```
 POST /auth/set-tenant
 Content-Type: application/json
 
-{ "tenantId": "<id from step 4>" }
+{ "tenantId": "<My Test Org id>" }
 ```
-Expected: **200**. `GET /auth/me` now shows that `tenantId` and `"roles": ["TenantAdmin"]`.
+Expected: **200**. Your `AuthToken` cookie is replaced with a token scoped to `My Test Org`; your original sign-in time is kept.
 
-> A tenantless session lasts as long as any token (`TokenExpirationMinutes`) and is never refreshed. If it expires, sign in again. Keycloak's session is still active, so that is silent.
+1. `GET /auth/me` → `tenantId` is `My Test Org`, `roles` is `["TenantAdmin"]`.
+2. `GET /auth/me/tenants` → `My Test Org` has `"current": true`, `Second Org` has `"current": false`.
+3. `GET /api/projects` → **200** (an empty page is fine).
 
-### 7.5 Log In With No Organization and No Default Tenant
+---
 
-Tests the case where a signed-in user has nowhere to go. It used to return `403 ACCESS_DENIED`; it now signs the user in with **no current tenant** (a tenantless session).
+## Part 5: The Last TenantAdmin Cannot Leave
 
-**Setup:** you need a user with zero active memberships, and `auth.application.default-tenant-slug` must be empty.
-- The user: after 7.1 the Phase 5 user has left their only organization. Run this **before** step 4 of 7.4, which creates an organization and gives that user a membership again. If you already ran step 4, use another user who has left everything.
-- The setting: clear it to `''` using the SQL in Phase 5.1 (use the update form, set the value to `''`), then **restart the app**.
-- Log out fully (Phase 9, including opening the `logoutUrl`).
+**The rule:** every tenant must keep at least one active TenantAdmin. A regular member can always leave; an admin can leave only if another active admin remains.
 
-1. `POST /auth/login` → open the `redirectUrl` in the browser and sign in as that user.
-2. Expected callback response: **200**
+**Start:** Alice, scoped to `My Test Org`. **End:** unchanged.
+
+Alice is the only TenantAdmin of both organizations.
+```
+POST /auth/tenants/<Second Org id>/leave
+```
+Expected: **403** `{ "error": "You are the only TenantAdmin of this organization. Assign another TenantAdmin before leaving.", "errorCode": "LAST_ADMIN" }`.
+
+`GET /auth/me/tenants` still lists both orgs, and your session is unchanged.
+
+---
+
+## Part 6: Default Tenant and Simple Signup (Bob)
+
+Simple signup registers a new person **without** creating an organization. They join the configured default tenant.
+
+**Start:** Alice, scoped to `My Test Org`. **End:** Bob, scoped to `My Test Org` as a regular member.
+
+### 6.1 Set the default tenant
+Recipe 3 with `'my-test-org'`. Restart the app.
+
+### 6.2 Switch to a new person
+Log out fully (Recipe 2). Alice's session must be gone, or Keycloak refuses to register someone else.
+
+### 6.3 Sign up as Bob
+```
+POST /auth/signup
+```
+No body. Expected: `200 { "redirectUrl": "..." }`. Open it in the same browser and register `member@example.com`, password `Test123!`, first name `Bob`, last name `Member`.
+
+The callback returns:
 ```json
-{
-  "requiresTenantSelection": false,
-  "tenants": []
-}
+{ "token": "eyJhbGci...", "redirectUrl": "/" }
 ```
-There is **no** `token` field. The `AuthToken` cookie is still set, and it holds a tenantless token.
-3. `GET /auth/me` → 200 with `"tenantId": null` and `"roles": []`.
-4. `GET /auth/me/tenants` → `[]`.
-5. `GET /api/projects` → **403** with `TENANT_REQUIRED`.
 
-> **Still a 403:** if `default-tenant-slug` is set to a slug that does not exist (or is inactive), login returns `403 ACCESS_DENIED` ("The default organization is not available"). That is a configuration fault, not "no default".
+### 6.4 Verify
+1. `GET /auth/me` → `tenantId` is `My Test Org`, `"roles": []` (Bob is a regular member, not an admin).
+2. `GET /auth/me/tenants` → one tenant, `My Test Org`, `"current": true`. For a standard tenant the entry shows `"type": "standard"` and `"switchable": true`. (Enterprise tenants would show `"type": "enterprise"` and `"switchable": false`; none exist in this script.)
 
 ---
 
-## Phase 8: Token Refresh
+## Part 7: A Regular Member Leaves (Bob)
 
-Token refresh is automatic via middleware. To test it manually:
+**Start:** Bob, scoped to `My Test Org`. **End:** Bob, signed in with **no current tenant**, no memberships.
 
-### 8.1 Shorten the Token Lifetime
+What should happen:
+- Leaving the tenant you are working in leaves you signed in with no current tenant. You are never moved into another organization automatically.
+- Leaving removes your roles in that tenant, so rejoining starts with none.
+- The response is `{ "success": true, "currentTenantId": ... }`, where `currentTenantId` is `null` when you have no current tenant.
 
-In `appsettings.Development.json`, temporarily set:
-```json
-"TokenExpirationMinutes": 2
+### 7.1 Leave
+1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
+2. `POST /auth/tenants/<id>/leave`.
+
+Expected: **200** `{ "success": true, "currentTenantId": null }`. Bob can leave because `My Test Org` still has an active admin (Alice).
+
+### 7.2 Verify the session
+1. `GET /auth/me` → **200**, `"tenantId": null`, `"roles": []`. Bob is still signed in.
+2. `GET /auth/me/tenants` → `[]`.
+3. `GET /api/projects` → **403** `TENANT_REQUIRED`.
+
+### 7.3 Verify the database
+```sql
+SELECT ut."Id", ut."IsActive"
+FROM "AuthUserTenants" ut
+JOIN "AuthUsers" u ON u."Id" = ut."UserId"
+JOIN "AuthTenants" t ON t."Id" = ut."TenantId"
+WHERE lower(u."Email") = 'member@example.com' AND t."Slug" = 'my-test-org';
 ```
-Restart the app.
+Expected: one row, `IsActive = false`. **Note the row `Id`**; Part 8 checks it is reused.
 
-### 8.2 Request After 1+ Minutes
-
+```sql
+SELECT count(*) FROM "AuthUserRoles" ur
+JOIN "AuthUsers" u ON u."Id" = ur."UserId"
+WHERE lower(u."Email") = 'member@example.com';
 ```
-GET /auth/me
-Cookie: AuthToken=<your token>
-```
-Expected: 200 OK **and** a new `AuthToken` cookie in the response headers (check Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
-
-### 8.3 Restore
-
-Set `TokenExpirationMinutes` back to `60`.
+Expected: `0`.
 
 ---
 
-## Phase 9: Logout
+## Part 8: Bob Logs In Again and Rejoins Through the Default Tenant
 
-```
-POST /auth/logout
-Cookie: AuthToken=<your token>
-```
+**Start:** Bob, tenantless, no memberships; default tenant is still `my-test-org`. **End:** Bob, scoped to `My Test Org`.
 
-Expected: 200 OK with `{ "logoutUrl": "http://localhost:8080/realms/groundup/protocol/openid-connect/logout?...&id_token_hint=..." }`, and both the `AuthToken` and `IdToken` cookies cleared (expired in response headers).
-
-**You must also navigate to the `logoutUrl`** to terminate the Keycloak SSO session. Copy the URL from the response and paste it into your browser. This clears the Keycloak session cookie so that the next login flow shows the credential form rather than silently re-authenticating.
-
-Because the logout URL includes `id_token_hint`, Keycloak logs out immediately without showing a confirmation screen, then redirects back to the app root. (Without `id_token_hint`, Keycloak shows a "Do you want to log out?" confirmation — the id_token hint is stored in the `IdToken` cookie at login time specifically to avoid this.)
-
-> **Expected:** After logout you land on `http://localhost:5000/` and see a **404 "This localhost page can't be found"**. This is normal — the API-only sample app has no route mapped to `/`, so the root returns 404. The logout still succeeded. In a real consuming app, `/` would be the frontend landing page. To confirm logout worked, see the verification below.
-
-> **One-time Keycloak setup for logout redirect:** The `post_logout_redirect_uri` must be registered on the `groundup-app` client. In Keycloak admin → groundup realm → Clients → groundup-app → Settings → **Valid post logout redirect URIs**, add `http://localhost:5000/` (match your app's port). Without this, the logout URL returns "Invalid redirect uri".
-
-If you only call `POST /auth/logout` without visiting `logoutUrl`, the GroundUp cookie is cleared but Keycloak still has an active SSO session — the next `POST /auth/login` will immediately return a token without prompting for credentials.
-
-Verify full logout — both halves should be cleared:
-
-1. **GroundUp session cleared:**
+1. Log out fully (Recipe 2).
+2. Log in as Bob (Recipe 1; enter `member@example.com` / `Test123!`).
+3. Bob has no memberships but a default tenant is set, so he is put back in `My Test Org`. The callback returns:
+   ```json
+   { "token": "eyJhbGci...", "redirectUrl": "/" }
    ```
-   GET /auth/me
+4. `GET /auth/me` → `tenantId` is `My Test Org`, `"roles": []`.
+5. Run the first query from 7.3 again. Expected: **the same single row** (same `Id` as in Part 7), now `IsActive = true`. A user has one membership row per tenant; rejoining reactivates it instead of adding a second one.
+
+---
+
+## Part 9: Logging In With Nowhere to Go (Bob)
+
+Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user is signed in with no current tenant.
+
+**Start:** Bob, scoped to `My Test Org`. **End:** Bob, signed in with no current tenant, no memberships; default tenant empty.
+
+1. `POST /auth/tenants/<My Test Org id>/leave` → **200** `{ "success": true, "currentTenantId": null }`.
+2. Clear the default tenant: Recipe 3 with `''`. Restart the app.
+3. Log out fully (Recipe 2).
+4. Log in as Bob (Recipe 1).
+5. The callback returns **200**:
+   ```json
+   { "requiresTenantSelection": false, "tenants": [] }
    ```
-   Expected: 401 Unauthorized.
+   There is **no** `token` field, but the `AuthToken` cookie is set and holds a tenantless token.
+6. Verify:
+   - `GET /auth/me` → `"tenantId": null`, `"roles": []`.
+   - `GET /auth/me/tenants` → `[]`.
+   - `GET /api/projects` → **403** `TENANT_REQUIRED`.
 
-2. **Keycloak SSO session cleared:** Run `POST /auth/login`, copy the `redirectUrl`, and paste it into the browser. Keycloak should now show the **login form** (prompting for credentials) instead of silently issuing a token. If it prompts for credentials, the SSO session was successfully terminated.
-
----
-
-## Phase 10: Host-Based Tenant Resolution
-
-This tests subdomain-pinning — when a user accesses the app via `myorg.localhost`, the system automatically scopes them to that tenant's context.
-
-### 10.1 Add Hosts File Entry
-
-Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
-```
-127.0.0.1  my-test-org.localhost
-```
-
-### 10.2 Initiate Login via Subdomain
-
-```
-POST http://my-test-org.localhost:<port>/auth/login
-```
-Expected: `redirectUrl` returned. Copy and open in browser.
-
-### 10.3 Complete Login
-
-Log in with your credentials. On callback:
-- If you're a **member** of `my-test-org`: token auto-scoped to that tenant (no picker, even if you have multiple memberships)
-- If you're **not a member**: 403 Forbidden
+> If `default-tenant-slug` names a tenant that does not exist (or is inactive), login returns `403 ACCESS_DENIED` instead. That is a configuration fault, not "no default". It is covered by an automated test.
 
 ---
 
-## Phase 11: Host/Token Reconciliation
+## Part 10: Creating an Organization From a Tenantless Session (Bob)
 
-Tests what happens when your token's `tid` doesn't match the subdomain you're accessing.
+**Start:** Bob, no current tenant, no memberships. **End:** Bob, scoped to `Tenantless Org` as its TenantAdmin.
 
-### 11.1 Log In to Tenant A Normally
+1. Create it:
+   ```
+   POST /auth/organizations
+   Content-Type: application/json
 
-Complete Phase 10 for `my-test-org` — you have a token scoped to that tenant.
+   { "organizationName": "Tenantless Org" }
+   ```
+   Expected: **201** `{ "id": "...", "name": "Tenantless Org", "slug": "tenantless-org" }`.
+2. Creating an organization does not change your session: `GET /auth/me` still shows `"tenantId": null`, and `GET /api/projects` is still **403**.
+3. Enter it:
+   ```
+   POST /auth/set-tenant
+   Content-Type: application/json
 
-### 11.2 Access Tenant B's Subdomain With Tenant A's Token
+   { "tenantId": "<id from step 1>" }
+   ```
+   Expected: **200**.
+4. `GET /auth/me` → `tenantId` is `Tenantless Org`, `"roles": ["TenantAdmin"]`. `GET /api/projects` → **200**.
 
-Add `another-org.localhost` to hosts. Make a data request:
-```
-GET http://another-org.localhost:<port>/api/projects
-Cookie: AuthToken=<tenant-A token>
-```
-Expected: `409 { "error": "TENANT_SWITCH_REQUIRED" }` (if you're a member of `another-org`) or `403` (if not).
+> A tenantless session lasts as long as any token (`TokenExpirationMinutes`) and is never refreshed. If it expires, sign in again; Keycloak's session is still active, so that is silent.
 
-### 11.3 Resolve the Mismatch
+---
 
-```
-POST /auth/set-tenant
-Cookie: AuthToken=<tenant-A token>
+## Part 11 (Optional): Token Refresh
 
-{ "tenantId": "<tenant-B id>" }
-```
-Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
+Not changed by the tenantless-session work. Run it as Alice: log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4).
+
+1. In `appsettings.Development.json`, temporarily set `"TokenExpirationMinutes": 2` (under `GroundUp:Auth`). Restart the app and sign in again.
+2. After 1+ minutes, `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
+3. Restore `TokenExpirationMinutes` to `60` and restart.
+
+---
+
+## Part 12 (Optional): Subdomains
+
+Not changed by the tenantless-session work, and not re-run while this guide was rewritten. It pins a user to a tenant by host name. Run it as Alice, scoped to `My Test Org` (as in Part 11).
+
+1. Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
+   ```
+   127.0.0.1  my-test-org.localhost
+   127.0.0.1  second-org.localhost
+   ```
+2. **Host-pinned login.** `POST http://my-test-org.localhost:<port>/auth/login`, open the `redirectUrl`, and sign in. As a **member** of `my-test-org` you get a token scoped to it with no picker, even though you belong to two orgs. A non-member would get **403**.
+3. **Mismatch.** With that `My Test Org` token, request the other subdomain:
+   ```
+   GET http://second-org.localhost:<port>/api/projects
+   ```
+   Expected: **409** `TENANT_SWITCH_REQUIRED` (you are a member of `second-org`; a non-member would get 403).
+4. **Resolve it** without logging in again:
+   ```
+   POST /auth/set-tenant
+   { "tenantId": "<Second Org id>" }
+   ```
+   Expected: **200**, a token scoped to `Second Org`.
+
+---
+
+## What Automated Tests Cover (Not Repeated Here)
+
+These need extra setup (several organizations, a second admin) or conditions that are awkward to create by hand. They run against a real database:
+
+- Leaving your current tenant while you belong to 0, 1 or 3 other tenants: the session becomes tenantless, the other memberships stay, and nothing moves you automatically.
+- Leaving a tenant other than the one your session is on: no cookie change.
+- One of two admins leaves (allowed), then the remaining admin cannot (the departed admin no longer counts).
+- Leaving removes roles in that tenant only.
+- `set-tenant` returns 401 once the original sign-in is older than `AbsoluteSessionLifetimeMinutes`.
+- A configured default tenant that does not exist returns 403 at login.
+- A Keycloak access token sent as a Bearer header is treated as an identity-provider principal, not a GroundUp user.
 
 ---
 
@@ -645,39 +476,41 @@ Expected: 200 OK, new token scoped to tenant B — no re-authentication needed.
 
 | Problem | Solution |
 |---|---|
-| `relation "SettingDefinitions" does not exist` | Run the EF migrations (see Prerequisites) |
-| App starts with Keycloak validation errors | Run the setup wizard (Phase 1) |
+| `relation "SettingDefinitions" does not exist` | Run the EF migrations (Before You Start) |
+| App starts with Keycloak validation errors | Run the setup wizard (Part 1) |
 | `POST /auth/login` returns 500 | Check that Keycloak is running: `docker compose ps` |
 | `POST /auth/signup` returns 500 | Same as above; also check setup was completed |
-| `redirectUrl` from `/auth/login` or `/auth/signup` gives "Invalid redirect_uri" in Keycloak | Keycloak 26 does not honour port wildcards. Add the explicit URL (e.g. `http://localhost:5000/auth/callback`) to the `groundup-app` client's Valid redirect URIs in Keycloak admin → Clients → groundup-app → Settings |
-| Callback returns `CSRF_STATE_MISMATCH` | You opened the `redirectUrl` in a different browser than the one that called the API. The `AuthState` cookie was set in browser A but the callback came back in browser B. Use the same browser for both steps |
-| No Register link on Keycloak login page | User registration is disabled. Go to Keycloak admin → groundup realm → Realm settings → Login → toggle User registration On |
-| Registering shows *"You are already authenticated as different user '...' in this session. Please sign out first."* | Keycloak still has an authentication session for another user in this browser (seen once in Chrome after a signup-while-logged-in check; not reproduced). Redo the whole attempt in a private/incognito window: call `POST /auth/signup` and open its `redirectUrl` in that same window. Also delete the half-created user in Keycloak admin → groundup realm → Users, because the failed registration still created it |
-| `POST /auth/signup` opens the login page instead of the registration form | Either the running Keycloak is older than 26.1 (check `docker compose ps`; the dev file pins 26.3; recreate with `docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d`), or the app is an old build that still sends `kc_action=register`. Check the `redirectUrl`: it should contain `prompt=create` |
-| Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 min). Start over from the initiate step |
-| Callback returns 410 Gone | You already consumed this auth flow. Start over |
-| Cookie not being set in browser | Check `CookieSecure: false` in `appsettings.Development.json` (http doesn't get Secure cookies) |
-| A tenant-scoped endpoint (for example `GET /api/projects`) returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Phase 7.4) |
-| `/auth/me` returns 401 after successful callback | The browser didn't store the cookie. The callback sets `Set-Cookie` on the response — make sure you're sending the request through a browser or a cookie-aware client, not a plain REST client |
+| `redirectUrl` gives "Invalid redirect_uri" in Keycloak | Keycloak 26 ignores port wildcards. Add the explicit URL (for example `http://localhost:5000/auth/callback`) to the `groundup-app` client's Valid redirect URIs (Part 1.2) |
+| Logout URL gives "Invalid redirect uri" | Add `http://localhost:<port>/` to **Valid post logout redirect URIs** on the `groundup-app` client (Part 1.2) |
+| Callback returns `CSRF_STATE_MISMATCH` | You opened the `redirectUrl` in a different browser than the one that called the API. Use the same browser for both steps |
+| No Register link on the Keycloak login page | User registration is off: Keycloak admin → groundup realm → Realm settings → Login → User registration On |
+| Registering shows *"You are already authenticated as different user '...'. Please sign out first."* | Keycloak still has another user's session in this browser. Log out fully (Recipe 2), or retry in a private window using the same window for the API call and the `redirectUrl`. Delete the half-created user in Keycloak admin → groundup realm → Users, because the failed registration still created it |
+| `POST /auth/signup` opens the login page instead of the registration form | The running Keycloak is older than 26.1 (the dev file pins 26.3; recreate with `docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d`), or the app is an old build that still sends `kc_action=register`. The `redirectUrl` should contain `prompt=create` |
+| Callback returns 400 "Missing code or state parameter" | The state cookie expired (10 minutes). Start over from the initiate step |
+| Callback returns 410 Gone | You already used this auth flow. Start over |
+| Login signs you in without asking for a password | Keycloak still has your session (SSO). Normal. Log out fully (Recipe 2) to see the form |
+| Cookie not set in the browser | Check `CookieSecure: false` in `appsettings.Development.json` (plain http does not get Secure cookies) |
+| `/auth/me` returns 401 after a successful callback | The browser did not store the cookie. Use a browser or a cookie-aware client |
+| A tenant-scoped endpoint such as `GET /api/projects` returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Part 10) |
+| After clearing `default-tenant-slug`, login still puts the user in My Test Org | The app caches settings for 15 minutes. Restart it |
+| Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
 
 ---
 
 ## Resetting Everything
 
-To wipe all data and start completely fresh (re-runs migrations and setup wizard):
+Wipes all data and starts fresh (re-run migrations and the full setup wizard afterwards):
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml down -v
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 ```
 
-Then re-run migrations and the full setup wizard.
-
 ---
 
 ## Resetting a Test User
 
-Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
+Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Run it once for each test user (`testuser@example.com`, `member@example.com`). Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
 
 **1. Preview** (pgAdmin/DBeaver query tool, `groundup` database). Change the email on the first line:
 ```sql
@@ -690,7 +523,7 @@ SELECT t."Id", t."Name", t."Slug",
 FROM "AuthTenants" t
 WHERE t."Id" IN (SELECT ut."TenantId" FROM "AuthUserTenants" ut WHERE ut."UserId" IN (SELECT "Id" FROM target_user));
 ```
-Rows with `other_members = 0` will be deleted. Rows with `other_members > 0` will be kept.
+Rows with `other_members = 0` will be deleted. Rows with `other_members > 0` will be kept. When resetting Alice, `My Test Org` has Bob as another member until Bob is reset first; **reset Bob first, then Alice**.
 
 **2. Delete.** Run as one script; it is a single transaction, so any error leaves the database unchanged. Use the same email:
 ```sql
@@ -731,9 +564,9 @@ COMMIT;
 
 **3. Delete the Keycloak user too**, or Keycloak's registration form will reject the email as already taken. Keycloak admin → **groundup** realm (not master) → **Users** → search the email → **Delete**.
 
-**4. Log out** (Phase 9, including opening the `logoutUrl`) so Keycloak shows the form again, then restart the app. Setting values and permissions are cached in memory, so a running app may still remember the deleted data for up to 15 minutes.
+**4. Log out fully** (Recipe 2) so Keycloak shows the forms again, then restart the app. Setting values and permissions are cached in memory, so a running app may remember deleted data for up to 15 minutes.
 
-If `default-tenant-slug` (Phase 5) points at an org this deletes, reset that setting to `''`.
+If `default-tenant-slug` points at an organization this deletes, clear it (Recipe 3 with `''`).
 
 ---
 
@@ -741,7 +574,8 @@ If `default-tenant-slug` (Phase 5) points at an org this deletes, reset that set
 
 These flows are planned for future phases and are not implemented yet:
 
-- **Enterprise SSO / custom realms** (Phase 10D) — `501 Not Implemented` is returned if triggered
+- **Enterprise SSO / custom realms** (Phase 10D): `501 Not Implemented` is returned if triggered
 - **Invitation flow** (Phase 10E)
 - **Join links** (Phase 10F)
 - **Admin management UI** (Phase 10G)
+- **Revoking an old token after leaving** (`phase-10c-token-revocation`): a copy of a tenant-scoped token you held before leaving keeps working until it expires

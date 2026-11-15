@@ -65,6 +65,8 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [x] 5.5 Login with zero memberships and no default tenant returns a tenantless session (in `LoginFlowTests`)
   - [x] 5.6 Run the full auth integration suite; only the 7 known failures remain; commit
 
+> **Note:** `MANUAL_TESTING.md` was later reorganized into one linear script with numbered **Parts** (it previously used "Phases", which clashed with the project's phase numbers). Old "Phase 3 / 4 / 7" references in the specs map to: login → Part 3, tenant picker → Part 4, last admin → Part 5, simple signup → Part 6, leave → Parts 7 to 10.
+
 - [x] 6. Documentation and final checkpoint
   - [x] 6.1 `MANUAL_TESTING.md`: Phase 3 (login with no memberships and no default tenant), Phase 7 (leave current vs other tenant, no automatic switch, new response shape), and a new tenantless-session section
   - [x] 6.2 Update `auth-flows-design.md` for the tenantless state and the new leave behavior
