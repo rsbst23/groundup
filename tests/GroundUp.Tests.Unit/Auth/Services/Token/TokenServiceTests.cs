@@ -540,6 +540,121 @@ public sealed class TokenServiceTests
         Assert.Null(principal);
     }
 
+    // --- iat (the revocation spec compares against it) ---
+
+    [Fact]
+    public async Task GenerateTokenAsync_ValidUser_TokenCarriesIatClaim()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles();
+        SetupSystemRoles();
+
+        // Act
+        var token = await _sut.GenerateTokenAsync(_userId, _tenantId);
+
+        // Assert
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        var iat = long.Parse(jwt.Claims.First(c => c.Type == "iat").Value, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.InRange(iat, DateTimeOffset.UtcNow.AddSeconds(-30).ToUnixTimeSeconds(), DateTimeOffset.UtcNow.AddSeconds(30).ToUnixTimeSeconds());
+    }
+
+    // --- GenerateTenantlessTokenAsync tests ---
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_ValidUser_ContainsIdentityClaimsAndAdditionalClaims()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+
+        // Act
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId, [new Claim("auth_time", "12345")]);
+
+        // Assert
+        Assert.NotNull(token);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        Assert.Equal(_userId.ToString(), jwt.Claims.First(c => c.Type == "sub").Value);
+        Assert.Equal("user@test.com", jwt.Claims.First(c => c.Type == "email").Value);
+        Assert.Equal("Test User", jwt.Claims.First(c => c.Type == "name").Value);
+        Assert.Equal("12345", jwt.Claims.First(c => c.Type == "auth_time").Value);
+        Assert.Contains(jwt.Claims, c => c.Type == "iat");
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_UserWithTenantAndSystemRoles_HasNoTidAndNoRoleClaims()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles(("Editor", Guid.NewGuid()));
+        SetupSystemRoles(("SystemAdmin", Guid.NewGuid()));
+
+        // Act
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Assert
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        Assert.DoesNotContain(jwt.Claims, c => c.Type == "tid");
+        Assert.DoesNotContain(jwt.Claims, c => c.Type == "role");
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_ValidUser_UsesSystemSigningKey()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+
+        // Act
+        await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Assert
+        await _signingKeyProvider.Received(1).GetSigningKeyAsync(Guid.Empty);
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_ValidUser_TokenValidatesAndHasNoTenant()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Act
+        var principal = await _sut.ValidateTokenAsync(token!);
+
+        // Assert
+        Assert.NotNull(principal);
+        Assert.Equal(_userId.ToString(), principal.FindFirst("sub")?.Value);
+        Assert.Null(principal.FindFirst("tid"));
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_UserNotFound_ReturnsNull()
+    {
+        // Arrange
+        _userRepository.GetByIdAsync(_userId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.NotFound("User not found"));
+
+        // Act
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Assert
+        Assert.Null(token);
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_InactiveUser_ReturnsNull()
+    {
+        // Arrange
+        var user = new UserDto(_userId, "ext-" + _userId, "user@test.com", "Test User", false);
+        _userRepository.GetByIdAsync(_userId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.Ok(user));
+
+        // Act
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Assert
+        Assert.Null(token);
+    }
+
     // --- Helper methods ---
 
     private void SetupUser(Guid userId, string email, string displayName)

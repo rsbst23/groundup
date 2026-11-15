@@ -27,8 +27,22 @@ public interface IAuthSessionService
     /// <returns>
     /// A successful result containing the tenant selection response,
     /// or a forbidden result if the user does not belong to the specified tenant.
+    /// Returns unauthorized when <paramref name="originalAuthTime"/> is older than the absolute session lifetime,
+    /// so tenant selection cannot extend a session past its cap.
     /// </returns>
     Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null);
+
+    /// <summary>
+    /// Issues a tenantless token for a signed-in user: identity only, no current tenant.
+    /// Used after sign-in when the user has not chosen a tenant yet, and after the user leaves
+    /// the tenant their session was scoped to.
+    /// </summary>
+    /// <param name="userId">The authenticated user's identifier.</param>
+    /// <param name="originalAuthTime">
+    /// The original authentication time to preserve. When null, auth_time is set to the current UTC time.
+    /// </param>
+    /// <returns>The token, or not-found if the user does not exist or is inactive.</returns>
+    Task<OperationResult<string>> IssueTenantlessSessionAsync(Guid userId, DateTimeOffset? originalAuthTime = null);
 
     /// <summary>
     /// Refreshes the token for the specified user and tenant with fresh roles.

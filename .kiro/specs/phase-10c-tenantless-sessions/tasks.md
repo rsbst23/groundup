@@ -12,21 +12,21 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
 
 ## Tasks
 
-- [ ] 1. Tenantless token and session-service issuance
-  - [ ] 1.1 Add `ITokenService.GenerateTenantlessTokenAsync(Guid userId, IEnumerable<Claim>? additionalClaims = null)` and implement it in `TokenService`
+- [x] 1. Tenantless token and session-service issuance
+  - [x] 1.1 Add `ITokenService.GenerateTenantlessTokenAsync(Guid userId, IEnumerable<Claim>? additionalClaims = null)` and implement it in `TokenService`
     - Claims: `sub`, `email`, `name`, plus additional claims. No `tid`, no `role` (not even system roles)
     - Signing key from `GetSigningKeyAsync(Guid.Empty)`; document on `ISigningKeyProvider` that `Guid.Empty` means the system key
     - Returns null for an unknown or inactive user
-  - [ ] 1.2 Add `IAuthSessionService.IssueTenantlessSessionAsync(Guid userId, DateTimeOffset? originalAuthTime)` returning `OperationResult<string>`; `auth_time` = original or now
-  - [ ] 1.3 Add `AuthSessionService.SetTenantAsync` absolute-lifetime check: when `originalAuthTime` is supplied and `now - originalAuthTime >= AbsoluteSessionLifetimeMinutes`, return `Unauthorized`
-  - [ ] 1.4 Unit tests
+  - [x] 1.2 Add `IAuthSessionService.IssueTenantlessSessionAsync(Guid userId, DateTimeOffset? originalAuthTime)` returning `OperationResult<string>`; `auth_time` = original or now
+  - [x] 1.3 Add `AuthSessionService.SetTenantAsync` absolute-lifetime check: when `originalAuthTime` is supplied and `now - originalAuthTime >= AbsoluteSessionLifetimeMinutes`, return `Unauthorized`
+  - [x] 1.4 Unit tests
     - Tenantless token has `sub`/`email`/`name`/`auth_time`/`iat`, no `tid`, no `role`
     - Tenantless token validates through `ValidateTokenAsync`
     - Unknown and inactive users return null
     - `IssueTenantlessSessionAsync` preserves a supplied `auth_time` and sets now when none is supplied
     - `SetTenantAsync` rejects a session past the absolute lifetime and accepts one just inside it
     - Generated tenant-scoped tokens carry `iat` (guards the revocation spec's assumption)
-  - [ ] 1.5 Build, run auth unit tests, commit
+  - [x] 1.5 Build, run auth unit tests, commit
 
 - [ ] 2. Reject tenantless callers at the tenant repository
   - [ ] 2.1 Add `ErrorCodes.TenantRequired` and a resource string for its message

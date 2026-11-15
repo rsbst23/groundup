@@ -14,7 +14,10 @@ public interface ISigningKeyProvider
     /// Resolves the signing key for a specific tenant.
     /// Falls back to the application-wide default key if no tenant-specific key is configured.
     /// </summary>
-    /// <param name="tenantId">The tenant identifier to resolve the signing key for.</param>
+    /// <param name="tenantId">
+    /// The tenant identifier to resolve the signing key for. <see cref="Guid.Empty"/> means the
+    /// system key, used for tokens that are not scoped to a tenant (tenantless sessions).
+    /// </param>
     /// <returns>The signing key information including key material, key ID, and algorithm.</returns>
     Task<SigningKeyInfo> GetSigningKeyAsync(Guid tenantId);
 

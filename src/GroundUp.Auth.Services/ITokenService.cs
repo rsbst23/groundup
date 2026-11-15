@@ -21,6 +21,17 @@ public interface ITokenService
     Task<string?> GenerateTokenAsync(Guid userId, Guid tenantId, IEnumerable<Claim>? additionalClaims = null);
 
     /// <summary>
+    /// Generates a signed JWT for a signed-in user who has no current tenant (a tenantless session).
+    /// The token carries identity claims only (sub, email, name) plus any additional claims provided.
+    /// It has no <c>tid</c> claim and no role claims, not even system roles: a tenantless session
+    /// grants nothing beyond identity and the ability to choose or create a tenant.
+    /// </summary>
+    /// <param name="userId">The user identifier (becomes the <c>sub</c> claim).</param>
+    /// <param name="additionalClaims">Optional additional claims to include in the token (for example <c>auth_time</c>).</param>
+    /// <returns>The signed JWT string, or null if the user does not exist or is inactive.</returns>
+    Task<string?> GenerateTenantlessTokenAsync(Guid userId, IEnumerable<Claim>? additionalClaims = null);
+
+    /// <summary>
     /// Validates a JWT and returns the authenticated ClaimsPrincipal.
     /// Verifies signature, issuer, audience, and expiration.
     /// Never throws exceptions — all failure cases return null.
