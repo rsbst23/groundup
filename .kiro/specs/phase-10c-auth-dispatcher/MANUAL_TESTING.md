@@ -208,11 +208,13 @@ Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "..."
 If you completed the flow via the browser, the `AuthToken` cookie is already set. Check via browser DevTools → Application → Cookies → `AuthToken`.
 
 **Verify the database** — confirm these were created:
-- A `Tenants` row with slug `my-test-org`
-- A `Users` row with `ExternalUserId` matching the Keycloak sub
-- A `UserTenants` membership row
-- A `Roles` row for `TenantAdmin` in that tenant
-- A `UserRoles` assignment for the founder
+- An `AuthTenants` row with slug `my-test-org`
+- An `AuthUsers` row with `ExternalUserId` matching the Keycloak sub
+- An `AuthUserTenants` membership row
+- An `AuthRoles` row for `TenantAdmin` in that tenant
+- An `AuthUserRoles` assignment for the founder
+
+> To rerun this phase with the same email, use **Resetting a Test User** at the end of this guide.
 
 ---
 
@@ -439,7 +441,7 @@ Right after Phase 5 the browser is logged in as the user you signed up there. Th
 1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
 2. `POST /auth/tenants/{tenantId}/leave` with that id.
 
-Expected: **200** `{ "noTenants": true }`, and the `AuthToken` cookie is cleared, so `GET /auth/me` now returns 401. In the database, that user's `UserTenants` row for `My Test Org` has `IsActive = false`.
+Expected: **200** `{ "noTenants": true }`, and the `AuthToken` cookie is cleared, so `GET /auth/me` now returns 401. In the database, that user's `AuthUserTenants` row for `My Test Org` has `IsActive = false`.
 
 > `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked, because the old check refused any leave when a tenant had only one admin.
 
@@ -602,6 +604,68 @@ docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 ```
 
 Then re-run migrations and the full setup wizard.
+
+---
+
+## Resetting a Test User
+
+Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
+
+**1. Preview** (pgAdmin/DBeaver query tool, `groundup` database). Change the email on the first line:
+```sql
+WITH target_user AS (
+  SELECT "Id" FROM "AuthUsers" WHERE lower("Email") = lower('you@example.com')
+)
+SELECT t."Id", t."Name", t."Slug",
+       (SELECT count(*) FROM "AuthUserTenants" o
+         WHERE o."TenantId" = t."Id" AND o."UserId" NOT IN (SELECT "Id" FROM target_user)) AS other_members
+FROM "AuthTenants" t
+WHERE t."Id" IN (SELECT ut."TenantId" FROM "AuthUserTenants" ut WHERE ut."UserId" IN (SELECT "Id" FROM target_user));
+```
+Rows with `other_members = 0` will be deleted. Rows with `other_members > 0` will be kept.
+
+**2. Delete.** Run as one script; it is a single transaction, so any error leaves the database unchanged. Use the same email:
+```sql
+BEGIN;
+
+CREATE TEMP TABLE reset_user ON COMMIT DROP AS
+  SELECT "Id" FROM "AuthUsers" WHERE lower("Email") = lower('you@example.com');
+
+CREATE TEMP TABLE reset_tenants ON COMMIT DROP AS
+  SELECT DISTINCT ut."TenantId" AS "Id"
+  FROM "AuthUserTenants" ut
+  JOIN "AuthTenants" t ON t."Id" = ut."TenantId"
+  WHERE ut."UserId" IN (SELECT "Id" FROM reset_user)
+    AND t."Slug" <> 'system'
+    AND NOT EXISTS (SELECT 1 FROM "AuthUserTenants" o
+                    WHERE o."TenantId" = ut."TenantId"
+                      AND o."UserId" NOT IN (SELECT "Id" FROM reset_user));
+
+-- Role assignments and memberships: the user's everywhere, plus anything in the tenants being deleted
+DELETE FROM "AuthUserRoles"
+ WHERE "UserId" IN (SELECT "Id" FROM reset_user) OR "TenantId" IN (SELECT "Id" FROM reset_tenants);
+DELETE FROM "AuthUserTenants"
+ WHERE "UserId" IN (SELECT "Id" FROM reset_user) OR "TenantId" IN (SELECT "Id" FROM reset_tenants);
+
+-- Tenant-owned rows (role-policy and policy-permission links cascade)
+DELETE FROM "AuthRoles"    WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
+DELETE FROM "AuthPolicies" WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
+
+-- No foreign keys on these; clean up so nothing points at deleted tenants
+DELETE FROM "AuthFlowStates" WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
+DELETE FROM "SettingValues"  WHERE "ScopeId"  IN (SELECT "Id" FROM reset_tenants);
+
+DELETE FROM "AuthTenants" WHERE "Id" IN (SELECT "Id" FROM reset_tenants);
+DELETE FROM "AuthUsers"   WHERE "Id" IN (SELECT "Id" FROM reset_user);
+
+COMMIT;
+```
+
+**3. Delete the Keycloak user too**, or Keycloak's registration form will reject the email as already taken. Keycloak admin → **groundup** realm (not master) → **Users** → search the email → **Delete**.
+
+**4. Log out** (Phase 9, including opening the `logoutUrl`) so Keycloak shows the form again, then restart the app. Setting values and permissions are cached in memory, so a running app may still remember the deleted data for up to 15 minutes.
+
+If `default-tenant-slug` (Phase 5) points at an org this deletes, reset that setting to `''`.
 
 ---
 
