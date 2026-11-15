@@ -255,28 +255,7 @@ GET /auth/me
 ```
 Expected: `{ "userId": "...", "email": "testuser@example.com", "tenantId": "...", "roles": [...] }`
 
-### 3.4 Log In With No Organization and No Default Tenant
-
-Tests the case where a signed-in user has nowhere to go. It used to return `403 ACCESS_DENIED`; it now signs the user in with **no current tenant** (a tenantless session).
-
-**Setup:** you need a user with zero active memberships, and `auth.application.default-tenant-slug` must be empty (its state before Phase 5, or `''` after undoing Phase 5.1; restart the app after changing it). The easiest user to use is the one in Phase 7.1 right after leaving their only organization, so do this after Phase 7.1 with the default tenant cleared. Log out fully first (Phase 9).
-
-1. `POST /auth/login` → open the `redirectUrl` in the browser and sign in.
-2. Expected callback response: **200**
-```json
-{
-  "requiresTenantSelection": false,
-  "tenants": []
-}
-```
-There is **no** `token` field. The `AuthToken` cookie is still set, and it holds a tenantless token.
-3. `GET /auth/me` → 200 with `"tenantId": null` and `"roles": []`.
-4. `GET /auth/me/tenants` → `[]`.
-5. `GET /api/projects` → **403** with `TENANT_REQUIRED`.
-
-What you do next (create an organization, or enter one) is covered in Phase 7.4.
-
-> **Still a 403:** if `default-tenant-slug` is set to a slug that does not exist (or is inactive), login returns `403 ACCESS_DENIED` ("The default organization is not available"). That is a configuration fault, not "no default".
+> **Logging in with no organization and no default tenant** can't be tested yet: it needs a user who has left every organization. It is covered in Phase 7.5, after the leave tests.
 
 ---
 
@@ -394,7 +373,7 @@ WHERE d."Id" = v."SettingDefinitionId"
 
 **Restart the app after changing it.** Setting values are cached in memory for 15 minutes, so a direct database edit is not seen by a running app.
 
-> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 3.4's "no tenant to enter" case no longer applies). A user who left that tenant earlier is put back into the **same membership row**, with no roles. Set the value back to `''` and restart to undo.
+> While this setting is set, Login also auto-joins any user with zero memberships to this tenant (Phase 7.5's "no tenant to enter" case no longer applies). A user who left that tenant earlier is put back into the **same membership row**, with no roles. Set the value back to `''` and restart to undo.
 
 ### 5.2 Initiate Simple Signup
 
@@ -474,7 +453,7 @@ Expected: **200** `{ "success": true, "currentTenantId": null }`. You are **stil
 
 Continue with Phase 7.4 while you are in this state.
 
-> If `default-tenant-slug` is still set to `my-test-org` from Phase 5, logging in again puts this user back into `My Test Org` through the same membership row (no roles), instead of leaving them with no tenant. Clear the setting (Phase 5.1) and restart the app to see the no-tenant case at login (Phase 3.4).
+> If `default-tenant-slug` is still set to `my-test-org` from Phase 5, logging in again puts this user back into `My Test Org` through the same membership row (no roles), instead of leaving them with no tenant. Clear the setting (Phase 5.1) and restart the app to see the no-tenant case at login (Phase 7.5).
 
 > `My Test Org` still has exactly one admin (your Phase 2 user). Before the fix, this leave was wrongly blocked, because the old check refused any leave when a tenant had only one admin.
 
@@ -500,6 +479,8 @@ These need extra setup (a second admin, or a regular member of two tenants) that
 
 Continue as the user from 7.1, still in the browser session right after leaving. Run these in Swagger.
 
+> **Order:** step 4 creates an organization, which gives this user a membership again. If you also want to test login with no organization (7.5), do steps 1 to 3 here, then 7.5, then come back for steps 4 and 5. Logging in again in 7.5 gives you the same tenantless session.
+
 1. `GET /auth/me` → **200**, `"tenantId": null`, `"roles": []`.
 2. `GET /auth/me/tenants` → `[]` (this user has no other organizations).
 3. `GET /api/projects` (any tenant-scoped endpoint) → **403** with `TENANT_REQUIRED`. Nothing is written or read without a tenant.
@@ -521,6 +502,30 @@ Content-Type: application/json
 Expected: **200**. `GET /auth/me` now shows that `tenantId` and `"roles": ["TenantAdmin"]`.
 
 > A tenantless session lasts as long as any token (`TokenExpirationMinutes`) and is never refreshed. If it expires, sign in again. Keycloak's session is still active, so that is silent.
+
+### 7.5 Log In With No Organization and No Default Tenant
+
+Tests the case where a signed-in user has nowhere to go. It used to return `403 ACCESS_DENIED`; it now signs the user in with **no current tenant** (a tenantless session).
+
+**Setup:** you need a user with zero active memberships, and `auth.application.default-tenant-slug` must be empty.
+- The user: after 7.1 the Phase 5 user has left their only organization. Run this **before** step 4 of 7.4, which creates an organization and gives that user a membership again. If you already ran step 4, use another user who has left everything.
+- The setting: clear it to `''` using the SQL in Phase 5.1 (use the update form, set the value to `''`), then **restart the app**.
+- Log out fully (Phase 9, including opening the `logoutUrl`).
+
+1. `POST /auth/login` → open the `redirectUrl` in the browser and sign in as that user.
+2. Expected callback response: **200**
+```json
+{
+  "requiresTenantSelection": false,
+  "tenants": []
+}
+```
+There is **no** `token` field. The `AuthToken` cookie is still set, and it holds a tenantless token.
+3. `GET /auth/me` → 200 with `"tenantId": null` and `"roles": []`.
+4. `GET /auth/me/tenants` → `[]`.
+5. `GET /api/projects` → **403** with `TENANT_REQUIRED`.
+
+> **Still a 403:** if `default-tenant-slug` is set to a slug that does not exist (or is inactive), login returns `403 ACCESS_DENIED` ("The default organization is not available"). That is a configuration fault, not "no default".
 
 ---
 
