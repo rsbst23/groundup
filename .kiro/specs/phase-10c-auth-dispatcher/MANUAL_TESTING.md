@@ -429,7 +429,9 @@ Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user 
 Not changed by the tenantless-session work. Run it as Alice: log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4).
 
 1. In `appsettings.Development.json`, temporarily set `"TokenExpirationMinutes": 2` (under `GroundUp:Auth`). Restart the app and sign in again.
-2. After 1+ minutes, `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
+2. Refresh only happens in a window: the token must be **more than half its lifetime old but not yet expired**. With a 2-minute lifetime that is **between 1 and 2 minutes** after signing in. Wait about 70 seconds, then `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
+
+   If you wait **past 2 minutes** the token has expired and cannot be refreshed. The browser drops the cookie, `GET /auth/me` returns **401**, and you have to log in again (Recipe 1). That is correct behavior; it just means you missed the window. Sign in again and retry.
 3. Restore `TokenExpirationMinutes` to `60` and restart.
 
 ---
