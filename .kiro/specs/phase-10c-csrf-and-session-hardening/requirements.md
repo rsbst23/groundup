@@ -73,7 +73,7 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 
 #### Acceptance Criteria
 
-1. Two settings SHALL be defined in the Settings module, seeded by `DefaultAuthSettingsSeeder` with defaults taken from `AuthOptions`, each with metadata (data type integer, group "Security > Sessions", description, a minimum and a maximum, UI hint number):
+1. Two settings SHALL be defined in the Settings module, seeded by `DefaultAuthSettingsSeeder` with defaults taken from `AuthOptions`, each with metadata (data type integer, group "Security > Sessions", description, a minimum and a maximum, UI hint number). Bounds: token lifetime 2 to 120 minutes (default 60); absolute lifetime 10 to 1440 minutes (default 480):
    - `auth.session.token-lifetime-minutes`: how long a token is valid. It also acts as the inactivity timeout, because a user who makes no request for that long has an expired token.
    - `auth.session.absolute-lifetime-minutes`: the longest a session can last from the user's real authentication, however active they are.
 2. Both settings SHALL be definable at the System level and at the Tenant level, and resolve through the existing cascade: Tenant, then System, then default.
@@ -95,10 +95,30 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 2. An integration test that changes a timeout through the settings API and sees the next issued token and cookie use the new value without a restart.
 3. `MANUAL_TESTING.md` SHALL be updated: the CSRF header on POSTs (Swagger), Part 11 using the setting instead of editing `appsettings.Development.json`, and a step that proves a silent login past the absolute cap is forced to show the login form.
 
+### Requirement 6: Keycloak realm session limits
+
+**User story:** As an operator, the identity provider's own session limits are set on purpose and sit within the application's cap.
+
+#### Acceptance Criteria
+
+1. `keycloak/realm.json` SHALL set `ssoSessionIdleTimeout` to 1800 seconds (30 minutes) and `ssoSessionMaxLifespan` to 28800 seconds (8 hours). The 8-hour maximum equals the default `auth.session.absolute-lifetime-minutes` (480), so by default a silent single sign-on cannot outlive the application's cap. (Keycloak's own default maximum is 10 hours, which is longer than the cap.)
+2. The realm import is skipped when the realm already exists, so `MANUAL_TESTING.md` Part 1.2 SHALL tell the operator to set the same two values by hand (Realm settings → Sessions) for an existing realm.
+3. The administrator documentation SHALL say that these two values are realm-wide, are the system administrator's responsibility, and are the values a compliance reviewer will look at. They are defaults for development and a starting point, not a statement of what any specific framework requires; the organization's own session policy decides the final numbers.
+4. The design SHALL note that if a system administrator raises `auth.session.absolute-lifetime-minutes` above the realm's SSO Session Max, the realm limit becomes the real limit, and SHALL decide whether to log a warning at startup when the two disagree.
+
+## Decisions
+
+Agreed with the project owner:
+
+1. **Ceiling rule:** a tenant value can only be shorter than the System value (Requirement 4.3).
+2. **Tenant unknown at login:** send `max_age` using the System absolute lifetime at login. After the tenant is selected, apply that tenant's (shorter) cap in `set-tenant`, returning `REAUTH_REQUIRED` if the session is already older than it. A host-pinned login knows the tenant and can send its value directly.
+3. **Keycloak realm values:** chosen by the project owner's delegation: idle 30 minutes, max 8 hours (Requirement 6).
+4. **Bounds** (also delegated):
+   - `auth.session.token-lifetime-minutes`: minimum 2, maximum 120, default 60 (the token-revocation spec proposes a default of 15; whichever ships sets the seeded default). The minimum of 2 keeps the manual refresh test usable; shorter is never a security problem.
+   - `auth.session.absolute-lifetime-minutes`: minimum 10, maximum 1440 (24 hours), default 480. It must always be at least the token lifetime.
+5. **Swagger and CSRF (Requirement 1.7):** deferred. Decide when this spec is worked on.
+
 ## Open Questions for the Design
 
-1. **Ceiling rule (Requirement 4.3).** Recommended: tenants can only shorten. If you want tenants able to lengthen, say so; it conflicts with a system administrator being able to set a compliance maximum.
-2. **Tenant unknown at login.** At the moment of login the user may not have chosen a tenant. Recommended: send `max_age` using the System absolute lifetime, then after the tenant is selected apply that tenant's (shorter) cap in `set-tenant`, returning `REAUTH_REQUIRED` if the session is already older than it. Host-pinned logins know the tenant and can send its value directly.
-3. **Keycloak realm values.** Which SSO Session Idle and Max does your policy require? They are not set in `realm.json` today (Keycloak defaults: 30 minutes idle, 10 hours max).
-4. **Minimum and maximum bounds** for the two settings (for example token lifetime from 5 to 120 minutes, absolute lifetime from 30 minutes to 24 hours).
-5. **Swagger and CSRF (Requirement 1.7).** Prefer Swagger supplying the token, or a Development-only exemption.
+1. **Swagger and CSRF (Requirement 1.7).** Swagger supplying the token, or a Development-only exemption. To be discussed when this spec is worked on.
+2. Does the Settings module's definition metadata support minimum and maximum values, or does the bound check need to live in the auth module? The design confirms this before choosing where to validate (Requirements 4.1 and 4.3).
