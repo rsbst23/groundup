@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using FluentAssertions;
+using GroundUp.Auth.Api;
 using GroundUp.Auth.Api.Controllers;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
@@ -449,7 +450,7 @@ public sealed class AuthControllerTests
         {
             new Claim("sub", externalSub)
         };
-        SetAuthenticatedUser(claims);
+        SetAuthenticatedExternalIdpUser(claims);
 
         var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
         _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
@@ -478,7 +479,7 @@ public sealed class AuthControllerTests
         {
             new Claim("sub", externalSub)
         };
-        SetAuthenticatedUser(claims);
+        SetAuthenticatedExternalIdpUser(claims);
 
         var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
         _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
@@ -540,7 +541,7 @@ public sealed class AuthControllerTests
         {
             new Claim("sub", externalSub)
         };
-        SetAuthenticatedUser(claims);
+        SetAuthenticatedExternalIdpUser(claims);
 
         var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
         _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
@@ -867,10 +868,10 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public async Task CreateOrganization_PendingSelectionPrincipalWithoutTid_Returns401()
+    public async Task CreateOrganization_IdentityProviderPrincipal_Returns401()
     {
-        // Arrange — Keycloak token during tenant selection: identity only, no tid
-        SetAuthenticatedUser(new[] { new Claim("sub", "keycloak-external-sub") });
+        // Arrange — a raw identity-provider token has no GroundUp user id, even if its sub looks like a GUID
+        SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", TestUserId.ToString()) });
 
         // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
@@ -1294,37 +1295,79 @@ public sealed class AuthControllerTests
             TestUserId, targetTenantId, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task LeaveTenant_LeavingCurrentTenantWithNoRemaining_ClearsCookieAndReturnsNoTenants()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task LeaveTenant_LeavingCurrentTenant_BecomesTenantlessAndNeverSwitchesToAnotherTenant(int otherMemberships)
     {
         // Arrange
         var targetTenantId = Guid.NewGuid();
-        var membershipId = Guid.NewGuid();
+        var authTime = DateTimeOffset.UtcNow.AddHours(-1);
         SetAuthenticatedUser(new[]
         {
             new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", targetTenantId.ToString()), // Currently viewing the tenant being left
-            new Claim("auth_time", DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeSeconds().ToString())
+            new Claim("tid", targetTenantId.ToString()), // Currently working in the tenant being left
+            new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString())
         });
+        SetupLeavableMemberships(targetTenantId, otherMemberships);
+        _authSessionService.IssueTenantlessSessionAsync(TestUserId, Arg.Any<DateTimeOffset?>())
+            .Returns(OperationResult<string>.Ok("tenantless-token"));
 
-        var memberships = new List<UserTenantDto>
+        // Act
+        var result = await _sut.LeaveTenant(targetTenantId);
+
+        // Assert — tenantless token written, auth_time preserved, no other tenant selected
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(okResult.Value!);
+        body["success"].Should().Be(true);
+        body["currentTenantId"].Should().BeNull();
+        body.Should().NotContainKey("noTenants");
+
+        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), "tenantless-token");
+        await _authSessionService.Received(1).IssueTenantlessSessionAsync(
+            TestUserId,
+            Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()));
+        await _authSessionService.DidNotReceive().SetTenantAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_LeavingCurrentTenant_TenantlessTokenFails_ClearsCookieSoOldTokenIsNotKept()
+    {
+        // Arrange
+        var targetTenantId = Guid.NewGuid();
+        SetAuthenticatedUser(new[]
         {
-            new(membershipId, TestUserId, targetTenantId, "ext-1", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", targetTenantId.ToString())
+        });
+        SetupLeavableMemberships(targetTenantId, otherMemberships: 1);
+        _authSessionService.IssueTenantlessSessionAsync(TestUserId, Arg.Any<DateTimeOffset?>())
+            .Returns(OperationResult<string>.NotFound("User not found"));
 
-        // LastAdminGuard: 2 admins — allow
-        var adminHolders = new List<UserRoleDto>
+        // Act
+        var result = await _sut.LeaveTenant(targetTenantId);
+
+        // Assert
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        GetAnonymousObjectProperties(okResult.Value!)["currentTenantId"].Should().BeNull();
+        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_LeavingDifferentTenant_SessionUnchangedAndCurrentTenantReported()
+    {
+        // Arrange
+        var targetTenantId = Guid.NewGuid();
+        var currentTenantId = Guid.NewGuid();
+        SetAuthenticatedUser(new[]
         {
-            new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), targetTenantId, "TenantAdmin"),
-            new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
-        };
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
-
-        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Ok());
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", currentTenantId.ToString())
+        });
+        SetupLeavableMemberships(targetTenantId, otherMemberships: 0);
 
         // Act
         var result = await _sut.LeaveTenant(targetTenantId);
@@ -1332,9 +1375,177 @@ public sealed class AuthControllerTests
         // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = GetAnonymousObjectProperties(okResult.Value!);
-        body["noTenants"].Should().Be(true);
+        body["success"].Should().Be(true);
+        body["currentTenantId"].Should().Be(currentTenantId);
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookie(Arg.Any<HttpContext>());
+        await _authSessionService.DidNotReceive().IssueTenantlessSessionAsync(
+            Arg.Any<Guid>(), Arg.Any<DateTimeOffset?>());
+    }
 
-        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+    [Fact]
+    public async Task LeaveTenant_FromTenantlessSession_SessionUnchangedAndNoCurrentTenantReported()
+    {
+        // Arrange — tenantless GroundUp token (no tid)
+        var targetTenantId = Guid.NewGuid();
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        SetupLeavableMemberships(targetTenantId, otherMemberships: 1);
+
+        // Act
+        var result = await _sut.LeaveTenant(targetTenantId);
+
+        // Assert
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(okResult.Value!);
+        body["success"].Should().Be(true);
+        body["currentTenantId"].Should().BeNull();
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookie(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_IdentityProviderPrincipal_Returns401()
+    {
+        // Arrange — the sub of an identity-provider token is not a GroundUp user id, even when it parses as a GUID
+        SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", TestUserId.ToString()) });
+
+        // Act
+        var result = await _sut.LeaveTenant(Guid.NewGuid());
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await _userTenantRepository.DidNotReceive().DeactivateMembershipAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The user holds an active membership in <paramref name="targetTenantId"/> plus
+    /// <paramref name="otherMemberships"/> others, and may leave (a second admin exists).
+    /// </summary>
+    private void SetupLeavableMemberships(Guid targetTenantId, int otherMemberships)
+    {
+        var memberships = new List<UserTenantDto>
+        {
+            new(Guid.NewGuid(), TestUserId, targetTenantId, "ext-target", true)
+        };
+        for (var i = 0; i < otherMemberships; i++)
+        {
+            memberships.Add(new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), $"ext-other-{i}", true));
+        }
+
+        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+
+        // LastAdminGuard: two admins, so leaving is allowed
+        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserRoleDto>>.Ok(new List<UserRoleDto>
+            {
+                new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), targetTenantId, "TenantAdmin"),
+                new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
+            }));
+
+        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Ok());
+    }
+
+    #endregion
+
+    #region Tenantless sessions
+
+    [Fact]
+    public async Task Callback_NoCurrentTenant_Returns200WithEmptyTenantListAndNoSelection()
+    {
+        // Arrange
+        _authFlowService.HandleCallbackAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowResult>.Ok(FlowResult.NoCurrentTenant()));
+
+        // Act
+        var result = await _sut.Callback(code: "auth-code", state: "state-token");
+
+        // Assert
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(okResult.Value!);
+        body["requiresTenantSelection"].Should().Be(false);
+        ((IEnumerable<TenantListItemDto>)body["tenants"]!).Should().BeEmpty();
+        body.Should().NotContainKey("token");
+    }
+
+    [Fact]
+    public async Task SetTenant_FromTenantlessGroundUpSession_UsesOwnUserIdAndPreservesAuthTime()
+    {
+        // Arrange — GroundUp token without tid: sub is the GroundUp user id (a GUID), not an external id
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-20);
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString())
+        });
+        _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
+            .Returns(OperationResult<SetTenantResponseDto>.Ok(new SetTenantResponseDto(false, null, TestToken)));
+
+        // Act
+        var result = await _sut.SetTenant(new SetTenantRequestDto(TestTenantId));
+
+        // Assert
+        result.Should().BeOfType<OkResult>();
+        await _userRepository.DidNotReceive().GetByExternalUserIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _authSessionService.Received(1).SetTenantAsync(
+            TestUserId,
+            TestTenantId,
+            Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()));
+        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestToken);
+    }
+
+    [Fact]
+    public async Task SetTenant_SessionPastAbsoluteLifetime_Returns401AndWritesNoCookie()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("auth_time", DateTimeOffset.UtcNow.AddDays(-2).ToUnixTimeSeconds().ToString())
+        });
+        _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
+            .Returns(OperationResult<SetTenantResponseDto>.Unauthorized("Session has reached its maximum lifetime."));
+
+        // Act
+        var result = await _sut.SetTenant(new SetTenantRequestDto(TestTenantId));
+
+        // Assert
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(401);
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task CreateOrganization_FromTenantlessGroundUpSession_Returns201AndKeepsSessionTenantless()
+    {
+        // Arrange — GroundUp token with no tid
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        SetupOrgCreator();
+        var newTenantId = SetupSuccessfulProvisioning();
+
+        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(201);
+        GetAnonymousObjectProperties(objectResult.Value!)["id"].Should().Be(newTenantId);
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task GetMyTenants_IdentityProviderPrincipal_Returns401()
+    {
+        // Arrange
+        SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", TestUserId.ToString()) });
+
+        // Act
+        var result = await _sut.GetMyTenants();
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
     }
 
     #endregion
@@ -1369,6 +1580,16 @@ public sealed class AuthControllerTests
         var identity = new ClaimsIdentity(claims, "TestScheme");
         var principal = new ClaimsPrincipal(identity);
         _sut.ControllerContext.HttpContext.User = principal;
+    }
+
+    /// <summary>
+    /// Authenticates as a principal built from an identity-provider token (for example a Keycloak
+    /// Bearer token): its sub is the provider's user id, not a GroundUp user id.
+    /// </summary>
+    private void SetAuthenticatedExternalIdpUser(Claim[] claims)
+    {
+        var identity = new ClaimsIdentity(claims, AuthConstants.ExternalIdpAuthenticationType);
+        _sut.ControllerContext.HttpContext.User = new ClaimsPrincipal(identity);
     }
 
     private static Dictionary<string, object?> GetAnonymousObjectProperties(object obj)

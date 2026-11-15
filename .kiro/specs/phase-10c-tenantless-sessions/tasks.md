@@ -45,17 +45,17 @@ Adds a tenantless session (signed in, no current tenant), applies the leave rule
   - [x] 3.4 Unit tests for each branch above, including that no Keycloak token is written to the cookie
   - [x] 3.5 Build, run auth unit tests, commit
 
-- [ ] 4. `AuthController` changes
-  - [ ] 4.1 `Callback`: for `NoCurrentTenant`, respond `{ requiresTenantSelection: false, tenants: [] }`; picker response unchanged
-  - [ ] 4.2 `ResolveGroundUpUserId()`: return null for an identity-provider principal; use the user id from `sub` for GroundUp principals with or without `tid`
-  - [ ] 4.3 `SetTenant`: classify with `IsExternalIdp`; a GroundUp principal (tenantless or not) uses its own user id and `auth_time`; map the new absolute-lifetime rejection to 401
-  - [ ] 4.4 `CreateOrganization`: remove the `tid` requirement; keep the GroundUp-user and active-user checks; the session stays tenantless
-  - [ ] 4.5 `LeaveTenant`
+- [x] 4. `AuthController` changes
+  - [x] 4.1 `Callback`: for `NoCurrentTenant`, respond `{ requiresTenantSelection: false, tenants: [] }`; picker response unchanged
+  - [x] 4.2 `ResolveGroundUpUserId()`: return null for an identity-provider principal; use the user id from `sub` for GroundUp principals with or without `tid`
+  - [x] 4.3 `SetTenant`: classify with `IsExternalIdp`; a GroundUp principal (tenantless or not) uses its own user id and `auth_time`; map the new absolute-lifetime rejection to 401
+  - [x] 4.4 `CreateOrganization`: remove the `tid` requirement; keep the GroundUp-user and active-user checks; the session stays tenantless
+  - [x] 4.5 `LeaveTenant`
     - Left tenant equals the session's `tid`: issue a tenantless token with the same `auth_time`, write the cookie, respond `{ success: true, currentTenantId: null }`. If issuing fails, clear the cookie and still report success
     - Otherwise: no cookie change, respond `{ success: true, currentTenantId: <tid or null> }`
     - Remove `noTenants` and `remainingMemberships.First()`
-  - [ ] 4.6 Update `AuthControllerTests`; add cases for leaving with 0, 1 and 3 other memberships (never an automatic switch), leaving a non-current tenant, tenantless `set-tenant`, tenantless `organizations`, identity-provider principal handling
-  - [ ] 4.7 Build, run auth unit tests, commit
+  - [x] 4.6 Update `AuthControllerTests`; add cases for leaving with 0, 1 and 3 other memberships (never an automatic switch), leaving a non-current tenant, tenantless `set-tenant`, tenantless `organizations`, identity-provider principal handling
+  - [x] 4.7 Build, run auth unit tests, commit
 
 - [ ] 5. Integration tests
   - [ ] 5.1 Rewrite `PendingSelectionTests` for the tenantless token (cookie holds a GroundUp token, not Keycloak's)

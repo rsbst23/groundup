@@ -163,10 +163,17 @@ public sealed class AuthController : ControllerBase
             return StatusCode(statusCode, new { error = flowResult.ErrorCode, message = flowResult.ErrorMessage });
         }
 
-        if (flowResult.RequiresTenantSelection)
+        if (flowResult.IsTenantless)
         {
+            // Signed in with no current tenant. The cookie holds a tenantless token (written by the
+            // handler). requiresTenantSelection is true when there is something to choose from;
+            // false with an empty list means the user has no tenant yet (they can create one).
             ProvisionAntiforgeryToken();
-            return Ok(new { requiresTenantSelection = true, tenants = flowResult.TenantList });
+            return Ok(new
+            {
+                requiresTenantSelection = flowResult.RequiresTenantSelection,
+                tenants = flowResult.TenantList ?? new List<TenantListItemDto>()
+            });
         }
 
         // Success with token — cookie already written by the flow handler
@@ -246,15 +253,14 @@ public sealed class AuthController : ControllerBase
         }
 
         var options = _authOptions.Value;
-        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        var hasTid = !string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out _);
 
         Guid userId;
         DateTimeOffset? originalAuthTime = null;
 
-        if (!hasTid)
+        if (HttpContext.User.IsExternalIdp())
         {
-            // Pending-selection Keycloak principal: resolve GroundUp user by external sub
+            // Identity-provider principal (for example a Keycloak Bearer token): its sub is the
+            // provider's user id, so resolve the GroundUp user by external id.
             var subClaim = HttpContext.User.FindFirst("sub")?.Value;
             if (string.IsNullOrEmpty(subClaim))
             {
@@ -268,11 +274,11 @@ public sealed class AuthController : ControllerBase
             }
 
             userId = userResult.Data.Id;
-            // First issuance: originalAuthTime is null → service sets auth_time = now
+            // First issuance from an identity-provider token: originalAuthTime is null → service sets auth_time = now
         }
         else
         {
-            // Existing GroundUp token: read userId and preserve auth_time
+            // GroundUp token, with or without a current tenant: read userId and preserve auth_time
             var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out userId))
             {
@@ -489,14 +495,14 @@ public sealed class AuthController : ControllerBase
     /// <summary>
     /// Creates an additional standard organization for the authenticated user, who becomes its
     /// TenantAdmin. No identity-provider round-trip is made. The session stays scoped to the
-    /// current tenant; the user switches to the new organization with <c>POST /auth/set-tenant</c>.
+    /// current tenant (or lack of one); the user enters the new organization with <c>POST /auth/set-tenant</c>.
     /// </summary>
     /// <param name="request">The request body containing the organization name.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
     /// HTTP 201 with <c>{ id, name, slug }</c> on success;
     /// HTTP 400 when the name is missing, blank or longer than 200 characters;
-    /// HTTP 401 when unauthenticated, when no tenant is selected yet, or when the user cannot be resolved;
+    /// HTTP 401 when unauthenticated, when the principal is an identity-provider token, or when the user cannot be resolved;
     /// HTTP 409 with <c>SLUG_COLLISION</c> when no unique slug could be found.
     /// </returns>
     [HttpPost("organizations")]
@@ -509,10 +515,10 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        // Require a fully established session: a pending-selection principal (no tid) must pick a tenant first
+        // A GroundUp session is required, with or without a current tenant (a tenantless user can
+        // create their first organization). An identity-provider token has no GroundUp user id.
         var options = _authOptions.Value;
-        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        if (string.IsNullOrEmpty(tidClaim) || !Guid.TryParse(tidClaim, out _))
+        if (HttpContext.User.IsExternalIdp())
         {
             return Unauthorized();
         }
@@ -561,14 +567,14 @@ public sealed class AuthController : ControllerBase
     /// <summary>
     /// Leaves a tenant. Deactivates the user's membership in the specified tenant.
     /// If the user is the sole TenantAdmin, returns 403 (last-admin guard).
-    /// If the user was viewing the left tenant, generates a new token for the next available
-    /// tenant or clears the cookie if no memberships remain.
+    /// If the user was working in the left tenant, the session becomes tenantless (identity only);
+    /// they are not moved into another tenant. Leaving a different tenant leaves the session unchanged.
     /// </summary>
     /// <param name="tenantId">The ID of the tenant to leave.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
-    /// HTTP 200 with <c>{ success: true }</c> on success;
-    /// HTTP 200 with <c>{ noTenants: true }</c> when no remaining memberships;
+    /// HTTP 200 with <c>{ success: true, currentTenantId }</c> on success, where <c>currentTenantId</c>
+    /// is null when the session no longer has a current tenant;
     /// HTTP 401 when unauthenticated;
     /// HTTP 403 when last-admin guard blocks;
     /// HTTP 404 when user is not a member.
@@ -614,30 +620,18 @@ public sealed class AuthController : ControllerBase
             return StatusCode(deactivateResult.StatusCode, new { error = deactivateResult.Message });
         }
 
-        // Determine if the user was viewing the left tenant
+        // The tenant the session is scoped to (null for a tenantless session)
         var options = _authOptions.Value;
         var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        var wasViewingLeftTenant = !string.IsNullOrEmpty(tidClaim)
-                                  && Guid.TryParse(tidClaim, out var currentTid)
-                                  && currentTid == tenantId;
+        Guid? currentTenantId = !string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out var currentTid)
+            ? currentTid
+            : null;
 
-        if (wasViewingLeftTenant)
+        if (currentTenantId == tenantId)
         {
-            // Find remaining active memberships
-            var remainingMemberships = membershipsResult.Data
-                .Where(m => m.IsActive && m.TenantId != tenantId)
-                .ToList();
-
-            if (remainingMemberships.Count == 0)
-            {
-                _authCookieWriter.ClearAuthCookie(HttpContext);
-                return Ok(new { noTenants = true });
-            }
-
-            // Generate token for next available tenant
-            var nextTenantId = remainingMemberships.First().TenantId;
-
-            // Read auth_time from the current token to preserve on reissue
+            // The user left the tenant they were working in. They are not moved into another tenant:
+            // the session becomes tenantless and the client asks them to choose (or create) one.
+            // The old tenant-scoped token must not stay in the cookie, so it is always replaced or cleared.
             DateTimeOffset? originalAuthTime = null;
             var authTimeClaim = HttpContext.User.FindFirst("auth_time");
             if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
@@ -645,50 +639,42 @@ public sealed class AuthController : ControllerBase
                 originalAuthTime = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix);
             }
 
-            var setTenantResult = await _authSessionService.SetTenantAsync(userId.Value, nextTenantId, originalAuthTime);
-            if (setTenantResult.Success && !string.IsNullOrEmpty(setTenantResult.Data?.Token))
+            var tenantlessResult = await _authSessionService.IssueTenantlessSessionAsync(userId.Value, originalAuthTime);
+            if (tenantlessResult.Success && !string.IsNullOrEmpty(tenantlessResult.Data))
             {
-                _authCookieWriter.WriteAuthCookie(HttpContext, setTenantResult.Data.Token);
+                _authCookieWriter.WriteAuthCookie(HttpContext, tenantlessResult.Data);
             }
+            else
+            {
+                // The membership is already gone; never leave the old tenant-scoped token in place.
+                _authCookieWriter.ClearAuthCookie(HttpContext);
+            }
+
+            return Ok(new { success = true, currentTenantId = (Guid?)null });
         }
 
-        return Ok(new { success = true });
+        // Left a different tenant (or the session was already tenantless): the session is unchanged.
+        return Ok(new { success = true, currentTenantId });
     }
 
     /// <summary>
     /// Resolves the GroundUp user ID from the current principal.
-    /// For GroundUp tokens (has tid claim): reads the sub claim as a GUID.
-    /// For Keycloak pending tokens (no tid): the sub is a Keycloak external ID — not resolvable here.
+    /// A GroundUp token, with or without a current tenant, carries the user id as <c>sub</c>.
+    /// An identity-provider principal's <c>sub</c> is the provider's id (also a GUID for Keycloak),
+    /// so it is rejected here rather than guessed at.
     /// </summary>
     /// <returns>The user ID if resolvable from a GroundUp token, or null.</returns>
     private Guid? ResolveGroundUpUserId()
     {
-        var options = _authOptions.Value;
-        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        var hasTid = !string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out _);
-
-        if (hasTid)
+        if (HttpContext.User.IsExternalIdp())
         {
-            // GroundUp token — sub is the userId GUID
-            var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
-            if (!string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-        }
-        else
-        {
-            // Pending-selection Keycloak token — sub is an external ID.
-            // For these endpoints we still accept it, but need the sub claim as the user ID
-            // if it's a GUID (which it is for GroundUp tokens without tid in transition states).
-            var subClaim = HttpContext.User.FindFirst("sub")?.Value;
-            if (!string.IsNullOrEmpty(subClaim) && Guid.TryParse(subClaim, out var userId))
-            {
-                return userId;
-            }
+            return null;
         }
 
-        return null;
+        var userIdClaim = HttpContext.User.FindFirst(_authOptions.Value.UserIdClaimType)?.Value;
+        return !string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId)
+            ? userId
+            : null;
     }
 
     /// <summary>

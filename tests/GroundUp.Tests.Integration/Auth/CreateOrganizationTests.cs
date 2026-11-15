@@ -146,19 +146,23 @@ public sealed class CreateOrganizationTests : AuthFlowTestBase
     }
 
     [Fact]
-    public async Task CreateOrganization_TokenWithoutTenant_Returns401()
+    public async Task CreateOrganization_FromTenantlessSession_Returns201AndUserBecomesMember()
     {
-        // Arrange — authenticated, but no tenant selected yet (no tid)
+        // Arrange — signed in with no current tenant (token has no tid)
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var userId = await SeedUserAsync($"kc-notid-{suffix}", $"notid-{suffix}@example.com");
         var token = Fixture.GenerateTestToken(userId);
 
         // Act
-        var response = await Client.SendAsync(CreateOrganizationRequest(token, $"No Tid Org {suffix}"));
+        var response = await Client.SendAsync(CreateOrganizationRequest(token, $"First Org {suffix}"));
 
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await GetMembershipsForUserAsync(userId)).Should().BeEmpty();
+        // Assert — created, and the caller is now a member of exactly that organization
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var newTenantId = json.RootElement.GetProperty("id").GetGuid();
+
+        var memberships = await GetMembershipsForUserAsync(userId);
+        memberships.Should().ContainSingle().Which.TenantId.Should().Be(newTenantId);
     }
 
     [Theory]

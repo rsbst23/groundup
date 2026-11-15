@@ -81,7 +81,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
     // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task LeaveTenant_CurrentTenant_ReissuesTokenForNextTenant()
+    public async Task LeaveTenant_CurrentTenant_BecomesTenantlessAndIsNotMovedToAnotherTenant()
     {
         // Arrange — user views tenant1, leaves it, and has tenant2 remaining
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -91,19 +91,22 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         await SeedMembershipAsync(userId, tenant1Id);
         await SeedMembershipAsync(userId, tenant2Id);
 
-        // Token scoped to tenant1 (the one being left)
-        var token = Fixture.GenerateTestToken(userId, tenant1Id);
+        // Token scoped to tenant1 (the one being left), with an original sign-in time to preserve
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-20).ToUnixTimeSeconds();
+        var token = Fixture.GenerateTestToken(userId, tenant1Id, additionalClaims:
+            new[] { new System.Security.Claims.Claim("auth_time", authTime.ToString(), System.Security.Claims.ClaimValueTypes.Integer64) });
         var request = CreateBearerRequest(
             HttpMethod.Post, $"/auth/tenants/{tenant1Id}/leave", token);
 
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — 200 with { success: true }
+        // Assert — 200 with { success: true, currentTenantId: null }
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var content = await response.Content.ReadAsStringAsync();
         var json = JsonDocument.Parse(content);
         json.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+        json.RootElement.GetProperty("currentTenantId").ValueKind.Should().Be(JsonValueKind.Null);
 
         // Assert — tenant1 membership deactivated
         var memberships = await GetAllMembershipsForUserAsync(userId);
@@ -112,18 +115,23 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         memberships.First(m => m.TenantId == tenant2Id).IsActive
             .Should().BeTrue();
 
-        // Assert — a new auth cookie was written (token reissued for tenant2)
+        // Assert — the cookie now holds a tenantless token for the same user and sign-in time.
+        // The user is NOT moved into tenant2 even though they still belong to it.
         var newCookie = ExtractAuthCookie(response);
-        newCookie.Should().NotBeNullOrEmpty(
-            "leaving the current tenant should trigger token reissuance for the next available tenant");
+        newCookie.Should().NotBeNullOrEmpty("the old tenant-scoped token must be replaced");
+        var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(newCookie);
+        jwt.Subject.Should().Be(userId.ToString());
+        jwt.Claims.Should().NotContain(c => c.Type == "tid");
+        jwt.Claims.Should().NotContain(c => c.Type == "role");
+        jwt.Claims.First(c => c.Type == "auth_time").Value.Should().Be(authTime.ToString());
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 4. Leave last tenant — clears cookie and returns { noTenants: true }
+    // 4. Leave last tenant — session becomes tenantless (no sign-out, no noTenants)
     // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task LeaveTenant_LastTenant_ClearsCookieAndReturnsNoTenants()
+    public async Task LeaveTenant_LastTenant_BecomesTenantlessWithNoCurrentTenant()
     {
         // Arrange — user has only one active membership
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -139,12 +147,19 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — 200 with { noTenants: true }
+        // Assert — 200 with { success: true, currentTenantId: null }; the retired noTenants field is gone
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var content = await response.Content.ReadAsStringAsync();
         var json = JsonDocument.Parse(content);
-        json.RootElement.TryGetProperty("noTenants", out var noTenantsEl).Should().BeTrue();
-        noTenantsEl.GetBoolean().Should().BeTrue();
+        json.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
+        json.RootElement.GetProperty("currentTenantId").ValueKind.Should().Be(JsonValueKind.Null);
+        json.RootElement.TryGetProperty("noTenants", out _).Should().BeFalse();
+
+        // Assert — the user stays signed in with a tenantless token
+        var newCookie = ExtractAuthCookie(response);
+        newCookie.Should().NotBeNullOrEmpty();
+        new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(newCookie)
+            .Claims.Should().NotContain(c => c.Type == "tid");
 
         // Assert — membership is deactivated
         var memberships = await GetAllMembershipsForUserAsync(userId);
