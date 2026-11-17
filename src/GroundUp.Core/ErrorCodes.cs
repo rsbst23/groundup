@@ -27,6 +27,11 @@ public static class ErrorCodes
     public const string Forbidden = "FORBIDDEN";
 
     /// <summary>
+    /// The operation needs a current tenant and the caller has none (for example a tenantless session).
+    /// </summary>
+    public const string TenantRequired = "TENANT_REQUIRED";
+
+    /// <summary>
     /// The request conflicts with the current state of the resource.
     /// </summary>
     public const string Conflict = "CONFLICT";

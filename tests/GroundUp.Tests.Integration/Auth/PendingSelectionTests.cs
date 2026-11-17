@@ -23,11 +23,11 @@ public sealed class PendingSelectionTests : AuthFlowTestBase
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // Test 1: Multi-membership returns Keycloak token in cookie (not GroundUp JWT)
+    // Test 1: Multi-membership writes a tenantless GroundUp token in the cookie (not the Keycloak token)
     // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Callback_MultiMembership_RetainsKeycloakTokenInCookie_NotGroundUpJwt()
+    public async Task Callback_MultiMembership_WritesTenantlessGroundUpTokenInCookie_NotKeycloakToken()
     {
         // Arrange — seed a user with 2+ memberships in standard tenants
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -55,36 +55,20 @@ public sealed class PendingSelectionTests : AuthFlowTestBase
         json.RootElement.TryGetProperty("tenants", out var tenantsEl).Should().BeTrue();
         tenantsEl.GetArrayLength().Should().BeGreaterThanOrEqualTo(2);
 
-        // The auth cookie should contain the Keycloak access token (NOT a GroundUp JWT)
+        // The auth cookie holds a tenantless GroundUp token: identity only, no tid, no roles.
+        // The Keycloak access token is not stored.
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty(
             "an auth cookie must be set during pending-selection to keep the user authenticated");
+        authCookie.Should().NotStartWith("fake-access-token-",
+            "the Keycloak access token must not be stored as the session cookie");
 
-        // Verify it is NOT a valid GroundUp JWT:
-        // The LoginFlowHandler writes the Keycloak access token (opaque) as the cookie.
-        // A GroundUp JWT would be in JWS compact serialization (3 dot-separated parts with
-        // "GroundUp" issuer). The Keycloak access token is NOT in that format.
-        var handler = new JwtSecurityTokenHandler();
-        var isValidJwt = handler.CanReadToken(authCookie);
-
-        if (isValidJwt)
-        {
-            // If the token happens to be JWT-formatted (e.g. if implementation uses id_token),
-            // verify it does NOT have a tid claim (not a GroundUp token)
-            var jwt = handler.ReadJwtToken(authCookie);
-            var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
-            tidClaim.Should().BeNull(
-                "the retained Keycloak token should NOT contain a tid claim — it is not a GroundUp JWT");
-            jwt.Issuer.Should().NotBe("GroundUp",
-                "the retained token should be the Keycloak token, not a GroundUp-issued JWT");
-        }
-        else
-        {
-            // Opaque token (not JWT format) — this is expected for the Keycloak access token.
-            // It definitely is NOT a GroundUp JWT (which is always in JWS format).
-            authCookie.Should().StartWith("fake-access-token-",
-                "the LoginFlowHandler should retain the Keycloak access token as-is");
-        }
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(authCookie);
+        jwt.Issuer.Should().Be("GroundUp");
+        jwt.Subject.Should().Be(userId.ToString(), "sub is the GroundUp user id, not the Keycloak subject");
+        jwt.Claims.Should().NotContain(c => c.Type == "tid", "a tenantless token has no current tenant");
+        jwt.Claims.Should().NotContain(c => c.Type == "role", "a tenantless token grants no roles");
+        jwt.Claims.Should().Contain(c => c.Type == "auth_time");
     }
 
     // ────────────────────────────────────────────────────────────────────────

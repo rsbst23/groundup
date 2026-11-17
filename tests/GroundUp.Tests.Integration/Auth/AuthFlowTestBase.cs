@@ -192,6 +192,20 @@ public abstract class AuthFlowTestBase
         return request;
     }
 
+    /// <summary>
+    /// Creates an HTTP request authenticated with an <c>Authorization: Bearer</c> header.
+    /// <c>CsrfProtectionMiddleware</c> skips bearer-authenticated requests, so tests of state-changing
+    /// endpoints (POST, PUT, DELETE) stay independent of CSRF handling. Note: the Sample app currently
+    /// does not register antiforgery services, so the middleware also skips cookie-authenticated
+    /// requests today; this is tracked as a separate CSRF follow-up.
+    /// </summary>
+    protected HttpRequestMessage CreateBearerRequest(HttpMethod method, string url, string token)
+    {
+        var request = new HttpRequestMessage(method, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return request;
+    }
+
     // ────────────────────────────────────────────────────────────────────────
     // Response Parsing Helpers
     // ────────────────────────────────────────────────────────────────────────

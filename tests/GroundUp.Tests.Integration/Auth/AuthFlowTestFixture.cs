@@ -32,7 +32,7 @@ namespace GroundUp.Tests.Integration.Auth;
 ///   <item>Test JWT signing key for token validation</item>
 /// </list>
 /// </summary>
-public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
         .WithImage("postgres:16-alpine")
@@ -59,6 +59,15 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
     /// The default domain used for host-based tenant resolution in tests.
     /// </summary>
     public const string TestDefaultDomain = "testapp.local";
+
+    /// <summary>Keycloak base URL used when building authorization URLs in tests (never contacted).</summary>
+    public const string TestKeycloakPublicBaseUrl = "http://keycloak.test";
+
+    /// <summary>Keycloak shared realm name used in tests.</summary>
+    public const string TestKeycloakRealm = "groundup";
+
+    /// <summary>Keycloak public client id used in tests.</summary>
+    public const string TestKeycloakClientId = "groundup-app";
 
     /// <summary>
     /// The Postgres connection string for direct database access in test assertions.
@@ -90,11 +99,27 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
         // Seed the default domain setting so that HostTenantResolver can resolve
         // subdomains in tests. This must happen before any request touches ISettingsService
         // (whose cache would otherwise cache a "not found" result).
-        await SeedDefaultDomainSettingAsync(_container.GetConnectionString());
+        await SeedSystemSettingAsync(
+            _container.GetConnectionString(),
+            "auth.application.default-domain",
+            TestDefaultDomain,
+            "Default Domain",
+            "The default domain for host-based tenant resolution");
+
+        // Derived fixtures add data that must exist before the first request (see the hook below)
+        await SeedBeforeHostStartAsync();
 
         // Force host build — now the DataSeederRunner will find the tables
         _ = Services;
     }
+
+    /// <summary>
+    /// Hook for derived fixtures to seed data after migrations run and before the host starts.
+    /// Settings must be seeded here rather than inside a test: setting lookups are cached in
+    /// memory, so a value written after the first read of that key is not seen, and a value
+    /// written by one test would leak into every later test sharing this fixture's database.
+    /// </summary>
+    protected virtual Task SeedBeforeHostStartAsync() => Task.CompletedTask;
 
     public new async Task DisposeAsync()
     {
@@ -154,6 +179,16 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
             // Register IHttpClientFactory required by AuthController for Keycloak logout
             services.AddHttpClient();
 
+            // In a real deployment the setup wizard stores these as settings. Tests never run the
+            // wizard, so supply them directly; without them flow initiation (POST /auth/login,
+            // POST /auth/signup) returns 500 MISSING_CONFIGURATION.
+            services.PostConfigure<GroundUp.Auth.Services.Configuration.KeycloakOptions>(o =>
+            {
+                o.PublicBaseUrl = TestKeycloakPublicBaseUrl;
+                o.SharedRealmName = TestKeycloakRealm;
+                o.AppClientId = TestKeycloakClientId;
+            });
+
             // Inject controllable TimeProvider for refresh/session tests
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(TimeProvider);
@@ -170,6 +205,8 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
             .Options;
         return new AuthDbContext(options);
     }
+
+
 
     /// <summary>
     /// Creates an HTTP client that includes cookies in requests (for auth cookie testing).
@@ -225,6 +262,10 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(60),
             signingCredentials: credentials);
+
+        // TokenService.ValidateTokenAsync rejects tokens without a kid header; "default" is the
+        // key id the configuration-backed signing key provider issues and validates.
+        token.Header["kid"] = "default";
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
@@ -289,10 +330,16 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
     }
 
     /// <summary>
-    /// Seeds the <c>auth.application.default-domain</c> setting into the database
-    /// during fixture initialization so the HostTenantResolver works for all tests.
+    /// Seeds a string setting at the System level (no scope), creating the System level and the
+    /// setting definition if needed. Call only from <see cref="InitializeAsync"/> or
+    /// <see cref="SeedBeforeHostStartAsync"/>, before any request reads the setting.
     /// </summary>
-    private static async Task SeedDefaultDomainSettingAsync(string connectionString)
+    protected static async Task SeedSystemSettingAsync(
+        string connectionString,
+        string settingKey,
+        string value,
+        string displayName,
+        string description)
     {
         var options = new DbContextOptionsBuilder<SampleDbContext>()
             .UseNpgsql(connectionString)
@@ -318,7 +365,6 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
         }
 
         // Ensure the definition exists
-        const string settingKey = "auth.application.default-domain";
         var definition = await dbContext.Set<GroundUp.Core.Entities.Settings.SettingDefinition>()
             .FirstOrDefaultAsync(d => d.Key == settingKey);
 
@@ -329,8 +375,8 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
                 Key = settingKey,
                 DataType = GroundUp.Core.Enums.SettingDataType.String,
                 DefaultValue = null,
-                DisplayName = "Default Domain",
-                Description = "The default domain for host-based tenant resolution",
+                DisplayName = displayName,
+                Description = description,
                 DisplayOrder = 0,
                 IsVisible = true,
                 CreatedAt = DateTime.UtcNow
@@ -360,7 +406,7 @@ public sealed class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsync
                 SettingDefinitionId = definition.Id,
                 LevelId = systemLevel.Id,
                 ScopeId = null,
-                Value = TestDefaultDomain,
+                Value = value,
                 CreatedAt = DateTime.UtcNow
             };
             dbContext.Set<GroundUp.Core.Entities.Settings.SettingValue>().Add(settingValue);

@@ -58,4 +58,51 @@ public sealed class LastAdminGuard
 
         return OperationResult<bool>.Ok(true);
     }
+
+    /// <summary>
+    /// Validates whether a user may leave a tenant without leaving it with no TenantAdmin.
+    /// Members who are not TenantAdmins may always leave. A TenantAdmin may leave only if at
+    /// least one other active TenantAdmin remains in the tenant.
+    /// </summary>
+    /// <param name="userId">The user who wants to leave.</param>
+    /// <param name="tenantId">The tenant being left.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// A successful result with <c>true</c> if the user may leave, or a 409 conflict result with
+    /// error code "LAST_ADMIN" if the user is the only active TenantAdmin (or the admin count
+    /// cannot be determined).
+    /// </returns>
+    public async Task<OperationResult<bool>> CanLeaveTenantAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var activeAdminsResult = await _userRoleRepository
+            .GetTenantAdminHoldersAsync(tenantId, cancellationToken);
+
+        if (!activeAdminsResult.Success || activeAdminsResult.Data is null)
+        {
+            // If we can't determine the admin set, err on the side of safety
+            return OperationResult<bool>.Fail(
+                "Unable to verify TenantAdmin count. Leaving the tenant is blocked for safety.", 409, "LAST_ADMIN");
+        }
+
+        var adminUserIds = activeAdminsResult.Data
+            .Select(holder => holder.UserId)
+            .ToHashSet();
+
+        // Regular members never affect the TenantAdmin count
+        if (!adminUserIds.Contains(userId))
+        {
+            return OperationResult<bool>.Ok(true);
+        }
+
+        if (adminUserIds.Count <= 1)
+        {
+            return OperationResult<bool>.Fail(
+                "You are the only TenantAdmin of this organization. Assign another TenantAdmin before leaving.", 409, "LAST_ADMIN");
+        }
+
+        return OperationResult<bool>.Ok(true);
+    }
 }

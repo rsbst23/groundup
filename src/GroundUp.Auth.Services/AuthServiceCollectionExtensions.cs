@@ -135,7 +135,9 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IAuthFlowService, AuthFlowService>();
         services.AddScoped<IFlowHandler, NewOrganizationFlowHandler>();
         services.AddScoped<IFlowHandler, LoginFlowHandler>();
+        services.AddScoped<IFlowHandler, SimpleSignupFlowHandler>();
         services.AddScoped<LastAdminGuard>();
+        services.AddScoped<IOrganizationProvisioningService, OrganizationProvisioningService>();
 
         // Cleanup sweeper (hosted service)
         services.AddHostedService<AuthFlowStateCleanupSweeper>();

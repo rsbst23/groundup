@@ -87,8 +87,10 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
     /// <inheritdoc />
     /// <remarks>
     /// SYSTEM BYPASS: Queries the DbContext directly with an explicit tenant filter,
-    /// bypassing the tenant-scoped DbSet. Returns all users who hold the TenantAdmin
-    /// role in the specified tenant, used by the last-admin guard.
+    /// bypassing the tenant-scoped DbSet. Returns the users who hold the TenantAdmin
+    /// role in the specified tenant AND still have an active membership there, used by
+    /// the last-admin guard. Leaving a tenant deactivates the membership but keeps the
+    /// role row, so without the membership check a departed admin would still count.
     /// </remarks>
     public async Task<OperationResult<List<UserRoleDto>>> GetTenantAdminHoldersAsync(
         Guid tenantId,
@@ -98,7 +100,9 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
             .AsNoTracking()
             .Include(ur => ur.Role)
             .Where(ur => ur.TenantId == tenantId
-                && ur.Role.Name == Auth.Core.AuthRoleNames.TenantAdmin)
+                && ur.Role.Name == Auth.Core.AuthRoleNames.TenantAdmin
+                && Context.Set<UserTenant>().Any(ut =>
+                    ut.UserId == ur.UserId && ut.TenantId == tenantId && ut.IsActive))
             .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name))
             .ToListAsync(cancellationToken);
 

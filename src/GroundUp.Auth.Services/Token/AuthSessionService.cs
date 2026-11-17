@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Results;
+using Microsoft.Extensions.Options;
 
 namespace GroundUp.Auth.Services.Token;
 
@@ -15,6 +17,7 @@ public sealed class AuthSessionService : IAuthSessionService
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly ITokenService _tokenService;
+    private readonly AuthOptions _options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthSessionService"/> class.
@@ -22,19 +25,43 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <param name="userTenantRepository">Repository for querying user-tenant memberships.</param>
     /// <param name="tenantRepository">Repository for querying tenant details.</param>
     /// <param name="tokenService">Service for generating JWT tokens.</param>
+    /// <param name="options">Auth configuration options (absolute session lifetime).</param>
     public AuthSessionService(
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
-        ITokenService tokenService)
+        ITokenService tokenService,
+        IOptions<AuthOptions> options)
     {
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
         _tokenService = tokenService;
+        _options = options.Value;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<string>> IssueTenantlessSessionAsync(Guid userId, DateTimeOffset? originalAuthTime = null)
+    {
+        var authTime = originalAuthTime ?? DateTimeOffset.UtcNow;
+        var token = await _tokenService.GenerateTenantlessTokenAsync(userId, CreateAuthTimeClaims(authTime));
+        if (token is null)
+        {
+            return OperationResult<string>.NotFound("User not found");
+        }
+
+        return OperationResult<string>.Ok(token);
     }
 
     /// <inheritdoc />
     public async Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null)
     {
+        // 0. Tenant selection must not extend a session past its absolute lifetime.
+        //    Automatic refresh already enforces this; selecting a tenant reissues a token too.
+        if (originalAuthTime is not null
+            && DateTimeOffset.UtcNow - originalAuthTime.Value >= TimeSpan.FromMinutes(_options.AbsoluteSessionLifetimeMinutes))
+        {
+            return OperationResult<SetTenantResponseDto>.Unauthorized("Session has reached its maximum lifetime. Please sign in again.");
+        }
+
         // 1. Query all tenant memberships for user, then filter to active memberships only.
         //    An inactive (soft-disabled) membership must not be selectable for sign-in.
         var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId);

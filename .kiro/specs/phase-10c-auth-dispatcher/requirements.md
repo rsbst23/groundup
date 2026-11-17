@@ -1,5 +1,7 @@
 # Requirements Document
 
+> **Superseded in part.** The multi-membership picker and the zero-membership/no-default-tenant case no longer keep the Keycloak token in the auth cookie or return 403. Both now issue a tenantless GroundUp token (see `.kiro/specs/phase-10c-tenantless-sessions/`). Where this document describes a "pending-selection" Keycloak principal, read it as that tenantless session. The identity-provider fallback in `JwtAuthenticationMiddleware` still exists for Bearer clients.
+
 ## Introduction
 
 Phase 10C delivers the first user-facing authentication slice for the GroundUp framework. It implements the auth cookie writer, host-based tenant resolution, authorization URL building with the full OAuth2/OIDC security model (state, nonce, PKCE), the callback flow dispatcher with strategy-pattern handlers, and two concrete callback flow handlers (NewOrganization and Login). It introduces the tenant-scoped TenantAdmin role with centralized permission-bypass logic, renames `FlowType.MultiTenantSelection` to `FlowType.Login`, adds the sliding-window token refresh path with an absolute session lifetime cap, extends the `AuthFlowState` schema, and wires auth controller endpoints in the API layer.

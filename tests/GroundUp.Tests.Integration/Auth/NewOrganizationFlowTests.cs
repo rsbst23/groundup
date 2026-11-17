@@ -1,4 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Text.Json;
 using FluentAssertions;
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Enums;
@@ -27,13 +29,15 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
     public async Task Callback_NewOrganization_HappyPath_CreatesFullTenantAndUser()
     {
         // Arrange
+        // Unique per run: the fixture's database is shared by every test in the collection
+        var suffix = Guid.NewGuid().ToString("N")[..8];
         var sub = $"kc-user-{Guid.NewGuid():N}";
         var nonce = AuthFlowTestFixture.GenerateNonce();
         var stateToken = AuthFlowTestFixture.GenerateStateToken();
-        var email = "founder@acme-test.com";
+        var email = $"founder-{suffix}@acme-test.com";
         var displayName = "Founder User";
-        const string organizationName = "Acme Corp";
-        const string expectedSlug = "acme-corp";
+        var organizationName = $"Acme Corp {suffix}";
+        var expectedSlug = $"acme-corp-{suffix}";
 
         var flowState = await CreatePendingFlowStateAsync(
             FlowType.NewOrganization,
@@ -48,9 +52,15 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — HTTP response is a redirect
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        var redirectUrl = ParseRedirectResponse(response);
+        // Assert — HTTP response is 200 OK with JSON body
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty();
+        json.RootElement.TryGetProperty("redirectUrl", out var redirectElement).Should().BeTrue();
+        var redirectUrl = redirectElement.GetString();
         redirectUrl.Should().NotBeNullOrEmpty();
 
         // Assert — Tenant exists with derived slug
@@ -85,6 +95,13 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Assert — Auth cookie is set in the response
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty();
+
+        // Assert — JWT token contains the correct tid claim
+        var handler = new JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(tokenValue);
+        var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
+        tidClaim.Should().NotBeNull("the token must contain a tid claim");
+        tidClaim!.Value.Should().Be(tenant!.Id.ToString(), "the tid should match the new tenant");
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -167,15 +184,18 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
     [Fact]
     public async Task Callback_NewOrganization_SlugCollision_CreatesDisambiguatedSlug()
     {
-        // Arrange — seed a tenant that already occupies the "acme-corp" slug
-        await SeedTenantAsync("Existing Acme", "acme-corp");
+        // Arrange — seed a tenant that already occupies the slug the new org will derive.
+        // Unique per run: the fixture's database is shared by every test in the collection.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var organizationName = $"Collide Corp {suffix}";
+        var takenSlug = $"collide-corp-{suffix}";
+        await SeedTenantAsync("Existing Collide", takenSlug);
 
         var sub = $"kc-user-{Guid.NewGuid():N}";
         var nonce = AuthFlowTestFixture.GenerateNonce();
         var stateToken = AuthFlowTestFixture.GenerateStateToken();
-        var email = "founder@acme-collision.com";
+        var email = $"founder-{suffix}@acme-collision.com";
         var displayName = "Collision User";
-        const string organizationName = "Acme Corp";
 
         var flowState = await CreatePendingFlowStateAsync(
             FlowType.NewOrganization,
@@ -190,17 +210,29 @@ public sealed class NewOrganizationFlowTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — Redirect (success)
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // Assert — 200 OK with JSON (success)
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty();
 
-        // Assert — New tenant gets a disambiguated slug (e.g., "acme-corp-2")
-        var disambiguatedTenant = await GetTenantBySlugAsync("acme-corp-2");
+        // Assert — New tenant gets a disambiguated slug (e.g., "collide-corp-1a2b3c4d-2")
+        var disambiguatedTenant = await GetTenantBySlugAsync($"{takenSlug}-2");
         disambiguatedTenant.Should().NotBeNull();
         disambiguatedTenant!.Name.Should().Be(organizationName);
 
         // Assert — Auth cookie is set
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty();
+
+        // Assert — JWT token contains tid for the disambiguated tenant
+        var handler = new JwtSecurityTokenHandler();
+        var jwt = handler.ReadJwtToken(tokenValue);
+        var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
+        tidClaim.Should().NotBeNull();
+        tidClaim!.Value.Should().Be(disambiguatedTenant!.Id.ToString());
     }
 
     // ────────────────────────────────────────────────────────────────────────

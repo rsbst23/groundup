@@ -48,6 +48,32 @@ public sealed class AuthCookieWriter : IAuthCookieWriter
     }
 
     /// <inheritdoc />
+    public void WriteIdTokenCookie(HttpContext httpContext, string idToken)
+    {
+        if (string.IsNullOrWhiteSpace(idToken))
+        {
+            return; // Best-effort — if no id_token, skip silently
+        }
+
+        var authOptions = _options.Value;
+        var cookieOptions = BuildCookieOptions(authOptions);
+
+        // id_token cookie expires with the auth session
+        cookieOptions.Expires = DateTimeOffset.UtcNow.AddMinutes(authOptions.TokenExpirationMinutes);
+
+        httpContext.Response.Cookies.Append(authOptions.IdTokenCookieName, idToken, cookieOptions);
+    }
+
+    /// <inheritdoc />
+    public void ClearIdTokenCookie(HttpContext httpContext)
+    {
+        var authOptions = _options.Value;
+        var cookieOptions = BuildCookieOptions(authOptions);
+        cookieOptions.Expires = DateTimeOffset.UtcNow.AddDays(-1);
+        httpContext.Response.Cookies.Append(authOptions.IdTokenCookieName, string.Empty, cookieOptions);
+    }
+
+    /// <inheritdoc />
     public void ClearAuthCookie(HttpContext httpContext)
     {
         var authOptions = _options.Value;

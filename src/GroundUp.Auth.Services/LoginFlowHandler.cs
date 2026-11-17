@@ -4,6 +4,7 @@ using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,8 +14,8 @@ namespace GroundUp.Auth.Services;
 /// <summary>
 /// Handles the <see cref="FlowType.Login"/> callback flow.
 /// Resolves user memberships and routes to the correct scenario:
-/// auto-join (zero memberships + default tenant), access-denied (zero memberships + no default),
-/// auto-select (single membership), tenant-selection picker (2+ memberships),
+/// auto-join (zero memberships + default tenant), tenantless session (zero memberships + no default),
+/// auto-select (single membership), tenantless session with a tenant picker (2+ memberships),
 /// host-pinned login, or enterprise "not yet implemented" stub.
 /// </summary>
 public sealed class LoginFlowHandler : IFlowHandler
@@ -28,6 +29,7 @@ public sealed class LoginFlowHandler : IFlowHandler
     private readonly IAuthFlowStateService _authFlowStateService;
     private readonly ISettingsService _settingsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly TenantContext _tenantContext;
     private readonly ILogger<LoginFlowHandler> _logger;
 
     /// <summary>
@@ -43,6 +45,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         IAuthFlowStateService authFlowStateService,
         ISettingsService settingsService,
         IHttpContextAccessor httpContextAccessor,
+        TenantContext tenantContext,
         ILogger<LoginFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
@@ -54,6 +57,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         _authFlowStateService = authFlowStateService;
         _settingsService = settingsService;
         _httpContextAccessor = httpContextAccessor;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
@@ -124,14 +128,14 @@ public sealed class LoginFlowHandler : IFlowHandler
         // 7. Host-pinned scenarios
         if (context.HostResolvedTenant is not null)
         {
-            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant);
+            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant, tokenResponse.IdToken);
         }
 
         // 8. Non-host-pinned scenarios based on membership count
         return activeMemberships.Count switch
         {
-            0 => await HandleZeroMembershipsAsync(user),
-            1 => await HandleSingleMembershipAsync(user, activeMemberships[0]),
+            0 => await HandleZeroMembershipsAsync(user, membershipsResult.Data, tokenResponse.IdToken),
+            1 => await HandleSingleMembershipAsync(user, activeMemberships[0], tokenResponse.IdToken),
             _ => await HandleMultipleMembershipsAsync(user, activeMemberships, tokenResponse)
         };
     }
@@ -142,7 +146,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     private async Task<FlowResult> HandleHostPinnedAsync(
         UserDto user,
         List<UserTenantDto> activeMemberships,
-        TenantDto hostTenant)
+        TenantDto hostTenant,
+        string? idToken)
     {
         var membership = activeMemberships.FirstOrDefault(m => m.TenantId == hostTenant.Id);
 
@@ -163,6 +168,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: host-pinned auto-select for user {UserId} in tenant {TenantId}",
             user.Id, hostTenant.Id);
@@ -170,9 +176,17 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Handles the zero-memberships scenario: auto-join if default tenant configured, else access-denied.
+    /// Handles the zero-active-memberships scenario: auto-join if a default tenant is configured,
+    /// issue a tenantless session if none is configured, access-denied if the configured default
+    /// tenant does not resolve to an active tenant (a configuration fault that should stay visible).
+    /// A user who previously left the default tenant still has a deactivated membership row, and a
+    /// user has only one row per tenant, so that row is reactivated instead of inserting a new one.
     /// </summary>
-    private async Task<FlowResult> HandleZeroMembershipsAsync(UserDto user)
+    /// <param name="allMemberships">All of the user's membership rows, active or not.</param>
+    private async Task<FlowResult> HandleZeroMembershipsAsync(
+        UserDto user,
+        List<UserTenantDto> allMemberships,
+        string? idToken)
     {
         // Check for default tenant configuration
         var defaultTenantSlugResult = await _settingsService.GetAsync<string>(
@@ -181,12 +195,17 @@ public sealed class LoginFlowHandler : IFlowHandler
         if (!defaultTenantSlugResult.Success
             || string.IsNullOrWhiteSpace(defaultTenantSlugResult.Data))
         {
+            // Nothing to enter. The user is still signed in: a tenantless session lets them
+            // create an organization (or accept an invitation later) instead of hitting a dead end.
+            if (!await TryWriteTenantlessSessionAsync(user.Id, idToken))
+            {
+                return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
+            }
+
             _logger.LogInformation(
-                "Login flow: user {UserId} has zero memberships and no default tenant configured",
+                "Login flow: user {UserId} has zero memberships and no default tenant configured, issued tenantless session",
                 user.Id);
-            return FlowResult.Error("ACCESS_DENIED",
-                "You do not have access to any organization. Please contact an administrator.",
-                httpStatus: 403);
+            return FlowResult.NoCurrentTenant();
         }
 
         // Resolve default tenant by slug
@@ -205,24 +224,45 @@ public sealed class LoginFlowHandler : IFlowHandler
 
         var defaultTenant = tenantResult.Data;
 
-        // Auto-join: create membership
-        var membershipDto = new UserTenantDto(
-            Id: Guid.NewGuid(),
-            UserId: user.Id,
-            TenantId: defaultTenant.Id,
-            ExternalUserId: user.ExternalUserId,
-            IsActive: true);
-
-        var membershipResult = await _userTenantRepository.AddAsync(membershipDto);
-        if (!membershipResult.Success)
+        var previousMembership = allMemberships.FirstOrDefault(m => m.TenantId == defaultTenant.Id);
+        if (previousMembership is not null)
         {
-            _logger.LogError("Login flow: failed to create membership for user {UserId} in tenant {TenantId}",
-                user.Id, defaultTenant.Id);
-            return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to join the default organization.");
+            // The user left this tenant earlier. Rejoin through the same row (unique per user and tenant).
+            // Leaving removed their roles, so they come back with none. The default role is not assigned here.
+            var reactivateResult = await _userTenantRepository.ReactivateMembershipAsync(user.Id, defaultTenant.Id);
+            if (!reactivateResult.Success)
+            {
+                _logger.LogError(
+                    "Login flow: failed to reactivate membership for user {UserId} in tenant {TenantId}",
+                    user.Id, defaultTenant.Id);
+                return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to rejoin the default organization.");
+            }
         }
+        else
+        {
+            // The membership repository stamps the current tenant onto new rows. During a sign-in
+            // callback no tenant is selected yet, so point the context at the tenant being joined.
+            _tenantContext.TenantId = defaultTenant.Id;
 
-        // Assign default role from cascade (if configured)
-        await AssignDefaultRoleAsync(user.Id, defaultTenant.Id);
+            // Auto-join: create membership
+            var membershipDto = new UserTenantDto(
+                Id: Guid.NewGuid(),
+                UserId: user.Id,
+                TenantId: defaultTenant.Id,
+                ExternalUserId: user.ExternalUserId,
+                IsActive: true);
+
+            var membershipResult = await _userTenantRepository.AddAsync(membershipDto);
+            if (!membershipResult.Success)
+            {
+                _logger.LogError("Login flow: failed to create membership for user {UserId} in tenant {TenantId}",
+                    user.Id, defaultTenant.Id);
+                return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to join the default organization.");
+            }
+
+            // Assign default role from cascade (if configured)
+            await AssignDefaultRoleAsync(user.Id, defaultTenant.Id);
+        }
 
         // Issue token scoped to the default tenant
         var token = await GenerateTokenWithAuthTimeAsync(user.Id, defaultTenant.Id);
@@ -232,6 +272,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: auto-joined user {UserId} to default tenant {TenantId}",
             user.Id, defaultTenant.Id);
@@ -241,7 +282,7 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// <summary>
     /// Handles the single-membership scenario: auto-select the one tenant.
     /// </summary>
-    private async Task<FlowResult> HandleSingleMembershipAsync(UserDto user, UserTenantDto membership)
+    private async Task<FlowResult> HandleSingleMembershipAsync(UserDto user, UserTenantDto membership, string? idToken)
     {
         var token = await GenerateTokenWithAuthTimeAsync(user.Id, membership.TenantId);
         if (token is null)
@@ -250,6 +291,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         WriteCookie(token);
+        WriteIdTokenCookie(idToken);
         _logger.LogInformation(
             "Login flow: auto-selected single tenant {TenantId} for user {UserId}",
             membership.TenantId, user.Id);
@@ -257,8 +299,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Handles the multi-membership scenario: return tenant selection list,
-    /// retain Keycloak token as auth cookie (no GroundUp token issued).
+    /// Handles the multi-membership scenario: return tenant selection list and
+    /// write a tenantless GroundUp token as the auth cookie.
     /// Enterprise tenants (RealmName ≠ null) are excluded from the picker.
     /// </summary>
     private async Task<FlowResult> HandleMultipleMembershipsAsync(
@@ -302,16 +344,20 @@ public sealed class LoginFlowHandler : IFlowHandler
             }
 
             WriteCookie(token);
+            WriteIdTokenCookie(tokenResponse.IdToken);
             _logger.LogInformation(
                 "Login flow: auto-selected single standard tenant {TenantId} for user {UserId} (enterprise tenants filtered)",
                 standardTenants[0].Id, user.Id);
             return FlowResult.Success(token);
         }
 
-        // 2+ standard tenants: write Keycloak token as auth cookie (no GroundUp token issued).
-        // The JwtAuthenticationMiddleware's IdP-fallback path will authenticate this token
-        // as an identity-only principal (no tid) until POST /auth/set-tenant selects a tenant.
-        WriteCookie(tokenResponse.AccessToken);
+        // 2+ standard tenants: issue a tenantless GroundUp token (identity only, no tid, no roles).
+        // The session stays tenantless until POST /auth/set-tenant selects a tenant. The Keycloak
+        // access token is not kept: it is short-lived and cannot be used to look up the user's roles.
+        if (!await TryWriteTenantlessSessionAsync(user.Id, tokenResponse.IdToken))
+        {
+            return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
+        }
 
         var tenantList = standardTenants
             .Select(t => new TenantListItemDto(t.Id, t.Name, null))
@@ -394,6 +440,28 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
+    /// Issues a tenantless token (auth_time = now) and writes it, plus the id_token cookie used for
+    /// logout, to the response. Returns false when the token could not be generated.
+    /// </summary>
+    private async Task<bool> TryWriteTenantlessSessionAsync(Guid userId, string? idToken)
+    {
+        var authTimeClaim = new Claim(
+            "auth_time",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+            ClaimValueTypes.Integer64);
+
+        var token = await _tokenService.GenerateTenantlessTokenAsync(userId, new[] { authTimeClaim });
+        if (token is null)
+        {
+            return false;
+        }
+
+        WriteCookie(token);
+        WriteIdTokenCookie(idToken);
+        return true;
+    }
+
+    /// <summary>
     /// Generates a GroundUp JWT token with the auth_time claim set to current UTC time.
     /// </summary>
     private async Task<string?> GenerateTokenWithAuthTimeAsync(Guid userId, Guid tenantId)
@@ -461,6 +529,19 @@ public sealed class LoginFlowHandler : IFlowHandler
         if (httpContext is not null)
         {
             _authCookieWriter.WriteAuthCookie(httpContext, token);
+        }
+    }
+
+    /// <summary>
+    /// Writes the Keycloak id_token to its secondary cookie for use as id_token_hint at logout.
+    /// </summary>
+    private void WriteIdTokenCookie(string? idToken)
+    {
+        if (string.IsNullOrWhiteSpace(idToken)) return;
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext is not null)
+        {
+            _authCookieWriter.WriteIdTokenCookie(httpContext, idToken);
         }
     }
 }

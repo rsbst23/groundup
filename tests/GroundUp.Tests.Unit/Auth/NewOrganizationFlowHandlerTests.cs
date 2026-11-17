@@ -1,13 +1,11 @@
 using System.Security.Claims;
 using FluentAssertions;
-using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Core;
 using GroundUp.Core.Results;
-using GroundUp.Data.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -15,19 +13,22 @@ using NSubstitute.ExceptionExtensions;
 
 namespace GroundUp.Tests.Unit.Auth;
 
+/// <summary>
+/// Unit tests for <see cref="NewOrganizationFlowHandler"/>. Organization creation is delegated to
+/// <see cref="IOrganizationProvisioningService"/>, so these tests assert how the handler uses it.
+/// The rows that provisioning creates are covered by <c>OrganizationProvisioningServiceTests</c>
+/// and the integration tests.
+/// </summary>
 public sealed class NewOrganizationFlowHandlerTests
 {
     private readonly IIdentityProviderService _identityProviderService;
     private readonly IAuthFlowStateService _authFlowStateService;
-    private readonly ITenantRepository _tenantRepository;
     private readonly IUserRepository _userRepository;
-    private readonly IUserTenantRepository _userTenantRepository;
-    private readonly IUserRoleRepository _userRoleRepository;
-    private readonly IRoleRepository _roleRepository;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly ITokenService _tokenService;
     private readonly IAuthCookieWriter _authCookieWriter;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly TenantContext _tenantContext;
     private readonly ILogger<NewOrganizationFlowHandler> _logger;
     private readonly NewOrganizationFlowHandler _sut;
 
@@ -46,21 +47,17 @@ public sealed class NewOrganizationFlowHandlerTests
     private static readonly Guid TestFlowStateId = Guid.NewGuid();
     private static readonly Guid TestTenantId = Guid.NewGuid();
     private static readonly Guid TestUserId = Guid.NewGuid();
-    private static readonly Guid TestRoleId = Guid.NewGuid();
 
     public NewOrganizationFlowHandlerTests()
     {
         _identityProviderService = Substitute.For<IIdentityProviderService>();
         _authFlowStateService = Substitute.For<IAuthFlowStateService>();
-        _tenantRepository = Substitute.For<ITenantRepository>();
         _userRepository = Substitute.For<IUserRepository>();
-        _userTenantRepository = Substitute.For<IUserTenantRepository>();
-        _userRoleRepository = Substitute.For<IUserRoleRepository>();
-        _roleRepository = Substitute.For<IRoleRepository>();
-        _unitOfWork = Substitute.For<IUnitOfWork>();
+        _organizationProvisioningService = Substitute.For<IOrganizationProvisioningService>();
         _tokenService = Substitute.For<ITokenService>();
         _authCookieWriter = Substitute.For<IAuthCookieWriter>();
         _httpContextAccessor = Substitute.For<IHttpContextAccessor>();
+        _tenantContext = new TenantContext();
         _logger = Substitute.For<ILogger<NewOrganizationFlowHandler>>();
 
         var httpContext = new DefaultHttpContext();
@@ -69,16 +66,12 @@ public sealed class NewOrganizationFlowHandlerTests
         _sut = new NewOrganizationFlowHandler(
             _identityProviderService,
             _authFlowStateService,
-            _tenantRepository,
             _userRepository,
-            _userTenantRepository,
-            _userRoleRepository,
-            _roleRepository,
-            _unitOfWork,
+            _organizationProvisioningService,
             _tokenService,
             _authCookieWriter,
             _httpContextAccessor,
-            new TenantContext(),
+            _tenantContext,
             _logger);
     }
 
@@ -128,6 +121,24 @@ public sealed class NewOrganizationFlowHandlerTests
         // Assert
         await _authFlowStateService.Received(1).MarkFailedAsync(
             TestFlowStateId, Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_CodeExchangeReturnsNull_DoesNotProvisionOrganization()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        _identityProviderService.ExchangeCodeForTokensAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(),
+                Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns((TokenResponseDto?)null);
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await _organizationProvisioningService.DidNotReceive().ProvisionAsync(
+            Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -180,6 +191,21 @@ public sealed class NewOrganizationFlowHandlerTests
         result.ErrorCode.Should().Be("NONCE_MISMATCH");
     }
 
+    [Fact]
+    public async Task HandleCallbackAsync_NonceMismatch_DoesNotProvisionOrganization()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupSuccessfulCodeExchange(idTokenNonce: "wrong-nonce-value");
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await _organizationProvisioningService.DidNotReceive().ProvisionAsync(
+            Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>());
+    }
+
     #endregion
 
     #region UserInfo Failure
@@ -223,14 +249,11 @@ public sealed class NewOrganizationFlowHandlerTests
     #region Successful Flow
 
     [Fact]
-    public async Task HandleCallbackAsync_Success_CreatesAllEntitiesAtomically()
+    public async Task HandleCallbackAsync_Success_ReturnsGeneratedToken()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupSuccessfulTransaction();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         var result = await _sut.HandleCallbackAsync(context);
@@ -238,33 +261,40 @@ public sealed class NewOrganizationFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Token.Should().Be(TestGeneratedToken);
-
-        // Verify transaction was used
-        await _unitOfWork.Received(1).ExecuteInTransactionAsync(
-            Arg.Any<Func<CancellationToken, Task>>(),
-            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_Success_CreatesTenantWithDerivedSlug()
+    public async Task HandleCallbackAsync_Success_ProvisionsOrganizationForResolvedUser()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupTransactionThatExecutesDelegate();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        await _tenantRepository.Received(1).AddAsync(
-            Arg.Is<TenantDto>(t =>
-                t.Slug == "acme-corp" &&
-                t.Name == TestOrgName &&
-                t.TenantType == TenantType.Standard &&
-                t.IsActive),
+        await _organizationProvisioningService.Received(1).ProvisionAsync(
+            Arg.Is<OrganizationProvisioningRequest>(r =>
+                r.UserId == TestUserId &&
+                r.ExternalUserId == TestExternalUserId &&
+                r.OrganizationName == TestOrgName),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_NoOrganizationNameOnFlowState_ProvisionsWithFallbackName()
+    {
+        // Arrange
+        var context = CreateCallbackContext(organizationName: null);
+        SetupHappyPath();
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await _organizationProvisioningService.Received(1).ProvisionAsync(
+            Arg.Is<OrganizationProvisioningRequest>(r => r.OrganizationName == "Organization"),
             Arg.Any<CancellationToken>());
     }
 
@@ -273,10 +303,7 @@ public sealed class NewOrganizationFlowHandlerTests
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupTransactionThatExecutesDelegate();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
@@ -287,44 +314,76 @@ public sealed class NewOrganizationFlowHandlerTests
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_Success_CreatesTenantAdminRole()
+    public async Task HandleCallbackAsync_UserDoesNotExist_CreatesUserBeforeProvisioning()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupTransactionThatExecutesDelegate();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        await _roleRepository.Received(1).AddAsync(
-            Arg.Is<RoleDto>(r =>
-                r.Name == AuthRoleNames.TenantAdmin &&
-                r.IsSystem &&
-                r.RoleType == RoleType.Application),
+        await _userRepository.Received(1).AddAsync(
+            Arg.Is<UserDto>(u =>
+                u.ExternalUserId == TestExternalUserId &&
+                u.Email == TestEmail &&
+                u.DisplayName == TestDisplayName &&
+                u.IsActive),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_Success_AssignsTenantAdminToFoundingUser()
+    public async Task HandleCallbackAsync_UserAlreadyExists_DoesNotCreateUserAgain()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupTransactionThatExecutesDelegate();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
+        _userRepository.GetByExternalUserIdAsync(TestExternalUserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.Ok(CreateExistingUserDto()));
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        await _userRepository.DidNotReceive().AddAsync(
+            Arg.Any<UserDto>(), Arg.Any<CancellationToken>());
+        await _organizationProvisioningService.Received(1).ProvisionAsync(
+            Arg.Is<OrganizationProvisioningRequest>(r => r.UserId == TestUserId),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_Success_GeneratesTokenForNewTenantWithAuthTimeClaim()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        await _userRoleRepository.Received(1).AddAsync(
-            Arg.Is<UserRoleDto>(ur => ur.UserId == TestUserId),
-            Arg.Any<CancellationToken>());
+        await _tokenService.Received(1).GenerateTokenAsync(
+            TestUserId,
+            TestTenantId,
+            Arg.Is<IEnumerable<Claim>>(claims =>
+                claims.Any(c => c.Type == "auth_time")));
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_Success_PointsTenantContextAtNewTenant()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert — token generation resolves roles in the new tenant
+        _tenantContext.TenantId.Should().Be(TestTenantId);
     }
 
     [Fact]
@@ -332,10 +391,7 @@ public sealed class NewOrganizationFlowHandlerTests
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupSuccessfulTransaction();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
@@ -346,72 +402,135 @@ public sealed class NewOrganizationFlowHandlerTests
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_Success_GeneratesTokenWithAuthTimeClaim()
+    public async Task HandleCallbackAsync_Success_WritesIdTokenCookieForLogout()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupSuccessfulTransaction();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
         // Act
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        await _tokenService.Received(1).GenerateTokenAsync(
-            Arg.Any<Guid>(),
-            Arg.Any<Guid>(),
-            Arg.Is<IEnumerable<Claim>>(claims =>
-                claims.Any(c => c.Type == "auth_time")));
+        _authCookieWriter.Received(1).WriteIdTokenCookie(
+            Arg.Any<HttpContext>(), CreateIdTokenWithNonce(TestNonce));
     }
 
     #endregion
 
-    #region Slug Collision Retry
+    #region Provisioning Failure
 
     [Fact]
-    public async Task HandleCallbackAsync_SlugCollision_RetriesWithDisambiguatedSlug()
+    public async Task HandleCallbackAsync_ProvisioningFails_ReturnsErrorWithServiceErrorCodeAndStatus()
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupSuccessfulTokenGeneration();
-
-        // First attempt: tenant creation fails (slug collision)
-        // Second attempt: succeeds
-        var callCount = 0;
-        _unitOfWork.ExecuteInTransactionAsync(
-                Arg.Any<Func<CancellationToken, Task>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                callCount++;
-                var operation = callInfo.ArgAt<Func<CancellationToken, Task>>(0);
-                if (callCount == 1)
-                {
-                    // Simulate slug collision by making tenant add fail
-                    _tenantRepository.AddAsync(Arg.Any<TenantDto>(), Arg.Any<CancellationToken>())
-                        .Returns(OperationResult<TenantDto>.Fail("Unique constraint violation", 409));
-                    return Task.FromResult(OperationResult.Fail("Unique constraint violation", 409));
-                }
-                else
-                {
-                    // Second attempt succeeds
-                    SetupTransactionDelegateForSuccess();
-                    return InvokeTransactionDelegate(operation);
-                }
-            });
+        SetupHappyPath();
+        SetupProvisioningFailure("Unable to create organization.", 409, "SLUG_COLLISION");
 
         // Act
         var result = await _sut.HandleCallbackAsync(context);
 
         // Assert
-        result.IsSuccess.Should().BeTrue();
-        await _unitOfWork.Received(2).ExecuteInTransactionAsync(
-            Arg.Any<Func<CancellationToken, Task>>(),
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("SLUG_COLLISION");
+        result.HttpStatus.Should().Be(409);
+        result.ErrorMessage.Should().Be("Unable to create organization.");
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ProvisioningFailsWithoutErrorCode_UsesGenericErrorCode()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+        SetupProvisioningFailure("Something went wrong.", 500, errorCode: null);
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("ORGANIZATION_PROVISIONING_FAILED");
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ProvisioningFails_MarksFlowAsFailed()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+        SetupProvisioningFailure("Unable to create organization.", 409, "SLUG_COLLISION");
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await _authFlowStateService.Received(1).MarkFailedAsync(
+            TestFlowStateId, Arg.Is<string>(s => s.Contains("SLUG_COLLISION")),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ProvisioningFails_DoesNotIssueTokenOrWriteCookies()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+        SetupProvisioningFailure("Unable to create organization.", 409, "SLUG_COLLISION");
+
+        // Act
+        await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_ProvisioningThrows_PropagatesAndDoesNotIssueToken()
+    {
+        // Arrange — the service throws when a step fails and the transaction rolls back
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+        _organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("Failed to create membership"));
+
+        // Act
+        Func<Task> act = () => _sut.HandleCallbackAsync(context);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
+    }
+
+    #endregion
+
+    #region Token Generation Failure
+
+    [Fact]
+    public async Task HandleCallbackAsync_TokenGenerationReturnsNull_ReturnsErrorAndMarksFlowFailed()
+    {
+        // Arrange
+        var context = CreateCallbackContext();
+        SetupHappyPath();
+        _tokenService.GenerateTokenAsync(
+                Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
+            .Returns((string?)null);
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(context);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
+        await _authFlowStateService.Received(1).MarkFailedAsync(
+            TestFlowStateId, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion
@@ -423,45 +542,40 @@ public sealed class NewOrganizationFlowHandlerTests
     {
         // Arrange
         var context = CreateCallbackContext();
-        SetupSuccessfulCodeExchange();
-        SetupSuccessfulUserInfo();
-        SetupSuccessfulTokenGeneration();
+        SetupHappyPath();
 
-        // Setup: first GetByExternalUserIdAsync returns not found,
-        // AddAsync throws unique constraint violation,
-        // second GetByExternalUserIdAsync returns the existing user
+        // First lookup finds nothing, the insert hits a unique constraint (concurrent creation),
+        // the second lookup returns the user created by the other request.
         var getUserCallCount = 0;
         _userRepository.GetByExternalUserIdAsync(TestExternalUserId, Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 getUserCallCount++;
-                if (getUserCallCount == 1)
-                {
-                    return OperationResult<UserDto>.NotFound("User not found");
-                }
-                return OperationResult<UserDto>.Ok(CreateExistingUserDto());
+                return getUserCallCount == 1
+                    ? OperationResult<UserDto>.NotFound("User not found")
+                    : OperationResult<UserDto>.Ok(CreateExistingUserDto());
             });
 
         _userRepository.AddAsync(Arg.Any<UserDto>(), Arg.Any<CancellationToken>())
             .Throws(new Exception("duplicate key value violates unique constraint \"23505\""));
 
-        SetupTransactionThatExecutesDelegateWithUserCollision();
-        
         // Act
         var result = await _sut.HandleCallbackAsync(context);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        // Should have called GetByExternalUserIdAsync at least twice (initial lookup + re-read)
         await _userRepository.Received(2).GetByExternalUserIdAsync(
             TestExternalUserId, Arg.Any<CancellationToken>());
+        await _organizationProvisioningService.Received(1).ProvisionAsync(
+            Arg.Is<OrganizationProvisioningRequest>(r => r.UserId == TestUserId),
+            Arg.Any<CancellationToken>());
     }
 
     #endregion
 
     #region Helper Methods
 
-    private static FlowCallbackContext CreateCallbackContext()
+    private static FlowCallbackContext CreateCallbackContext(string? organizationName = TestOrgName)
     {
         var consumedState = new AuthFlowStateDto(
             Id: TestFlowStateId,
@@ -475,7 +589,7 @@ public sealed class NewOrganizationFlowHandlerTests
             StateToken: "state-token",
             CodeVerifier: TestCodeVerifier,
             RedirectUri: TestRedirectUri,
-            OrganizationName: TestOrgName,
+            OrganizationName: organizationName,
             Nonce: TestNonce,
             CreatedByIp: "192.168.1.1",
             CreatedByUserAgent: "TestBrowser/1.0",
@@ -492,6 +606,19 @@ public sealed class NewOrganizationFlowHandlerTests
             RedirectUri: TestRedirectUri,
             ConsumedState: consumedState,
             HostResolvedTenant: null);
+    }
+
+    /// <summary>
+    /// Configures every collaborator for a fully successful callback: code exchange, userinfo,
+    /// a brand-new user, successful provisioning and token generation.
+    /// </summary>
+    private void SetupHappyPath()
+    {
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupNewUser();
+        SetupSuccessfulProvisioning();
+        SetupSuccessfulTokenGeneration();
     }
 
     private void SetupSuccessfulCodeExchange(string? idTokenNonce = null, string? idToken = "placeholder")
@@ -528,66 +655,8 @@ public sealed class NewOrganizationFlowHandlerTests
             .Returns(userInfo);
     }
 
-    private void SetupSuccessfulTransaction()
+    private void SetupNewUser()
     {
-        _unitOfWork.ExecuteInTransactionAsync(
-                Arg.Any<Func<CancellationToken, Task>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Ok());
-    }
-
-    private void SetupTransactionThatExecutesDelegate()
-    {
-        // Setup repos to succeed inside the transaction
-        SetupTransactionDelegateForSuccess();
-
-        _unitOfWork.ExecuteInTransactionAsync(
-                Arg.Any<Func<CancellationToken, Task>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => InvokeTransactionDelegate(
-                callInfo.ArgAt<Func<CancellationToken, Task>>(0)));
-    }
-
-    private void SetupTransactionThatExecutesDelegateWithUserCollision()
-    {
-        // Tenant creation succeeds
-        _tenantRepository.AddAsync(Arg.Any<TenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.ArgAt<TenantDto>(0);
-                return OperationResult<TenantDto>.Ok(dto with { Id = TestTenantId });
-            });
-
-        // Role and membership succeed
-        _roleRepository.AddAsync(Arg.Any<RoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.ArgAt<RoleDto>(0);
-                return OperationResult<RoleDto>.Ok(dto with { Id = TestRoleId });
-            });
-
-        _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0)));
-
-        _userRoleRepository.AddAsync(Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => OperationResult<UserRoleDto>.Ok(callInfo.ArgAt<UserRoleDto>(0)));
-
-        _unitOfWork.ExecuteInTransactionAsync(
-                Arg.Any<Func<CancellationToken, Task>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(callInfo => InvokeTransactionDelegate(
-                callInfo.ArgAt<Func<CancellationToken, Task>>(0)));
-    }
-
-    private void SetupTransactionDelegateForSuccess()
-    {
-        _tenantRepository.AddAsync(Arg.Any<TenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.ArgAt<TenantDto>(0);
-                return OperationResult<TenantDto>.Ok(dto with { Id = TestTenantId });
-            });
-
         _userRepository.GetByExternalUserIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(OperationResult<UserDto>.NotFound("Not found"));
 
@@ -597,19 +666,21 @@ public sealed class NewOrganizationFlowHandlerTests
                 var dto = callInfo.ArgAt<UserDto>(0);
                 return OperationResult<UserDto>.Ok(dto with { Id = TestUserId });
             });
+    }
 
-        _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0)));
+    private void SetupSuccessfulProvisioning()
+    {
+        _organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<OrganizationProvisioningResult>.Ok(
+                new OrganizationProvisioningResult(TestTenantId, TestOrgName, "acme-corp")));
+    }
 
-        _roleRepository.AddAsync(Arg.Any<RoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.ArgAt<RoleDto>(0);
-                return OperationResult<RoleDto>.Ok(dto with { Id = TestRoleId });
-            });
-
-        _userRoleRepository.AddAsync(Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => OperationResult<UserRoleDto>.Ok(callInfo.ArgAt<UserRoleDto>(0)));
+    private void SetupProvisioningFailure(string message, int statusCode, string? errorCode)
+    {
+        _organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<OrganizationProvisioningResult>.Fail(message, statusCode, errorCode));
     }
 
     private void SetupSuccessfulTokenGeneration()
@@ -617,20 +688,6 @@ public sealed class NewOrganizationFlowHandlerTests
         _tokenService.GenerateTokenAsync(
                 Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
             .Returns(TestGeneratedToken);
-    }
-
-    private static async Task<OperationResult> InvokeTransactionDelegate(
-        Func<CancellationToken, Task> operation)
-    {
-        try
-        {
-            await operation(CancellationToken.None);
-            return OperationResult.Ok();
-        }
-        catch
-        {
-            return OperationResult.Fail("Transaction failed", 500);
-        }
     }
 
     private static UserDto CreateExistingUserDto()

@@ -181,6 +181,7 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TenantDto>.Fail(
                 "A conflict occurred while saving the entity.",
                 409,
@@ -220,6 +221,7 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TenantDto>.Fail(
                 "A conflict occurred while updating the entity.",
                 409,

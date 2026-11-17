@@ -153,7 +153,7 @@ public class JwtAuthenticationMiddleware
             }
         }
 
-        var identity = new ClaimsIdentity(claims, "ExternalIdP");
+        var identity = new ClaimsIdentity(claims, AuthConstants.ExternalIdpAuthenticationType);
         return new ClaimsPrincipal(identity);
     }
 }

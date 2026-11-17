@@ -90,6 +90,7 @@ public sealed class PolicyRepository : BaseTenantRepository<Policy, PolicyDto>, 
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(policyPermission);
             return OperationResult.Fail(
                 "A conflict occurred while assigning the permission.",
                 409,
@@ -123,6 +124,7 @@ public sealed class PolicyRepository : BaseTenantRepository<Policy, PolicyDto>, 
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(policyPermission);
             return OperationResult.Fail(
                 "A conflict occurred while removing the permission assignment.",
                 409,

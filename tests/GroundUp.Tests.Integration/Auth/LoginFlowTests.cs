@@ -39,15 +39,21 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         var request = CreateCallbackRequest("auth-code-single", flowState.StateToken);
         var response = await Client.SendAsync(request);
 
-        // Assert — redirect with auth cookie set
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // Assert — 200 OK with JSON body containing token
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty("a valid token should be returned on successful login");
 
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty("a valid auth cookie should be set on successful login");
 
         // Validate the JWT token contains the correct tid claim
         var handler = new JwtSecurityTokenHandler();
-        var jwt = handler.ReadJwtToken(authCookie);
+        var jwt = handler.ReadJwtToken(tokenValue);
         var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
         tidClaim.Should().NotBeNull("the token must contain a tid claim");
         tidClaim!.Value.Should().Be(tenantId.ToString(), "the tid should match the single tenant");
@@ -81,11 +87,16 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         var request = CreateCallbackRequest("auth-code-multi", flowState.StateToken);
         var response = await Client.SendAsync(request);
 
-        // Assert — HTTP 200 with tenant list
+        // Assert — HTTP 200 with tenant list and requiresTenantSelection flag
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var content = await response.Content.ReadAsStringAsync();
         var json = JsonDocument.Parse(content);
+
+        // Verify requiresTenantSelection is at the top level
+        json.RootElement.TryGetProperty("requiresTenantSelection", out var requiresSelectionElement).Should().BeTrue();
+        requiresSelectionElement.GetBoolean().Should().BeTrue();
+
         var tenantsArray = json.RootElement.GetProperty("tenants");
         tenantsArray.ValueKind.Should().Be(JsonValueKind.Array);
 
@@ -126,14 +137,20 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         request.Headers.Host = $"{tenantSlug}.{AuthFlowTestFixture.TestDefaultDomain}";
         var response = await Client.SendAsync(request);
 
-        // Assert — redirect with token scoped to the host tenant (no picker)
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // Assert — 200 OK with token scoped to the host tenant (no picker)
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        json.RootElement.TryGetProperty("token", out var tokenElement).Should().BeTrue();
+        var tokenValue = tokenElement.GetString();
+        tokenValue.Should().NotBeNullOrEmpty();
 
         var authCookie = ExtractAuthCookie(response);
         authCookie.Should().NotBeNullOrEmpty("cookie must be set for host-pinned member login");
 
         var handler = new JwtSecurityTokenHandler();
-        var jwt = handler.ReadJwtToken(authCookie);
+        var jwt = handler.ReadJwtToken(tokenValue);
         var tidClaim = jwt.Claims.FirstOrDefault(c => c.Type == "tid");
         tidClaim.Should().NotBeNull();
         tidClaim!.Value.Should().Be(tenantId.ToString(),
@@ -203,7 +220,7 @@ public sealed class LoginFlowTests : AuthFlowTestBase
     // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Callback_ZeroMembershipsNoDefaultTenant_Returns403Forbidden()
+    public async Task Callback_ZeroMembershipsNoDefaultTenant_IssuesTenantlessSession()
     {
         // Arrange — seed a user with no memberships and no default tenant configured
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -217,8 +234,21 @@ public sealed class LoginFlowTests : AuthFlowTestBase
         var request = CreateCallbackRequest("auth-code-nomember", flowState.StateToken);
         var response = await Client.SendAsync(request);
 
-        // Assert — 403 access denied (no memberships, no default tenant)
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // Assert — signed in with no current tenant: 200 and a tenantless GroundUp token in the cookie
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("requiresTenantSelection").GetBoolean().Should().BeFalse();
+        body.GetProperty("tenants").GetArrayLength().Should().Be(0);
+        body.TryGetProperty("token", out _).Should().BeFalse("no tenant-scoped token is handed out");
+
+        var authCookie = ExtractAuthCookie(response);
+        authCookie.Should().NotBeNullOrEmpty("the user is signed in even though there is no tenant to enter");
+
+        var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(authCookie);
+        jwt.Issuer.Should().Be("GroundUp");
+        jwt.Claims.Should().NotContain(c => c.Type == "tid");
+        jwt.Claims.Should().NotContain(c => c.Type == "role");
     }
 
 }

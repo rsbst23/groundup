@@ -92,7 +92,8 @@ public sealed class BaseTenantRepositoryPropertyTests
 
     /// <summary>
     /// Property 3: AddAsync tenant assignment invariant.
-    /// For any DTO with any TenantId value (including Guid.Empty, random Guid, or current tenant Guid),
+    /// For any DTO with any TenantId value (including Guid.Empty, random Guid, or current tenant Guid)
+    /// and any non-empty context tenant,
     /// AddAsync produces a persisted entity whose TenantId equals ITenantContext.TenantId.
     /// </summary>
     [Property(MaxTest = 100)]
@@ -121,7 +122,7 @@ public sealed class BaseTenantRepositoryPropertyTests
             return persisted is not null
                 && persisted.TenantId == contextTenantId
                 && result.Data.TenantId == contextTenantId;
-        }).Value.ToProperty();
+        }).Value.ToProperty().When(contextTenantId != Guid.Empty); // an empty tenant is rejected, see BaseTenantRepositoryTests
     }
 
     /// <summary>
@@ -168,6 +169,6 @@ public sealed class BaseTenantRepositoryPropertyTests
             return persisted is not null
                 && persisted.TenantId == contextTenantId
                 && result.Data!.TenantId == contextTenantId;
-        }).Value.ToProperty();
+        }).Value.ToProperty().When(contextTenantId != Guid.Empty); // an empty tenant is rejected, see BaseTenantRepositoryTests
     }
 }

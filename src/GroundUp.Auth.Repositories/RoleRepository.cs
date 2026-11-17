@@ -91,6 +91,7 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(rolePolicy);
             return OperationResult.Fail(
                 "A conflict occurred while assigning the policy.",
                 409,
@@ -124,6 +125,7 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(rolePolicy);
             return OperationResult.Fail(
                 "A conflict occurred while removing the policy assignment.",
                 409,

@@ -25,6 +25,10 @@ namespace GroundUp.Repositories;
 /// Cross-tenant access returns NotFound (not Forbidden) to prevent information leakage
 /// about entity existence in other tenants.
 /// </para>
+/// <para>
+/// When there is no current tenant (<see cref="ITenantContext.TenantId"/> is <see cref="Guid.Empty"/>),
+/// every operation returns 403 with <see cref="ErrorCodes.TenantRequired"/> before touching the database.
+/// </para>
 /// </summary>
 /// <typeparam name="TEntity">The EF Core entity type. Must extend <see cref="BaseEntity"/>
 /// and implement <see cref="ITenantEntity"/>.</typeparam>
@@ -69,6 +73,9 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         Func<IQueryable<TEntity>, IQueryable<TEntity>>? queryShaper,
         CancellationToken cancellationToken = default)
     {
+        if (!HasTenant)
+            return TenantRequired<PaginatedData<TDto>>();
+
         var tenantShaper = ComposeTenantShaper(queryShaper);
         return await base.GetAllAsync(filterParams, tenantShaper, cancellationToken);
     }
@@ -86,6 +93,9 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         Func<IQueryable<TEntity>, IQueryable<TEntity>>? queryShaper,
         CancellationToken cancellationToken = default)
     {
+        if (!HasTenant)
+            return TenantRequired<TDto>();
+
         var tenantShaper = ComposeTenantShaper(queryShaper);
         return await base.GetByIdAsync(id, tenantShaper, cancellationToken);
     }
@@ -102,16 +112,21 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        if (!HasTenant)
+            return TenantRequired<TDto>();
+
+        var entity = MapToEntity(dto);
+        entity.TenantId = _tenantContext.TenantId;
+
         try
         {
-            var entity = MapToEntity(dto);
-            entity.TenantId = _tenantContext.TenantId;
             DbSet.Add(entity);
             await Context.SaveChangesAsync(cancellationToken);
             return OperationResult<TDto>.Ok(MapToDto(entity), "Created", 201);
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while saving the entity.",
                 409,
@@ -133,13 +148,16 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         TDto dto,
         CancellationToken cancellationToken = default)
     {
+        if (!HasTenant)
+            return TenantRequired<TDto>();
+
+        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+
+        if (entity is null || entity.TenantId != _tenantContext.TenantId)
+            return OperationResult<TDto>.NotFound();
+
         try
         {
-            var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
-
-            if (entity is null || entity.TenantId != _tenantContext.TenantId)
-                return OperationResult<TDto>.NotFound();
-
             var updated = MapToEntity(dto);
             Context.Entry(entity).CurrentValues.SetValues(updated);
 
@@ -151,6 +169,7 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         }
         catch (DbUpdateException)
         {
+            DiscardRejectedChanges(entity);
             return OperationResult<TDto>.Fail(
                 "A conflict occurred while updating the entity.",
                 409,
@@ -171,6 +190,9 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         Guid id,
         CancellationToken cancellationToken = default)
     {
+        if (!HasTenant)
+            return OperationResult.Fail(TenantRequiredMessage, 403, ErrorCodes.TenantRequired);
+
         var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
 
         if (entity is null || entity.TenantId != _tenantContext.TenantId)
@@ -194,6 +216,18 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
     #endregion
 
     #region Private Helpers
+
+    private const string TenantRequiredMessage = "A current tenant is required for this operation.";
+
+    /// <summary>
+    /// False when the caller has no current tenant (for example a tenantless session or an
+    /// unauthenticated request). Tenant-scoped operations fail closed instead of filtering
+    /// by an empty tenant id, which would return nothing on reads and write rows with no tenant.
+    /// </summary>
+    private bool HasTenant => _tenantContext.TenantId != Guid.Empty;
+
+    private static OperationResult<T> TenantRequired<T>() =>
+        OperationResult<T>.Fail(TenantRequiredMessage, 403, ErrorCodes.TenantRequired);
 
     /// <summary>
     /// Composes a TenantShaper that applies the tenant filter first,

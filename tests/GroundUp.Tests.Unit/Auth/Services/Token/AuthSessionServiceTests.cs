@@ -2,8 +2,10 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Results;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace GroundUp.Tests.Unit.Auth.Services.Token;
@@ -26,7 +28,15 @@ public sealed class AuthSessionServiceTests
         _tenantRepository = Substitute.For<ITenantRepository>();
         _tokenService = Substitute.For<ITokenService>();
 
-        _sut = new AuthSessionService(_userTenantRepository, _tenantRepository, _tokenService);
+        _sut = new AuthSessionService(
+            _userTenantRepository,
+            _tenantRepository,
+            _tokenService,
+            Options.Create(new AuthOptions
+            {
+                TokenExpirationMinutes = 60,
+                AbsoluteSessionLifetimeMinutes = 480
+            }));
 
         // Default token generation returns a token
         _tokenService.GenerateTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
@@ -417,6 +427,92 @@ public sealed class AuthSessionServiceTests
         Assert.True(result.Data!.SelectionRequired);
         Assert.Single(result.Data.AvailableTenants!);
         Assert.Equal(_tenantId1, result.Data.AvailableTenants![0].Id);
+    }
+
+    // --- SetTenantAsync: absolute session lifetime ---
+
+    [Fact]
+    public async Task SetTenantAsync_SessionPastAbsoluteLifetime_ReturnsUnauthorizedAndIssuesNoToken()
+    {
+        // Arrange
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        var tooOld = DateTimeOffset.UtcNow.AddMinutes(-481);
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1, tooOld);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal(401, result.StatusCode);
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>());
+    }
+
+    [Fact]
+    public async Task SetTenantAsync_SessionJustInsideAbsoluteLifetime_IssuesToken()
+    {
+        // Arrange
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        var justInside = DateTimeOffset.UtcNow.AddMinutes(-479);
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1, justInside);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data!.Token);
+    }
+
+    // --- IssueTenantlessSessionAsync ---
+
+    [Fact]
+    public async Task IssueTenantlessSessionAsync_WithOriginalAuthTime_PreservesAuthTime()
+    {
+        // Arrange
+        IEnumerable<System.Security.Claims.Claim>? captured = null;
+        _tokenService.GenerateTenantlessTokenAsync(_userId, Arg.Do<IEnumerable<System.Security.Claims.Claim>?>(c => captured = c))
+            .Returns("tenantless-token");
+
+        // Act
+        var result = await _sut.IssueTenantlessSessionAsync(_userId, _originalAuthTime);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal("tenantless-token", result.Data);
+        var authTime = Assert.Single(captured!, c => c.Type == "auth_time");
+        Assert.Equal(_originalAuthTime.ToUnixTimeSeconds().ToString(), authTime.Value);
+    }
+
+    [Fact]
+    public async Task IssueTenantlessSessionAsync_NoOriginalAuthTime_SetsAuthTimeToNow()
+    {
+        // Arrange
+        IEnumerable<System.Security.Claims.Claim>? captured = null;
+        _tokenService.GenerateTenantlessTokenAsync(_userId, Arg.Do<IEnumerable<System.Security.Claims.Claim>?>(c => captured = c))
+            .Returns("tenantless-token");
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Act
+        await _sut.IssueTenantlessSessionAsync(_userId);
+
+        // Assert
+        var authTime = long.Parse(Assert.Single(captured!, c => c.Type == "auth_time").Value);
+        Assert.InRange(authTime, before, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task IssueTenantlessSessionAsync_UserNotFound_ReturnsNotFound()
+    {
+        // Arrange
+        _tokenService.GenerateTenantlessTokenAsync(_userId, Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
+            .Returns((string?)null);
+
+        // Act
+        var result = await _sut.IssueTenantlessSessionAsync(_userId);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal(404, result.StatusCode);
     }
 
     // --- Helper methods ---

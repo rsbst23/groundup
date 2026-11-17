@@ -76,10 +76,7 @@ public sealed class TokenService : ITokenService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // 5. Get signing key
-        var signingKeyInfo = await _signingKeyProvider.GetSigningKeyAsync(tenantId);
-
-        // 6. Build claims
+        // 5. Build claims
         var claims = new List<Claim>
         {
             new("sub", userId.ToString()),
@@ -93,17 +90,54 @@ public sealed class TokenService : ITokenService
             claims.Add(new Claim("role", roleName));
         }
 
-        // 7. Add additional claims
+        // 6. Add additional claims
         if (additionalClaims is not null)
         {
             claims.AddRange(additionalClaims);
         }
 
-        // 8. Create security key and signing credentials
+        return await SignTokenAsync(claims, tenantId);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GenerateTenantlessTokenAsync(Guid userId, IEnumerable<Claim>? additionalClaims = null)
+    {
+        var userResult = await _userRepository.GetByIdAsync(userId);
+        if (!userResult.Success || userResult.Data is null || !userResult.Data.IsActive)
+        {
+            return null;
+        }
+
+        var user = userResult.Data;
+
+        // Identity only: no tid and no roles (not even system roles).
+        var claims = new List<Claim>
+        {
+            new("sub", userId.ToString()),
+            new("email", user.Email),
+            new("name", user.DisplayName)
+        };
+
+        if (additionalClaims is not null)
+        {
+            claims.AddRange(additionalClaims);
+        }
+
+        // Guid.Empty selects the system signing key (the token is not scoped to a tenant).
+        return await SignTokenAsync(claims, Guid.Empty);
+    }
+
+    /// <summary>
+    /// Signs the claims with the key resolved for <paramref name="signingTenantId"/> and writes the token,
+    /// including the <c>kid</c> header used to find the key again during validation.
+    /// </summary>
+    private async Task<string> SignTokenAsync(List<Claim> claims, Guid signingTenantId)
+    {
+        var signingKeyInfo = await _signingKeyProvider.GetSigningKeyAsync(signingTenantId);
+
         var securityKey = new SymmetricSecurityKey(signingKeyInfo.KeyMaterial);
         var signingCredentials = new SigningCredentials(securityKey, MapAlgorithm(signingKeyInfo.Algorithm));
 
-        // 9. Create token descriptor
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
@@ -113,7 +147,6 @@ public sealed class TokenService : ITokenService
             SigningCredentials = signingCredentials
         };
 
-        // 10. Create and write token with kid header
         var tokenHandler = new JwtSecurityTokenHandler();
         var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
         token.Header["kid"] = signingKeyInfo.KeyId;

@@ -1,10 +1,8 @@
 using System.Security.Claims;
-using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
-using GroundUp.Data.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -12,19 +10,15 @@ namespace GroundUp.Auth.Services;
 
 /// <summary>
 /// Handles the <see cref="FlowType.NewOrganization"/> callback flow.
-/// Atomically creates a new tenant, resolves or creates the founding user,
-/// creates the membership and TenantAdmin role assignment, then issues a token.
+/// Authenticates the founding user via the identity provider, resolves or creates the GroundUp user,
+/// delegates organization creation to <see cref="IOrganizationProvisioningService"/>, then issues a token.
 /// </summary>
 public sealed class NewOrganizationFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
     private readonly IAuthFlowStateService _authFlowStateService;
-    private readonly ITenantRepository _tenantRepository;
     private readonly IUserRepository _userRepository;
-    private readonly IUserTenantRepository _userTenantRepository;
-    private readonly IUserRoleRepository _userRoleRepository;
-    private readonly IRoleRepository _roleRepository;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly ITokenService _tokenService;
     private readonly IAuthCookieWriter _authCookieWriter;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -32,22 +26,13 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
     private readonly ILogger<NewOrganizationFlowHandler> _logger;
 
     /// <summary>
-    /// Maximum number of slug disambiguation retries before giving up.
-    /// </summary>
-    private const int MaxSlugRetries = 5;
-
-    /// <summary>
     /// Initializes a new instance of <see cref="NewOrganizationFlowHandler"/>.
     /// </summary>
     public NewOrganizationFlowHandler(
         IIdentityProviderService identityProviderService,
         IAuthFlowStateService authFlowStateService,
-        ITenantRepository tenantRepository,
         IUserRepository userRepository,
-        IUserTenantRepository userTenantRepository,
-        IUserRoleRepository userRoleRepository,
-        IRoleRepository roleRepository,
-        IUnitOfWork unitOfWork,
+        IOrganizationProvisioningService organizationProvisioningService,
         ITokenService tokenService,
         IAuthCookieWriter authCookieWriter,
         IHttpContextAccessor httpContextAccessor,
@@ -56,12 +41,8 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
     {
         _identityProviderService = identityProviderService;
         _authFlowStateService = authFlowStateService;
-        _tenantRepository = tenantRepository;
         _userRepository = userRepository;
-        _userTenantRepository = userTenantRepository;
-        _userRoleRepository = userRoleRepository;
-        _roleRepository = roleRepository;
-        _unitOfWork = unitOfWork;
+        _organizationProvisioningService = organizationProvisioningService;
         _tokenService = tokenService;
         _authCookieWriter = authCookieWriter;
         _httpContextAccessor = httpContextAccessor;
@@ -109,106 +90,30 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
             return FlowResult.Error("USERINFO_FAILED", "Failed to retrieve user information from identity provider.");
         }
 
-        // 4. Derive slug from organization name
+        // 4. Resolve or create the founding user by ExternalUserId (sub claim).
+        //    This happens before provisioning: the provisioning service never creates users.
+        var userId = await ResolveOrCreateUserAsync(userInfo);
+
+        // 5. Provision the organization (tenant, membership, TenantAdmin role, role assignment)
         var organizationName = state.OrganizationName ?? "Organization";
-        var baseSlug = SlugGenerator.FromOrganizationName(organizationName);
+        var provisioningResult = await _organizationProvisioningService.ProvisionAsync(
+            new OrganizationProvisioningRequest(userId, userInfo.ExternalUserId, organizationName));
 
-        // 5. Retry loop wrapping entire transaction on slug unique-constraint violation
-        Guid tenantId = Guid.Empty;
-        Guid userId = Guid.Empty;
-
-        for (var attempt = 1; attempt <= MaxSlugRetries; attempt++)
+        if (!provisioningResult.Success || provisioningResult.Data is null)
         {
-            var slug = attempt == 1 ? baseSlug : SlugGenerator.Disambiguate(baseSlug, attempt);
-
-            try
-            {
-                var transactionResult = await _unitOfWork.ExecuteInTransactionAsync(async ct =>
-                {
-                    // Create tenant
-                    var newTenantId = Guid.NewGuid();
-                    var tenantDto = new TenantDto(
-                        Id: newTenantId,
-                        Name: organizationName,
-                        Slug: slug,
-                        TenantType: TenantType.Standard,
-                        OnboardingMode: OnboardingMode.InviteOnly,
-                        ParentTenantId: null,
-                        RealmName: null,
-                        IsActive: true);
-
-                    var tenantResult = await _tenantRepository.AddAsync(tenantDto, ct);
-                    if (!tenantResult.Success)
-                    {
-                        throw new SlugCollisionException(slug);
-                    }
-
-                    tenantId = tenantResult.Data!.Id;
-
-                    // Set the tenant context so tenant-scoped repositories use the new tenant
-                    _tenantContext.TenantId = tenantId;
-
-                    // Resolve or create user by ExternalUserId (sub claim)
-                    userId = await ResolveOrCreateUserAsync(userInfo, ct);
-
-                    // Create UserTenant membership
-                    var membershipDto = new UserTenantDto(
-                        Id: Guid.NewGuid(),
-                        UserId: userId,
-                        TenantId: tenantId,
-                        ExternalUserId: userInfo.ExternalUserId,
-                        IsActive: true);
-
-                    await _userTenantRepository.AddAsync(membershipDto, ct);
-
-                    // Create TenantAdmin role (tenant-scoped, IsSystem=true)
-                    var roleDto = new RoleDto(
-                        Id: Guid.NewGuid(),
-                        Name: AuthRoleNames.TenantAdmin,
-                        Description: "Full access within this tenant",
-                        RoleType: RoleType.Application,
-                        TenantId: tenantId,
-                        IsSystem: true);
-
-                    var roleResult = await _roleRepository.AddAsync(roleDto, ct);
-                    var roleId = roleResult.Data!.Id;
-
-                    // Assign TenantAdmin to the founding user
-                    var userRoleDto = new UserRoleDto(
-                        Id: Guid.NewGuid(),
-                        UserId: userId,
-                        RoleId: roleId,
-                        TenantId: tenantId);
-
-                    await _userRoleRepository.AddAsync(userRoleDto, ct);
-                });
-
-                if (transactionResult.Success)
-                {
-                    break; // Transaction committed successfully
-                }
-
-                // If the transaction failed due to a slug collision, retry
-                if (attempt == MaxSlugRetries)
-                {
-                    _logger.LogError("NewOrganization flow failed: max slug retries exhausted for org '{OrgName}'", organizationName);
-                    await _authFlowStateService.MarkFailedAsync(state.Id, "Slug collision exhausted retries");
-                    return FlowResult.Error("SLUG_COLLISION", "Unable to create organization — slug unavailable after retries.");
-                }
-            }
-            catch (SlugCollisionException)
-            {
-                if (attempt == MaxSlugRetries)
-                {
-                    _logger.LogError("NewOrganization flow failed: max slug retries exhausted for org '{OrgName}'", organizationName);
-                    await _authFlowStateService.MarkFailedAsync(state.Id, "Slug collision exhausted retries");
-                    return FlowResult.Error("SLUG_COLLISION", "Unable to create organization — slug unavailable after retries.");
-                }
-
-                _logger.LogDebug("Slug collision on '{Slug}', retrying with attempt {Attempt}", slug, attempt + 1);
-                continue;
-            }
+            var errorCode = provisioningResult.ErrorCode ?? "ORGANIZATION_PROVISIONING_FAILED";
+            _logger.LogError(
+                "NewOrganization flow failed: provisioning failed for org '{OrgName}' with {ErrorCode}",
+                organizationName, errorCode);
+            await _authFlowStateService.MarkFailedAsync(state.Id, $"Organization provisioning failed: {errorCode}");
+            return FlowResult.Error(errorCode, provisioningResult.Message, provisioningResult.StatusCode);
         }
+
+        var tenantId = provisioningResult.Data.TenantId;
+
+        // The provisioning service restores the tenant context it found. Point it at the new
+        // tenant so token generation resolves the founder's roles in that tenant.
+        _tenantContext.TenantId = tenantId;
 
         // 6. Generate GroundUp JWT token with auth_time = now
         var authTimeClaim = new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64);
@@ -226,6 +131,7 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         if (httpContext is not null)
         {
             _authCookieWriter.WriteAuthCookie(httpContext, token);
+            _authCookieWriter.WriteIdTokenCookie(httpContext, tokenResponse.IdToken ?? string.Empty);
         }
 
         _logger.LogInformation(
@@ -239,7 +145,7 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
     /// Resolves an existing user by ExternalUserId or creates a new one.
     /// Handles unique-constraint violations on ExternalUserId by re-reading the existing user.
     /// </summary>
-    private async Task<Guid> ResolveOrCreateUserAsync(ExternalUserInfo userInfo, CancellationToken ct)
+    private async Task<Guid> ResolveOrCreateUserAsync(ExternalUserInfo userInfo, CancellationToken ct = default)
     {
         // Try to find existing user by external sub
         var existingResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId, ct);
@@ -350,16 +256,5 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Marker exception used to detect slug collisions within the transaction.
-    /// </summary>
-    private sealed class SlugCollisionException : Exception
-    {
-        public SlugCollisionException(string slug)
-            : base($"Slug collision on '{slug}'")
-        {
-        }
     }
 }

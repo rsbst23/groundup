@@ -49,7 +49,8 @@ public interface IUserRoleRepository : IBaseRepository<UserRoleDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves all active users who hold the TenantAdmin role in the specified tenant.
+    /// Retrieves all users who hold the TenantAdmin role in the specified tenant and still have
+    /// an active membership in it (an admin who left the tenant is not counted).
     /// Used by the last-admin guard to determine whether a TenantAdmin removal is safe.
     /// </summary>
     /// <param name="tenantId">The tenant identifier to check for TenantAdmin holders.</param>

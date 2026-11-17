@@ -84,6 +84,14 @@ public sealed class AuthUrlBuilderService : IAuthUrlBuilder
             ["code_challenge_method"] = "S256"
         };
 
+        // For sign-up flows, open Keycloak's registration form directly. prompt=create is the
+        // standard parameter for this (Keycloak 26.1+). Do not use kc_action: it runs a required
+        // action for an existing account, "register" is not one, and Keycloak ignores it.
+        if (request.IsSignup)
+        {
+            queryParams["prompt"] = "create";
+        }
+
         var queryString = string.Join("&", queryParams.Select(
             kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 

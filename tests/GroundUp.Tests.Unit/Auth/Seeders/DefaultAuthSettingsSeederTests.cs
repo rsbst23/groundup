@@ -32,13 +32,13 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyThreeTimes()
+    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyFiveTimes()
     {
         // Act
         await _sut.SeedAsync();
 
         // Assert
-        await _settingsService.Received(3).EnsureDefinitionAsync(
+        await _settingsService.Received(5).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }
@@ -83,14 +83,40 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_CreatesDefaultTenantSlugSetting()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == "auth.application.default-tenant-slug"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SeedAsync_CreatesSignupCreatesOrgSetting()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == "auth.application.signup-creates-org"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SeedAsync_SecondRun_IsIdempotent()
     {
         // Act — run twice
         await _sut.SeedAsync();
         await _sut.SeedAsync();
 
-        // Assert — 6 total calls (3 per run), all succeed without error
-        await _settingsService.Received(6).EnsureDefinitionAsync(
+        // Assert — 10 total calls (5 per run), all succeed without error
+        await _settingsService.Received(10).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }

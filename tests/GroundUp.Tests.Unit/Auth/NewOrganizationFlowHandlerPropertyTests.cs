@@ -133,46 +133,12 @@ public sealed class NewOrganizationFlowHandlerPropertyTests
                 return OperationResult<UserDto>.Ok(dto);
             });
 
-        var tenantRepository = Substitute.For<ITenantRepository>();
-        tenantRepository.AddAsync(Arg.Any<TenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.Arg<TenantDto>();
-                return OperationResult<TenantDto>.Ok(dto);
-            });
-
-        var userTenantRepository = Substitute.For<IUserTenantRepository>();
-        userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.Arg<UserTenantDto>();
-                return OperationResult<UserTenantDto>.Ok(dto);
-            });
-
-        var roleRepository = Substitute.For<IRoleRepository>();
-        roleRepository.AddAsync(Arg.Any<RoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.Arg<RoleDto>();
-                return OperationResult<RoleDto>.Ok(dto);
-            });
-
-        var userRoleRepository = Substitute.For<IUserRoleRepository>();
-        userRoleRepository.AddAsync(Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var dto = callInfo.Arg<UserRoleDto>();
-                return OperationResult<UserRoleDto>.Ok(dto);
-            });
-
-        var unitOfWork = Substitute.For<IUnitOfWork>();
-        unitOfWork.ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
-            .Returns(async callInfo =>
-            {
-                var operation = callInfo.Arg<Func<CancellationToken, Task>>();
-                await operation(CancellationToken.None);
-                return OperationResult.Ok();
-            });
+        // Organization provisioning succeeds so the tests isolate nonce validation behavior
+        var organizationProvisioningService = Substitute.For<IOrganizationProvisioningService>();
+        organizationProvisioningService.ProvisionAsync(
+                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<OrganizationProvisioningResult>.Ok(
+                new OrganizationProvisioningResult(Guid.NewGuid(), "Test Organization", "test-organization")));
 
         var tokenService = Substitute.For<ITokenService>();
         tokenService.GenerateTokenAsync(
@@ -189,12 +155,8 @@ public sealed class NewOrganizationFlowHandlerPropertyTests
         return new NewOrganizationFlowHandler(
             idpService,
             authFlowStateService,
-            tenantRepository,
             userRepository,
-            userTenantRepository,
-            userRoleRepository,
-            roleRepository,
-            unitOfWork,
+            organizationProvisioningService,
             tokenService,
             authCookieWriter,
             httpContextAccessor,
