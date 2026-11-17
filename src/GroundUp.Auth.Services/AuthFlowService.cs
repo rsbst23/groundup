@@ -266,14 +266,19 @@ public sealed class AuthFlowService : IAuthFlowService
 
     /// <summary>
     /// Sets the state cookie for browser-binding CSRF protection.
-    /// Short-lived, HttpOnly, Secure, SameSite=Strict, Path="/".
+    /// Short-lived, HttpOnly, Secure (per <c>AuthOptions.CookieSecure</c>), SameSite=Lax, Path="/".
+    /// Lax, not Strict, because the cookie must be sent when the identity provider redirects the
+    /// browser back to the callback from another site.
     /// </summary>
     private static void SetStateCookie(HttpContext httpContext, string stateToken, AuthOptions options)
     {
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
+            // Follows the same setting as the auth cookie. A hard-coded true made the cookie
+            // vanish on plain-http hosts other than localhost (browsers refuse Secure cookies
+            // there), so every callback failed with CSRF_STATE_MISMATCH.
+            Secure = options.CookieSecure,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             // State cookie lives as long as the flow state
@@ -291,7 +296,7 @@ public sealed class AuthFlowService : IAuthFlowService
         httpContext.Response.Cookies.Delete(options.StateCookieName, new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
+            Secure = options.CookieSecure,
             SameSite = SameSiteMode.Lax,
             Path = "/"
         });

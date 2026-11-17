@@ -165,6 +165,35 @@ public sealed class AuthFlowServiceTests
         setCookieHeader.Should().Contain("path=/");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InitiateFlowAsync_Success_StateCookieSecureFollowsCookieSecureOption(bool cookieSecure)
+    {
+        // Arrange — a Secure cookie is dropped by browsers on plain-http hosts other than localhost,
+        // so development hosts such as <slug>.groundup.test need CookieSecure=false to work.
+        _authOptions.CookieSecure = cookieSecure;
+        var request = new FlowInitiationRequest(FlowType.Login);
+        var httpContext = CreateHttpContext();
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(request, httpContext);
+
+        // Assert
+        var setCookieHeader = httpContext.Response.Headers.SetCookie.ToString();
+        setCookieHeader.Should().Contain("AuthState=" + TestStateToken);
+        if (cookieSecure)
+        {
+            setCookieHeader.Should().Contain("secure");
+        }
+        else
+        {
+            setCookieHeader.Should().NotContain("secure");
+        }
+    }
+
     [Fact]
     public async Task InitiateFlowAsync_Success_ReturnsRedirectUrlFromAuthUrlBuilder()
     {
