@@ -481,17 +481,32 @@ Expected callback: `{ "token": "...", "redirectUrl": "/" }`. There is **no picke
 
 ### 12.3 Host and token mismatch
 
-1. Open `http://second-org.groundup.test:5000/swagger/index.html` (the cookie covers every `*.groundup.test` host).
-2. `GET /api/projects` → **409** `TENANT_SWITCH_REQUIRED`. Alice's token is for `my-test-org`, but she is calling `second-org`'s host. (A non-member would get **403**.)
+Alice's token is for `my-test-org`. Now call the **other** organization's host. The cookie covers every `*.groundup.test` host, so it is sent there.
+
+Type this address straight into the browser (it is a GET, so the address bar works):
+```
+http://second-org.groundup.test:5000/api/projects
+```
+Expected: **409** with this body:
+```json
+{ "success": false, "message": "Your current session is scoped to a different tenant. Please switch tenants via POST /auth/set-tenant.", "errorCode": "TENANT_SWITCH_REQUIRED", "statusCode": 409 }
+```
+(A user who is not a member of `second-org` would get **403** instead.)
+
+> The check runs on every path except `/auth/*`, so **the Swagger page on the other host is blocked too** (`http://second-org.groundup.test:5000/swagger/index.html` returns the same 409). Do not try to run this step from Swagger on that host.
 
 ### 12.4 Resolve it without logging in again
 
-Still on the `second-org.groundup.test` Swagger page:
+`/auth/*` is exempt from the check, so switch from the Swagger page you already have open on the `my-test-org.groundup.test` host (the page itself does not need to reload):
 ```
 POST /auth/set-tenant
 { "tenantId": "<Second Org id>" }
 ```
-Expected: **200**, a token scoped to `Second Org`. `GET /api/projects` now returns 200 on this host.
+Expected: **200**. The cookie is replaced with a token scoped to `Second Org`, and it applies to every `*.groundup.test` host.
+
+Now open `http://second-org.groundup.test:5000/api/projects` in the address bar again. Expected: **200** (an empty page of projects is fine).
+
+The reverse now holds: `http://my-test-org.groundup.test:5000/api/projects` returns 409 until you switch back with `POST /auth/set-tenant` for `My Test Org`.
 
 ### 12.5 Put it back
 
