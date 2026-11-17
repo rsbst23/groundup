@@ -438,38 +438,64 @@ Not changed by the tenantless-session work. Run it as Alice: log out fully, log 
 
 ## Part 12 (Optional): Subdomains
 
-Not changed by the tenantless-session work, and not re-run while this guide was rewritten. It pins a user to a tenant by host name. Run it as Alice, scoped to `My Test Org` (as in Part 11).
+Not changed by the tenantless-session work. It pins a user to an organization by host name: `<slug>.<default-domain>`. Run it as Alice, who belongs to two organizations.
 
-The examples use the slugs `my-test-org` and `second-org`. If your organizations have different slugs (check `AuthTenants.Slug`), use those in every step below. The host name must be exactly `<slug>.localhost`.
+**Why not `*.localhost`?** Browsers will not store a cookie scoped to `.localhost` for a subdomain such as `my-test-org.localhost`, so the login appears to work but `/auth/me` returns 401. Use a made-up two-part domain. The examples use `groundup.test` (`.test` is reserved for this).
 
-1. **Hosts file.** Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add one line per organization:
-   ```
-   127.0.0.1  my-test-org.localhost
-   127.0.0.1  second-org.localhost
-   ```
-2. **Allow the subdomain callbacks in Keycloak.** The callback address is built from the host you call, so each subdomain needs its own entry. Keycloak admin → groundup realm → Clients → groundup-app → Settings → **Valid redirect URIs**, add:
-   ```
-   http://my-test-org.localhost:5000/auth/callback
-   http://second-org.localhost:5000/auth/callback
-   ```
-   (use your port, and your slugs). Without this, Keycloak shows "Invalid redirect_uri" when you open the login URL.
-3. **Host-pinned login.** `/auth/login` is a **POST**, so typing its URL in the address bar fails with **HTTP 405**. Do it from Swagger **served from the subdomain**:
-   1. Open `http://my-test-org.localhost:<port>/swagger/index.html`.
-   2. Run `POST /auth/login` there, copy the `redirectUrl`, and open it in the same browser.
-   3. Sign in as Alice.
+**Why this breaks the rest of the guide:** the auth cookie is scoped to the default domain. Once it is `groundup.test`, a cookie cannot be set on plain `localhost`. Do this part last, and switch back at the end.
 
-   As a **member** of `my-test-org` you get a token scoped to it with no picker, even though you belong to two orgs. A non-member would get **403**. The cookie is set for `.localhost`, so it is sent to every `*.localhost` subdomain.
-4. **Mismatch.** With that `My Test Org` token, request the other subdomain. Open `http://second-org.localhost:<port>/swagger/index.html` (the cookie is sent because it covers `.localhost`) and run:
+The examples use the slugs `my-test-org` and `second-org`. Use your own if they differ (check `AuthTenants.Slug`). The host must be exactly `<slug>.groundup.test`.
+
+### 12.1 Set up (once)
+
+1. **Hosts file.** Open `C:\Windows\System32\drivers\etc\hosts` as Administrator and add:
    ```
-   GET /api/projects
+   127.0.0.1  my-test-org.groundup.test
+   127.0.0.1  second-org.groundup.test
    ```
-   Expected: **409** `TENANT_SWITCH_REQUIRED` (you are a member of `second-org`; a non-member would get 403).
-5. **Resolve it** without logging in again (still on the `second-org.localhost` Swagger page):
+2. **Keycloak.** Admin → groundup realm → Clients → groundup-app → Settings. Add the following for each of the two hosts (use your port). Match the slashes exactly; Keycloak compares the text:
+   - **Valid redirect URIs:** `http://my-test-org.groundup.test:5000/auth/callback`
+   - **Valid post logout redirect URIs:** `http://my-test-org.groundup.test:5000/` (with the trailing `/`)
+   - **Web origins:** `http://my-test-org.groundup.test:5000`
+   - Then the same three for `second-org.groundup.test`.
+3. **Default domain.** Use Recipe 3 (SQL, then restart), but for the key `auth.application.default-domain` and the value `groundup.test`. To check it took effect:
+   ```sql
+   SELECT v."Value" FROM "SettingValues" v
+   JOIN "SettingDefinitions" d ON d."Id" = v."SettingDefinitionId"
+   WHERE d."Key" = 'auth.application.default-domain' AND v."ScopeId" IS NULL;
    ```
-   POST /auth/set-tenant
-   { "tenantId": "<Second Org id>" }
-   ```
-   Expected: **200**, a token scoped to `Second Org`.
+   Expected: `groundup.test`. Restart the app (Shift+F5, then F5).
+
+> **Use only `*.groundup.test` hosts from here on.** Opening Swagger on `localhost` or `*.localhost` now fails to keep a cookie.
+
+### 12.2 Host-pinned login
+
+`/auth/login` is a **POST**, so typing its address in the browser gives **HTTP 405**. Use Swagger served from the subdomain:
+1. Open `http://my-test-org.groundup.test:5000/swagger/index.html`. Check the address bar.
+2. Run `POST /auth/login`. Copy the `redirectUrl`. Its `redirect_uri` parameter must contain `my-test-org.groundup.test%3A5000`. If it says `localhost`, you are on the wrong page.
+3. Open the `redirectUrl` in the same browser and sign in as Alice.
+
+Expected callback: `{ "token": "...", "redirectUrl": "/" }`. There is **no picker**, even though Alice belongs to two organizations, because the host identifies the organization. A user who is not a member would get **403**.
+
+`GET /auth/me` → `tenantId` is `My Test Org`. In DevTools → Application → Cookies, `AuthToken` is listed with domain `.groundup.test`.
+
+### 12.3 Host and token mismatch
+
+1. Open `http://second-org.groundup.test:5000/swagger/index.html` (the cookie covers every `*.groundup.test` host).
+2. `GET /api/projects` → **409** `TENANT_SWITCH_REQUIRED`. Alice's token is for `my-test-org`, but she is calling `second-org`'s host. (A non-member would get **403**.)
+
+### 12.4 Resolve it without logging in again
+
+Still on the `second-org.groundup.test` Swagger page:
+```
+POST /auth/set-tenant
+{ "tenantId": "<Second Org id>" }
+```
+Expected: **200**, a token scoped to `Second Org`. `GET /api/projects` now returns 200 on this host.
+
+### 12.5 Put it back
+
+Set `auth.application.default-domain` back to `localhost` (the same SQL with that value), restart the app, and go back to using `http://localhost:<port>`. Your hosts-file and Keycloak entries can stay.
 
 ---
 
@@ -505,7 +531,11 @@ These need extra setup (several organizations, a second admin) or conditions tha
 | Callback returns 410 Gone | You already used this auth flow. Start over |
 | Login signs you in without asking for a password | Keycloak still has your session (SSO). Normal. Log out fully (Recipe 2) to see the form |
 | Cookie not set in the browser | Check `CookieSecure: false` in `appsettings.Development.json` (plain http does not get Secure cookies) |
-| `/auth/me` returns 401 after a successful callback | The browser did not store the cookie. Use a browser or a cookie-aware client |
+| `/auth/me` returns 401 after a successful callback | The browser did not store the cookie. Use a browser or a cookie-aware client. On a subdomain host, check DevTools → Application → Cookies: the cookie is only stored if its domain matches the host (Part 12 explains why `*.localhost` does not work) |
+| Opening `/auth/login` in the address bar shows HTTP ERROR 405 | `/auth/login` and `/auth/signup` are POSTs. Run them from Swagger, served from the same host you want the callback on |
+| Part 12: callback returns `CSRF_STATE_MISMATCH` ("State cookie is missing") on a subdomain | Older builds hard-coded `Secure` on the state cookie, which browsers drop on plain-http hosts other than `localhost`. Rebuild with the current code and make sure `CookieSecure` is `false` in `appsettings.Development.json` |
+| Part 12: login on a subdomain shows the picker instead of going straight to the organization | The host does not end in the current `auth.application.default-domain`. Check the setting value and that you opened Swagger on `<slug>.<default-domain>` |
+| Part 12: logout says "Invalid redirect uri" | The post-logout URI in Keycloak must match exactly, including the trailing `/` (`http://<host>:5000/`) |
 | A tenant-scoped endpoint such as `GET /api/projects` returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Part 10) |
 | After clearing `default-tenant-slug`, login still puts the user in My Test Org | The app caches settings for 15 minutes. Restart it |
 | Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
