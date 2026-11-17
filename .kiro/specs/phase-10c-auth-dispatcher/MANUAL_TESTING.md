@@ -29,7 +29,7 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 | 8 | Log in again; rejoin through the default tenant | Bob, in My Test Org | unchanged | My Test Org (same row) | `my-test-org` |
 | 9 | Log in with nowhere to go | Bob, **no current tenant** | unchanged | none (left) | empty |
 | 10 | Create an organization from a tenantless session | Bob, in Tenantless Org | unchanged | Tenantless Org | empty |
-| 11, 12 | Optional: token refresh, subdomains | Alice | — | — | — |
+| 11, 12, 13 | Optional: token refresh, subdomains, email verification | Alice, then the Part 13 users | — | — | empty (Part 12 changes the default *domain*; put it back) |
 
 ### Words used
 
@@ -514,6 +514,93 @@ Set `auth.application.default-domain` back to `localhost` (the same SQL with tha
 
 ---
 
+## Part 13 (Optional): Email Verification
+
+Tests what happens when Keycloak requires new users to verify their email address before they can sign in. **This part has been written but not yet run.** The expected results come from how Keycloak and the app are built, so if a step behaves differently, note exactly what you see.
+
+**How it works.** The app never looks at whether an email is verified. Keycloak enforces it: with "Verify email" on, Keycloak holds the sign-in on a "verify your email" page and only redirects to `/auth/callback` after the user clicks the link in the email. The app creates the user, organization and membership **at the callback**, so an unverified address never gets an account.
+
+**Run this after Part 12**, with `default-domain` back at `localhost` and `default-tenant-slug` empty (the state Part 10 left). It turns verification on for the whole realm, so Part 13.7 turns it off again.
+
+### 13.1 Set up
+
+1. **Start a mail catcher** that receives the emails Keycloak sends. In PowerShell:
+   ```powershell
+   docker run -d --name groundup-mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
+   ```
+   Its inbox is at http://localhost:8025. Nothing is really sent anywhere.
+2. **Tell Keycloak to use it.** Keycloak admin → **groundup** realm → **Realm settings → Email** tab:
+   - From: `noreply@groundup.local`
+   - Host: `host.docker.internal` (this is how Keycloak, inside Docker, reaches your PC)
+   - Port: `1025`
+   - Authentication, SSL and StartTLS: all **off**
+   - Save.
+3. **Mark your existing test users as verified**, or Keycloak will ask Alice and Bob to verify the next time they sign in (they registered while verification was off, so Keycloak recorded them as unverified). For each of them: **Users** → search the email → **Details** → toggle **Email verified** On → Save.
+4. **Require verification.** **Realm settings → Login** tab → toggle **Verify email** On.
+
+### 13.2 A new user verifies right away (normal path)
+
+You need a user who does not exist yet: `verify@example.com`.
+
+1. `POST /auth/signup` with `{ "organizationName": "Verified Org" }`. Open the `redirectUrl` in the browser.
+2. Register `verify@example.com`, password `Test123!`, first name `Vera`, last name `Verify`.
+3. **Expected:** Keycloak does **not** redirect to the app. It shows a page telling you to verify your email address.
+4. **Check the app has not created anything yet.** In the database:
+   ```sql
+   SELECT count(*) FROM "AuthUsers"   WHERE lower("Email") = 'verify@example.com';   -- expect 0
+   SELECT count(*) FROM "AuthTenants" WHERE "Slug" = 'verified-org';                -- expect 0
+   SELECT "FlowType", "Status", "ExpiresAt" FROM "AuthFlowStates" ORDER BY "CreatedAt" DESC LIMIT 1;  -- Pending
+   ```
+5. Open the Mailpit inbox (http://localhost:8025). **Expected:** one email to `verify@example.com`. Click its verification link **in the same browser**.
+6. **Expected:** Keycloak confirms the address is verified and continues the sign-in, and the browser lands on `/auth/callback` with:
+   ```json
+   { "token": "eyJhbGci...", "redirectUrl": "/" }
+   ```
+7. `GET /auth/me` → `"email": "verify@example.com"`, a `tenantId` for **Verified Org**, `"roles": ["TenantAdmin"]`. The database queries from step 4 now return 1 for the user and 1 for the tenant.
+
+   If Keycloak shows a "back to application" link instead of continuing, tell me; the next test covers the case where the original sign-in cannot be resumed.
+
+### 13.3 An unverified user cannot sign in
+
+1. Log out fully (Recipe 2).
+2. `POST /auth/signup` with `{ "organizationName": "Never Verified Org" }`, open the `redirectUrl`, and register `unverified@example.com` (password `Test123!`). **Do not click the email link.**
+3. Instead, start a normal login: `POST /auth/login`, open its `redirectUrl`, and sign in as `unverified@example.com`.
+4. **Expected:** Keycloak again shows the verify-your-email page (with a "click here to re-send the email" option). It does **not** reach the callback. The database still has **no** row for `unverified@example.com` and none for `never-verified-org`.
+5. Click the re-send link. **Expected:** a second email in Mailpit. Leave it unverified for 13.4.
+
+### 13.4 The link is used after the sign-up flow can no longer continue
+
+The signup flow is only valid for `FlowStateExpirationMinutes` (10 by default). A user may also open the email on another device. In both cases Keycloak verifies the address, but the app's original sign-up can't finish.
+
+1. Use the unverified user from 13.3. Open the verification link from Mailpit **in a private window** (a different browser session), or wait more than 10 minutes and open it in the original browser. To avoid waiting, you can set `"FlowStateExpirationMinutes": 1` in `appsettings.Development.json`, restart the app, and repeat 13.3 first (restore it to `10` afterwards).
+2. **Expected:** Keycloak says the address is verified. If it sends the browser back to `/auth/callback`, the callback returns an error such as `FLOW_EXPIRED` (flow has expired) or `CSRF_STATE_MISMATCH` (different browser), and **no account is created**.
+3. Now log in normally: log out fully (Recipe 2), then `POST /auth/login` and sign in as `unverified@example.com`. This time Keycloak lets you through.
+4. **Expected callback:** the user has no organization and there is no default tenant, so you are signed in with no current tenant:
+   ```json
+   { "requiresTenantSelection": false, "tenants": [] }
+   ```
+5. Create the organization now, from the tenantless session (as in Part 10): `POST /auth/organizations` `{ "organizationName": "Never Verified Org" }` → 201, then `POST /auth/set-tenant` → 200.
+
+> **Known behavior to decide on:** the organization name typed at signup is lost when the sign-up flow cannot finish, so the user must enter it again in step 5. That is acceptable for now, but a later change could keep a pending signup until verification.
+
+### 13.5 Already-verified users are not affected
+
+Log out fully, then log in as Alice (marked verified in 13.1). **Expected:** no verification prompt, and Part 3 behaves exactly as before.
+
+### 13.6 Simple signup with verification (optional)
+
+Set the default tenant (Recipe 3, `my-test-org`), restart, log out fully, then `POST /auth/signup` with no body and register `verify2@example.com`. **Expected:** the same verify-your-email page, no account yet. After clicking the link in the same browser, the callback returns `{ "token": ... }` and the user is a regular member of `My Test Org` (`"roles": []`). Clear the default tenant afterwards (Recipe 3 with `''`) and restart.
+
+### 13.7 Turn it off again
+
+1. Keycloak → **Realm settings → Login** → toggle **Verify email** Off.
+2. Stop the mail catcher when you are done: `docker rm -f groundup-mailpit`.
+3. If you changed `FlowStateExpirationMinutes`, set it back to `10` and restart.
+
+> **Worth knowing:** with "Verify email" off, Keycloak lets anyone register with an email address they do not own, and the app accepts it. The app does not check `email_verified` itself. If verified email should be a hard rule for the framework, regardless of how the realm is configured, the app should check the claim as well. That is not built.
+
+---
+
 ## What Automated Tests Cover (Not Repeated Here)
 
 These need extra setup (several organizations, a second admin) or conditions that are awkward to create by hand. They run against a real database:
@@ -553,13 +640,15 @@ These need extra setup (several organizations, a second admin) or conditions tha
 | Part 12: logout says "Invalid redirect uri" | The post-logout URI in Keycloak must match exactly, including the trailing `/` (`http://<host>:5000/`) |
 | A tenant-scoped endpoint such as `GET /api/projects` returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Part 10) |
 | After clearing `default-tenant-slug`, login still puts the user in My Test Org | The app caches settings for 15 minutes. Restart it |
+| Part 13: no email appears in Mailpit | Check the mail catcher is running (`docker ps` shows `groundup-mailpit`), and that Keycloak's Email tab uses host `host.docker.internal`, port `1025`, with authentication and SSL off. Keycloak shows an error on the verify page when it cannot send |
+| After enabling "Verify email", Alice or Bob is asked to verify at login | They registered while verification was off, so Keycloak recorded them as unverified. Mark them verified in Keycloak admin → Users → the user → Email verified On (Part 13.1 step 3) |
 | Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
 
 ---
 
 ## Resetting Everything
 
-Wipes all data and starts fresh (re-run migrations and the full setup wizard afterwards):
+Wipes all data and starts fresh (re-run migrations and the full setup wizard afterwards). If you ran Part 13, also remove the mail catcher with `docker rm -f groundup-mailpit`.
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.keycloak.yml down -v
@@ -570,7 +659,7 @@ docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 
 ## Resetting a Test User
 
-Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Run it once for each test user (`testuser@example.com`, `member@example.com`). Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
+Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Run it once for each test user (`testuser@example.com`, `member@example.com`, and the Part 13 users `verify@example.com`, `unverified@example.com`, `verify2@example.com` if you ran that part). Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
 
 **1. Preview** (pgAdmin/DBeaver query tool, `groundup` database). Change the email on the first line:
 ```sql
