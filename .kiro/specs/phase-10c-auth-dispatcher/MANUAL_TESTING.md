@@ -575,13 +575,13 @@ You need a user who does not exist yet: `verify@example.com` (option A), or your
    SELECT "FlowType", "Status", "ExpiresAt" FROM "AuthFlowStates" ORDER BY "CreatedAt" DESC LIMIT 1;  -- Pending
    ```
 5. Open the inbox: Mailpit at http://localhost:8025 (option A), or your real mailbox (option B; check spam too). **Expected:** one email addressed to the user you registered, from the Keycloak realm. Click its verification link **in the same browser**.
-6. **Expected:** Keycloak confirms the address is verified and continues the sign-in, and the browser lands on `/auth/callback` with:
+6. Keycloak first shows a **confirm page** ("click here to proceed with verification"); click it. This extra click is Keycloak's own design, so that mail scanners cannot verify an address just by fetching the link. **Expected, when the sign-up was started in this same browser:** Keycloak continues the sign-in and the browser lands on `/auth/callback` with:
    ```json
    { "token": "eyJhbGci...", "redirectUrl": "/" }
    ```
 7. `GET /auth/me` → `"email": "verify@example.com"`, a `tenantId` for **Verified Org**, `"roles": ["TenantAdmin"]`. The database queries from step 4 now return 1 for the user and 1 for the tenant.
 
-   If Keycloak shows a "back to application" link instead of continuing, tell me; the next test covers the case where the original sign-in cannot be resumed.
+   **If instead you see only "Your email address has been verified" and nothing continues,** Keycloak had no original sign-in session to resume (the link was opened in a different browser, or the session expired). The address is verified, but `/auth/callback` was never reached, so **no account exists yet**. This is the case 13.4 covers: sign in with `POST /auth/login`, then create the organization. To test the resume path, start the sign-up and open the email link in the **same** browser.
 
 ### 13.3 An unverified user cannot sign in
 
