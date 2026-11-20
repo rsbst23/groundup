@@ -516,7 +516,7 @@ Set `auth.application.default-domain` back to `localhost` (the same SQL with tha
 
 ## Part 13 (Optional): Email Verification
 
-Tests what happens when Keycloak requires new users to verify their email address before they can sign in. **This part has been written but not yet run.** The expected results come from how Keycloak and the app are built, so if a step behaves differently, note exactly what you see.
+Tests what happens when Keycloak requires new users to verify their email address before they can sign in. **Verified end to end** (real email through Gmail SMTP, Keycloak 26.3): the same-browser path redirects back to the app with a token; opening the link in a different browser verifies the address but cannot continue the sign-up (see 13.2 and 13.4).
 
 **How it works.** The app never looks at whether an email is verified. Keycloak enforces it: with "Verify email" on, Keycloak holds the sign-in on a "verify your email" page and only redirects to `/auth/callback` after the user clicks the link in the email. The app creates the user, organization and membership **at the callback**, so an unverified address never gets an account.
 
