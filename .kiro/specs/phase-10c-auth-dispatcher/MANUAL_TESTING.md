@@ -516,7 +516,7 @@ Set `auth.application.default-domain` back to `localhost` (the same SQL with tha
 
 ## Part 13 (Optional): Email Verification
 
-Tests what happens when Keycloak requires new users to verify their email address before they can sign in. **This part has been written but not yet run.** The expected results come from how Keycloak and the app are built, so if a step behaves differently, note exactly what you see.
+Tests what happens when Keycloak requires new users to verify their email address before they can sign in. **Verified end to end** (real email through Gmail SMTP, Keycloak 26.3): the same-browser path redirects back to the app with a token; opening the link in a different browser verifies the address but cannot continue the sign-up (see 13.2 and 13.4).
 
 **How it works.** The app never looks at whether an email is verified. Keycloak enforces it: with "Verify email" on, Keycloak holds the sign-in on a "verify your email" page and only redirects to `/auth/callback` after the user clicks the link in the email. The app creates the user, organization and membership **at the callback**, so an unverified address never gets an account.
 
@@ -524,23 +524,46 @@ Tests what happens when Keycloak requires new users to verify their email addres
 
 ### 13.1 Set up
 
-1. **Start a mail catcher** that receives the emails Keycloak sends. In PowerShell:
+1. **Choose how email is delivered.** Keycloak sends the verification email itself, so it only needs an SMTP server. Nothing in this repository configures one: the setting lives in Keycloak's own database (it survives restarts but is wiped by `docker compose down -v`), so you have to enter it again after a full reset.
+
+   **Option A: a local mail catcher (nothing leaves your PC).** In PowerShell:
    ```powershell
    docker run -d --name groundup-mailpit -p 8025:8025 -p 1025:1025 axllent/mailpit
    ```
-   Its inbox is at http://localhost:8025. Nothing is really sent anywhere.
+   Its inbox is at http://localhost:8025. Use the settings in step 2 column A.
+
+   **Option B: real email to a real inbox.** Two different addresses are involved:
+   - **The sender:** a mail account Keycloak logs in to in order to send the emails. Its address goes in the "From" and "Username" fields below. Gmail is the simplest.
+   - **The recipient:** the address a person types on the sign-up form. The verification email is delivered there.
+
+   Steps for the sender account:
+   1. Turn on 2-Step Verification for the Google account, then create an **App password** (Google Account → Security → App passwords). A normal password will not work. You can revoke the app password at any time; do so when you finish testing.
+   2. Use the settings in step 2 column B, with the app password.
+
+   For the recipient, test users must have addresses that really receive mail. You do not need extra accounts: Gmail delivers `yourname+verify@gmail.com` to `yourname@gmail.com`, and Keycloak treats each plus-address as a different user. The recipient can be a second mailbox you own (cleaner) or the sender's own inbox. In the rest of this part, replace `verify@example.com` with `yourname+verify@gmail.com`, `unverified@example.com` with `yourname+unverified@gmail.com`, and `verify2@example.com` with `yourname+verify2@gmail.com`.
+
+   Other providers work the same way (SendGrid, Mailgun, Amazon SES, Microsoft 365). They usually need a verified sender address or domain, and some block plain username/password sign-in, so Gmail with an app password is the least work.
 2. **Tell Keycloak to use it.** Keycloak admin → **groundup** realm → **Realm settings → Email** tab:
-   - From: `noreply@groundup.local`
-   - Host: `host.docker.internal` (this is how Keycloak, inside Docker, reaches your PC)
-   - Port: `1025`
-   - Authentication, SSL and StartTLS: all **off**
-   - Save.
+
+   | Field | A: Mailpit | B: Gmail |
+   |---|---|---|
+   | From | `noreply@groundup.local` | your Gmail address (Gmail replaces any other sender) |
+   | Host | `host.docker.internal` (how Keycloak, inside Docker, reaches your PC) | `smtp.gmail.com` |
+   | Port | `1025` | `587` |
+   | Enable StartTLS | off | **on** |
+   | Enable SSL | off | off |
+   | Authentication | off | **on** |
+   | Username / Password | (none) | your full Gmail address / the app password |
+
+   Save, then click **Test connection**. If it reports a missing address, give the Keycloak admin user an email (master realm → Users → admin → Email) and try again. For option B, check the inbox (and the spam folder) for the test message.
+
+   > **Keep the app password out of the repository.** Enter it only in the Keycloak admin console. Do not export the realm with it and commit the file.
 3. **Mark your existing test users as verified**, or Keycloak will ask Alice and Bob to verify the next time they sign in (they registered while verification was off, so Keycloak recorded them as unverified). For each of them: **Users** → search the email → **Details** → toggle **Email verified** On → Save.
 4. **Require verification.** **Realm settings → Login** tab → toggle **Verify email** On.
 
 ### 13.2 A new user verifies right away (normal path)
 
-You need a user who does not exist yet: `verify@example.com`.
+You need a user who does not exist yet: `verify@example.com` (option A), or your plus-address such as `yourname+verify@gmail.com` (option B).
 
 1. `POST /auth/signup` with `{ "organizationName": "Verified Org" }`. Open the `redirectUrl` in the browser.
 2. Register `verify@example.com`, password `Test123!`, first name `Vera`, last name `Verify`.
@@ -551,14 +574,14 @@ You need a user who does not exist yet: `verify@example.com`.
    SELECT count(*) FROM "AuthTenants" WHERE "Slug" = 'verified-org';                -- expect 0
    SELECT "FlowType", "Status", "ExpiresAt" FROM "AuthFlowStates" ORDER BY "CreatedAt" DESC LIMIT 1;  -- Pending
    ```
-5. Open the Mailpit inbox (http://localhost:8025). **Expected:** one email to `verify@example.com`. Click its verification link **in the same browser**.
-6. **Expected:** Keycloak confirms the address is verified and continues the sign-in, and the browser lands on `/auth/callback` with:
+5. Open the inbox: Mailpit at http://localhost:8025 (option A), or your real mailbox (option B; check spam too). **Expected:** one email addressed to the user you registered, from the Keycloak realm. Click its verification link **in the same browser**.
+6. Keycloak first shows a **confirm page** ("click here to proceed with verification"); click it. This extra click is Keycloak's own design, so that mail scanners cannot verify an address just by fetching the link. **Expected, when the sign-up was started in this same browser:** Keycloak continues the sign-in and the browser lands on `/auth/callback` with:
    ```json
    { "token": "eyJhbGci...", "redirectUrl": "/" }
    ```
 7. `GET /auth/me` → `"email": "verify@example.com"`, a `tenantId` for **Verified Org**, `"roles": ["TenantAdmin"]`. The database queries from step 4 now return 1 for the user and 1 for the tenant.
 
-   If Keycloak shows a "back to application" link instead of continuing, tell me; the next test covers the case where the original sign-in cannot be resumed.
+   **If instead you see only "Your email address has been verified" and nothing continues,** Keycloak had no original sign-in session to resume (the link was opened in a different browser, or the session expired). The address is verified, but `/auth/callback` was never reached, so **no account exists yet**. This is the case 13.4 covers: sign in with `POST /auth/login`, then create the organization. To test the resume path, start the sign-up and open the email link in the **same** browser.
 
 ### 13.3 An unverified user cannot sign in
 
@@ -641,6 +664,9 @@ These need extra setup (several organizations, a second admin) or conditions tha
 | A tenant-scoped endpoint such as `GET /api/projects` returns 403 `TENANT_REQUIRED` | Your session has no current tenant (you are on the picker, or you left the tenant you were in). Call `POST /auth/set-tenant` with a tenant from `GET /auth/me/tenants`, or create one with `POST /auth/organizations` (Part 10) |
 | After clearing `default-tenant-slug`, login still puts the user in My Test Org | The app caches settings for 15 minutes. Restart it |
 | Part 13: no email appears in Mailpit | Check the mail catcher is running (`docker ps` shows `groundup-mailpit`), and that Keycloak's Email tab uses host `host.docker.internal`, port `1025`, with authentication and SSL off. Keycloak shows an error on the verify page when it cannot send |
+| Part 13 with Gmail: Test connection fails, or the verify page says it could not send | A normal password is rejected: use an **App password** (needs 2-Step Verification). Check host `smtp.gmail.com`, port `587`, StartTLS on, SSL off, authentication on, and the full Gmail address as the username. The Keycloak container log (`docker compose logs keycloak`) shows the exact SMTP error (for example `535` = bad credentials) |
+| Part 13 with Gmail: the email is not in the inbox | Check spam. Gmail also rewrites the sender to your own address, so look for mail from yourself. Allow a minute |
+| Keycloak's Email settings are empty again | They live in Keycloak's database. A full reset (`down -v`, "Resetting Everything") wipes them. Enter them again |
 | After enabling "Verify email", Alice or Bob is asked to verify at login | They registered while verification was off, so Keycloak recorded them as unverified. Mark them verified in Keycloak admin → Users → the user → Email verified On (Part 13.1 step 3) |
 | Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
 
