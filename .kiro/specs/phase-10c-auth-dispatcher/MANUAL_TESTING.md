@@ -532,10 +532,15 @@ Tests what happens when Keycloak requires new users to verify their email addres
    ```
    Its inbox is at http://localhost:8025. Use the settings in step 2 column A.
 
-   **Option B: real email to a real inbox.** Use a mail account you control. Gmail is the simplest:
-   1. Turn on 2-Step Verification for the Google account, then create an **App password** (Google Account → Security → App passwords). A normal password will not work.
+   **Option B: real email to a real inbox.** Two different addresses are involved:
+   - **The sender:** a mail account Keycloak logs in to in order to send the emails. Its address goes in the "From" and "Username" fields below. Gmail is the simplest.
+   - **The recipient:** the address a person types on the sign-up form. The verification email is delivered there.
+
+   Steps for the sender account:
+   1. Turn on 2-Step Verification for the Google account, then create an **App password** (Google Account → Security → App passwords). A normal password will not work. You can revoke the app password at any time; do so when you finish testing.
    2. Use the settings in step 2 column B, with the app password.
-   3. Test users must have addresses that really receive mail. You do not need extra accounts: Gmail delivers `yourname+verify@gmail.com` to `yourname@gmail.com`, and Keycloak treats each plus-address as a different user. In the rest of this part, replace `verify@example.com` with `yourname+verify@gmail.com`, `unverified@example.com` with `yourname+unverified@gmail.com`, and `verify2@example.com` with `yourname+verify2@gmail.com`.
+
+   For the recipient, test users must have addresses that really receive mail. You do not need extra accounts: Gmail delivers `yourname+verify@gmail.com` to `yourname@gmail.com`, and Keycloak treats each plus-address as a different user. The recipient can be a second mailbox you own (cleaner) or the sender's own inbox. In the rest of this part, replace `verify@example.com` with `yourname+verify@gmail.com`, `unverified@example.com` with `yourname+unverified@gmail.com`, and `verify2@example.com` with `yourname+verify2@gmail.com`.
 
    Other providers work the same way (SendGrid, Mailgun, Amazon SES, Microsoft 365). They usually need a verified sender address or domain, and some block plain username/password sign-in, so Gmail with an app password is the least work.
 2. **Tell Keycloak to use it.** Keycloak admin → **groundup** realm → **Realm settings → Email** tab:
