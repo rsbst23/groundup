@@ -1025,6 +1025,8 @@ GroundUp.BackgroundJobs.Hangfire — production-grade implementation with dashbo
 ### Phase 25: Terraform / AWS Infrastructure
 ECS/EKS deployment configurations. RDS PostgreSQL. Secrets Manager. CloudWatch. ECR. Reusable Terraform modules for consuming apps.
 
+**Also in this phase (GU-76):** automate the Keycloak configuration (realm login settings, SMTP, SSO session limits, client redirect URIs, the admin client) as infrastructure as code instead of manual console steps. Direction so far: Keycloak is the source of truth for what it enforces, so prefer IaC (Terraform Keycloak provider, `keycloak-config-cli`, or a fuller `realm.json`) over new GroundUp settings that push values into Keycloak. GroundUp keeps only the settings it needs to read. Open questions are in the Jira task (per-host redirect URIs, per-tenant realms for enterprise, secrets, local development).
+
 ---
 
 ## General Rules for All Phases
