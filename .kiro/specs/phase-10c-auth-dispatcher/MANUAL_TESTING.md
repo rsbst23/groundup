@@ -59,9 +59,7 @@ Calling `POST /auth/logout` without opening `logoutUrl` clears only the GroundUp
 
 **Recipe 3 — Set or clear the default tenant**
 
-**Easiest: the settings API, no restart.** `GET /api/settings/levels` → note the `System` id, then `PUT /api/settings/auth.application.default-tenant-slug` with `{ "value": "my-test-org", "levelId": "<System id>" }` (use `""` to clear). The change applies immediately. If you use the API, skip the SQL and the restart below.
-
-**Or the database** (pgAdmin/DBeaver, `groundup` database). Replace `'my-test-org'` with `''` to clear it.
+There is no API for settings yet, so use the database (pgAdmin/DBeaver, `groundup` database). Replace `'my-test-org'` with `''` to clear it.
 
 ```sql
 -- 1. Is there already a system-level value row?
@@ -641,9 +639,9 @@ Checks that the session is counted from when the user really typed their passwor
 `POST /auth/login`. **Expected:** the `redirectUrl` contains `max_age=28800` (8 hours, the default absolute lifetime) and no `prompt`.
 
 ### 14.2 A silent sign-on keeps the original `auth_time`
-1. Log out fully (Recipe 2), then log in as Alice **with the password** (Recipe 1) and select `My Test Org` if asked. Note `auth_time` and the time on your clock: they match.
-2. Wait 2 minutes. Run Recipe 1 again: Keycloak signs you in **without** a form.
-3. **Expected:** the new `AuthToken` has the **same** `auth_time` as in step 1, not the time of this second login.
+1. Log out fully (Recipe 2), then log in as Alice **with the password** (Recipe 1) and select `My Test Org` if asked. Note `auth_time`: it is the moment you submitted the password, so it can be a minute or two earlier than the token's `iat` (for example if you chose a tenant first).
+2. Wait 2 minutes. Run Recipe 1 again **without logging out fully** (a plain `POST /auth/logout` is fine; opening `logoutUrl` would end Keycloak's session and defeat the test). Keycloak signs you in **without** a form.
+3. **Expected:** the new `AuthToken` has the **same** `auth_time` as in step 1, with a later `iat`. A user with two organizations lands on the picker, so this token has no `tid`; selecting a tenant keeps the same `auth_time` too.
 
 ### 14.3 `forceLogin` asks for the password
 1. `POST /auth/login?forceLogin=true`. **Expected:** the `redirectUrl` contains `prompt=login` and `max_age`.
