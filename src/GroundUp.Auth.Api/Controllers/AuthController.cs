@@ -79,12 +79,18 @@ public sealed class AuthController : ControllerBase
     /// Initiates the standard login flow. Returns the Keycloak authorization URL as JSON
     /// for the client to navigate to.
     /// </summary>
+    /// <param name="forceLogin">
+    /// When true, the identity provider asks for credentials even if its single sign-on session is
+    /// still alive. Use after a <c>401 REAUTH_REQUIRED</c> response.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HTTP 200 with <c>{ redirectUrl }</c> pointing to the Keycloak authorization endpoint.</returns>
     [HttpPost("login")]
-    public async Task<IActionResult> Login(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Login(
+        [FromQuery] bool forceLogin = false,
+        CancellationToken cancellationToken = default)
     {
-        var request = new FlowInitiationRequest(FlowType.Login);
+        var request = new FlowInitiationRequest(FlowType.Login, ForceLogin: forceLogin);
         var result = await _authFlowService.InitiateFlowAsync(request, HttpContext, cancellationToken);
 
         if (!result.Success)
@@ -165,7 +171,14 @@ public sealed class AuthController : ControllerBase
         if (!flowResult.IsSuccess)
         {
             var statusCode = flowResult.HttpStatus ?? 400;
-            return StatusCode(statusCode, new { error = flowResult.ErrorCode, message = flowResult.ErrorMessage });
+            // errorCode is the same value as error; it matches the shape of the other auth endpoints
+            // (for example errorCode REAUTH_REQUIRED tells the client to call login?forceLogin=true).
+            return StatusCode(statusCode, new
+            {
+                error = flowResult.ErrorCode,
+                errorCode = flowResult.ErrorCode,
+                message = flowResult.ErrorMessage
+            });
         }
 
         if (flowResult.IsTenantless)

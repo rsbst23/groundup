@@ -217,6 +217,8 @@ public sealed class SimpleSignupFlowHandlerPropertyTests
 
         var handler = new SimpleSignupFlowHandler(
             identityProviderService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             userRepository,
             userTenantRepository,
             tenantRepository,

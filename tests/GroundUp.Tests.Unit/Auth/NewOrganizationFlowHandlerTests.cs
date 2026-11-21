@@ -65,6 +65,8 @@ public sealed class NewOrganizationFlowHandlerTests
 
         _sut = new NewOrganizationFlowHandler(
             _identityProviderService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             _authFlowStateService,
             _userRepository,
             _organizationProvisioningService,
@@ -172,12 +174,12 @@ public sealed class NewOrganizationFlowHandlerTests
 
         // Assert
         await _authFlowStateService.Received(1).MarkFailedAsync(
-            TestFlowStateId, Arg.Is<string>(s => s.Contains("Nonce")),
+            TestFlowStateId, Arg.Is<string>(s => s.Contains("ID token")),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task HandleCallbackAsync_IdTokenNull_ReturnsNonceMismatchError()
+    public async Task HandleCallbackAsync_IdTokenNull_ReturnsIdTokenInvalidError()
     {
         // Arrange
         var context = CreateCallbackContext();
@@ -186,9 +188,9 @@ public sealed class NewOrganizationFlowHandlerTests
         // Act
         var result = await _sut.HandleCallbackAsync(context);
 
-        // Assert
+        // Assert — a missing ID token is not a nonce problem: there is nothing to validate
         result.IsSuccess.Should().BeFalse();
-        result.ErrorCode.Should().Be("NONCE_MISMATCH");
+        result.ErrorCode.Should().Be(GroundUp.Auth.Services.IdTokenErrorCodes.Invalid);
     }
 
     [Fact]

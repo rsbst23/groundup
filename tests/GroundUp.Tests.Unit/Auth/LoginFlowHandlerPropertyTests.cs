@@ -141,6 +141,8 @@ public sealed class LoginFlowHandlerPropertyTests
 
         var handler = new LoginFlowHandler(
             idpService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             userRepository,
             userTenantRepository,
             tenantRepository,

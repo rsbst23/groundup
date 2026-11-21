@@ -131,6 +131,7 @@ public static class AuthServiceCollectionExtensions
         // Session timeouts from settings, with the tenant-not-above-System rule on write
         services.AddScoped<ISessionPolicyProvider, SessionPolicyProvider>();
         services.AddScoped<ISettingWriteValidator, SessionPolicyWriteValidator>();
+        services.AddScoped<CallbackSessionGuard>();
 
         // Auth dispatcher services (Phase 10C)
         services.AddScoped<IAuthCookieWriter, AuthCookieWriter>();

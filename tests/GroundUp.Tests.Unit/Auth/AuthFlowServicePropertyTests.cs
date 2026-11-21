@@ -55,6 +55,7 @@ public sealed class AuthFlowServicePropertyTests
             handlers,
             resolvedTenant,
             opts,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.PolicyProvider(),
             logger);
     }
 

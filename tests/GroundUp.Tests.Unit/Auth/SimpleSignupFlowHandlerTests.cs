@@ -60,6 +60,8 @@ public sealed class SimpleSignupFlowHandlerTests
 
         _sut = new SimpleSignupFlowHandler(
             _identityProviderService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             _userRepository,
             _userTenantRepository,
             _tenantRepository,

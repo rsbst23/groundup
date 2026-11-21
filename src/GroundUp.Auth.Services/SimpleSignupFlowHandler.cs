@@ -1,9 +1,8 @@
 using System.Security.Claims;
-using System.Text;
-using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Http;
@@ -20,6 +19,8 @@ namespace GroundUp.Auth.Services;
 public sealed class SimpleSignupFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
+    private readonly IIdTokenValidator _idTokenValidator;
+    private readonly CallbackSessionGuard _sessionGuard;
     private readonly IUserRepository _userRepository;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
@@ -36,6 +37,8 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
     /// </summary>
     public SimpleSignupFlowHandler(
         IIdentityProviderService identityProviderService,
+        IIdTokenValidator idTokenValidator,
+        CallbackSessionGuard sessionGuard,
         IUserRepository userRepository,
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
@@ -48,6 +51,8 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         ILogger<SimpleSignupFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
+        _idTokenValidator = idTokenValidator;
+        _sessionGuard = sessionGuard;
         _userRepository = userRepository;
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
@@ -82,12 +87,21 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
             return FlowResult.Error("CODE_EXCHANGE_FAILED", "Failed to exchange authorization code for tokens.");
         }
 
-        // 2. Validate id_token nonce
-        if (!ValidateNonce(tokenResponse.IdToken, state.Nonce))
+        // 2. Validate the ID token (signature, issuer, audience, expiry, nonce) before trusting it
+        var idTokenResult = await _idTokenValidator.ValidateAsync(tokenResponse.IdToken, state.Nonce, state.Realm);
+        if (!idTokenResult.Success || idTokenResult.Data is null)
         {
-            _logger.LogWarning("SimpleSignup flow failed: nonce mismatch for state {StateId}", state.Id);
-            await _authFlowStateService.MarkFailedAsync(state.Id, "Nonce mismatch");
-            return FlowResult.Error("NONCE_MISMATCH", "ID token nonce does not match the expected value.");
+            _logger.LogWarning("SimpleSignup flow failed: ID token rejected ({ErrorCode}) for state {StateId}",
+                idTokenResult.ErrorCode, state.Id);
+            await _authFlowStateService.MarkFailedAsync(state.Id, "ID token rejected");
+            return FlowResult.Error(idTokenResult.ErrorCode ?? IdTokenErrorCodes.Invalid, idTokenResult.Message);
+        }
+
+        // Count the session from the identity provider's auth_time; refuse one past the System lifetime.
+        var authTime = _sessionGuard.ResolveAuthTime(idTokenResult.Data);
+        if (await _sessionGuard.CheckAsync(authTime, tenantId: null) is { } systemCapReached)
+        {
+            return systemCapReached;
         }
 
         // 3. Retrieve user information
@@ -131,6 +145,12 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         }
 
         var defaultTenant = tenantResult.Data;
+
+        // Check the default tenant's lifetime before joining, so a refused sign-in changes nothing.
+        if (await _sessionGuard.CheckAsync(authTime, defaultTenant.Id) is { } tenantCapReached)
+        {
+            return tenantCapReached;
+        }
 
         // 7. Check if user is already a member (idempotent)
         var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(user.Id);
@@ -198,10 +218,10 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
             }
         }
 
-        // 10. Generate token scoped to default tenant with auth_time = now
+        // 10. Generate token scoped to default tenant, carrying the identity provider's auth_time
         var authTimeClaim = new Claim(
             "auth_time",
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+            authTime.ToUnixTimeSeconds().ToString(),
             ClaimValueTypes.Integer64);
 
         var token = await _tokenService.GenerateTokenAsync(user.Id, defaultTenant.Id, new[] { authTimeClaim });
@@ -295,49 +315,4 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
             defaultRoleResult.Data);
     }
 
-    /// <summary>
-    /// Validates the nonce claim in the id_token against the expected nonce stored in AuthFlowState.
-    /// Uses manual JWT payload decoding (no signature verification — IDP already validated the token).
-    /// </summary>
-    private static bool ValidateNonce(string? idToken, string expectedNonce)
-    {
-        if (string.IsNullOrEmpty(idToken))
-        {
-            return false;
-        }
-
-        try
-        {
-            var parts = idToken.Split('.');
-            if (parts.Length != 3)
-            {
-                return false;
-            }
-
-            var payload = parts[1];
-            // Add padding for Base64URL to Base64 conversion
-            var remainder = payload.Length % 4;
-            var padded = remainder switch
-            {
-                2 => payload + "==",
-                3 => payload + "=",
-                _ => payload
-            };
-
-            var base64 = padded.Replace('-', '+').Replace('_', '/');
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("nonce", out var nonceElement))
-            {
-                return string.Equals(nonceElement.GetString(), expectedNonce, StringComparison.Ordinal);
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

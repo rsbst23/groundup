@@ -25,7 +25,7 @@ public sealed class LoginFlowHandlerTests
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<LoginFlowHandler> _logger;
     private readonly GroundUp.Core.TenantContext _tenantContext = new();
-    private readonly LoginFlowHandler _sut;
+    private LoginFlowHandler _sut;
 
     // Reusable test data
     private const string TestAuthCode = "auth-code-login-123";
@@ -65,8 +65,14 @@ public sealed class LoginFlowHandlerTests
         _tokenService.GenerateTenantlessTokenAsync(Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>())
             .Returns(TestTenantlessToken);
 
-        _sut = new LoginFlowHandler(
+        _sut = CreateSut();
+    }
+
+    private LoginFlowHandler CreateSut(int absoluteLifetimeMinutes = 480) =>
+        new(
             _identityProviderService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(absoluteLifetimeMinutes),
             _userRepository,
             _userTenantRepository,
             _tenantRepository,
@@ -77,7 +83,6 @@ public sealed class LoginFlowHandlerTests
             _httpContextAccessor,
             _tenantContext,
             _logger);
-    }
 
     #region HandledFlowType
 
@@ -426,6 +431,134 @@ public sealed class LoginFlowHandlerTests
 
     #endregion
 
+    #region auth_time and the absolute session lifetime
+
+    [Fact]
+    public async Task HandleCallbackAsync_FreshLogin_TokenCarriesIdentityProviderAuthTime()
+    {
+        // Arrange — the user just typed their password
+        var authTime = DateTimeOffset.UtcNow.AddSeconds(-5);
+        SetupSuccessfulCodeExchange(authTime: authTime);
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupSingleActiveMembership(TestTenantId1);
+        SetupSuccessfulTokenGeneration();
+
+        // Act
+        await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert
+        await _tokenService.Received(1).GenerateTokenAsync(
+            TestUserId, TestTenantId1,
+            Arg.Is<IEnumerable<Claim>>(c => AuthTimeOf(c) == authTime.ToUnixTimeSeconds()));
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_SilentLogin_KeepsTheOriginalAuthTime()
+    {
+        // Arrange — Keycloak signed the user in from its SSO session: auth_time is 3 hours old
+        var authTime = DateTimeOffset.UtcNow.AddHours(-3);
+        SetupSuccessfulCodeExchange(authTime: authTime);
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupSingleActiveMembership(TestTenantId1);
+        SetupSuccessfulTokenGeneration();
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert — the session is not restarted
+        result.IsSuccess.Should().BeTrue();
+        await _tokenService.Received(1).GenerateTokenAsync(
+            TestUserId, TestTenantId1,
+            Arg.Is<IEnumerable<Claim>>(c => AuthTimeOf(c) == authTime.ToUnixTimeSeconds()));
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_SilentLoginPastAbsoluteLifetime_Returns401ReauthRequiredAndWritesNoCookie()
+    {
+        // Arrange — the SSO session is 9 hours old; the absolute lifetime is 8 hours
+        SetupSuccessfulCodeExchange(authTime: DateTimeOffset.UtcNow.AddHours(-9));
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupSingleActiveMembership(TestTenantId1);
+        SetupSuccessfulTokenGeneration();
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be(GroundUp.Core.ErrorCodes.ReauthRequired);
+        result.HttpStatus.Should().Be(401);
+        await _tokenService.DidNotReceiveWithAnyArgs().GenerateTokenAsync(default, default, default);
+        await _authCookieWriter.DidNotReceiveWithAnyArgs().WriteAuthCookieAsync(default!, default!);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_TenantCapStricterThanSessionAge_Returns401ReauthRequired()
+    {
+        // Arrange — 2-hour-old SSO session; every lifetime in this test is 60 minutes
+        _sut = CreateSut(absoluteLifetimeMinutes: 60);
+        SetupSuccessfulCodeExchange(authTime: DateTimeOffset.UtcNow.AddHours(-2));
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupSingleActiveMembership(TestTenantId1);
+        SetupSuccessfulTokenGeneration();
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert
+        result.ErrorCode.Should().Be(GroundUp.Core.ErrorCodes.ReauthRequired);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_NoAuthTimeClaim_FallsBackToNow()
+    {
+        // Arrange — the identity provider did not send auth_time
+        SetupSuccessfulCodeExchange();
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupSingleActiveMembership(TestTenantId1);
+        SetupSuccessfulTokenGeneration();
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Act
+        var result = await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        await _tokenService.Received(1).GenerateTokenAsync(
+            TestUserId, TestTenantId1,
+            Arg.Is<IEnumerable<Claim>>(c => AuthTimeOf(c) >= before));
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_TenantlessSession_CarriesIdentityProviderAuthTime()
+    {
+        // Arrange — no memberships and no default tenant: a tenantless session is issued
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-40);
+        SetupSuccessfulCodeExchange(authTime: authTime);
+        SetupSuccessfulUserInfo();
+        SetupExistingUser();
+        SetupZeroActiveMemberships();
+        SetupNoDefaultTenantSlug();
+
+        // Act
+        await _sut.HandleCallbackAsync(CreateCallbackContext());
+
+        // Assert
+        await _tokenService.Received(1).GenerateTenantlessTokenAsync(
+            TestUserId,
+            Arg.Is<IEnumerable<Claim>>(c => AuthTimeOf(c) == authTime.ToUnixTimeSeconds()));
+    }
+
+    private static long AuthTimeOf(IEnumerable<Claim>? claims) =>
+        long.Parse(claims!.Single(c => c.Type == "auth_time").Value, System.Globalization.CultureInfo.InvariantCulture);
+
+    #endregion
+
     #region Multi-Membership (Tenant Selection Required, Excludes Enterprise)
 
     [Fact]
@@ -725,10 +858,10 @@ public sealed class LoginFlowHandlerTests
             HostResolvedTenant: hostResolvedTenant);
     }
 
-    private void SetupSuccessfulCodeExchange(string? idTokenNonce = null)
+    private void SetupSuccessfulCodeExchange(string? idTokenNonce = null, DateTimeOffset? authTime = null)
     {
         var nonce = idTokenNonce ?? TestNonce;
-        var idToken = CreateIdTokenWithNonce(nonce);
+        var idToken = CreateIdTokenWithNonce(nonce, authTime);
 
         var tokenResponse = new TokenResponseDto(
             AccessToken: TestAccessToken,
@@ -917,14 +1050,15 @@ public sealed class LoginFlowHandlerTests
     /// <summary>
     /// Creates a minimal JWT id_token with the specified nonce claim in the payload.
     /// </summary>
-    private static string CreateIdTokenWithNonce(string nonce)
+    private static string CreateIdTokenWithNonce(string nonce, DateTimeOffset? authTime = null)
     {
         var header = Convert.ToBase64String(
             System.Text.Encoding.UTF8.GetBytes("{\"alg\":\"RS256\",\"typ\":\"JWT\"}"))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+        var authTimeJson = authTime is { } t ? $",\"auth_time\":{t.ToUnixTimeSeconds()}" : string.Empty;
         var payload = Convert.ToBase64String(
-            System.Text.Encoding.UTF8.GetBytes($"{{\"nonce\":\"{nonce}\",\"sub\":\"test\"}}"))
+            System.Text.Encoding.UTF8.GetBytes($"{{\"nonce\":\"{nonce}\",\"sub\":\"test\"{authTimeJson}}}"))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         var signature = "fake-signature";
