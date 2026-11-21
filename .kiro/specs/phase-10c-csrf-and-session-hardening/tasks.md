@@ -56,7 +56,7 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [x] 7.5 Administrator note in `ARCHITECTURE.md`: settings cascade order, session timeouts (tenants only shorten, realm values are the outer limit and the system administrator's concern), cookie table, CSRF client contract, cache staleness until GU-47
   - [x] 7.6 Token-revocation spec: entries are kept for the setting's maximum token lifetime (120 minutes), because the System value can change while older tokens live; the default token lifetime is now the seeded setting
 
-- [ ] 8. Final review
-  - [ ] 8.1 Full code review against requirements 1 to 6 and the cookie table; run all test suites against the baselines
-  - [ ] 8.2 Settings authorization story already created as GU-77; add a story for non-browser client tokens if wanted; update GU-72
-  - [ ] 8.3 Present PR titles and descriptions
+- [x] 8. Final review
+  - [x] 8.1 Full code review against requirements 1 to 6 and the cookie table; run all test suites against the baselines. Review on main after PR #39 found every requirement met except 4.7 (moved to GU-77) and 7.3 (decided: documented). Tests on main: unit 1543 pass / 12 known failures; integration 340 pass / 48 known failures (41 Setup + 7 auth); sample 22/22
+  - [x] 8.2 Settings authorization is GU-77. Found and fixed GU-78 (event bus lifetime) on the way. GU-72 closed. A story for issuing tokens to non-browser clients is the owner's call (not created)
+  - [x] 8.3 PRs: #36 (settings foundation, session settings), #37 (policy everywhere, CSRF, GU-78), #38 (ID token validation, auth_time, max_age, forceLogin, Swagger fix), #39 (realm limits, docs)
