@@ -18,13 +18,13 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [x] 2.4 Unit tests: clamp, cross-field, fallback, validator cases, seeder bounds; integration test: set a tenant value above System is rejected, below is accepted and resolved
   - [ ] 2.5 Stop for review (end of PR A)
 
-- [ ] 3. Use the policy everywhere
-  - [ ] 3.1 `TokenService`: `exp` from the policy (tenant token: tenant policy; tenantless: System policy), capped at `auth_time` plus absolute lifetime
-  - [ ] 3.2 `AuthCookieWriter`: expiry from the token `exp`; remove the sync-over-async domain lookup; update `IAuthCookieWriter` and callers
-  - [ ] 3.3 `TokenRefreshMiddleware`: resolve the policy from the token's `tid`
-  - [ ] 3.4 `POST /auth/refresh`, `set-tenant` and tenantless re-issue enforce the absolute cap with the right policy; add `ErrorCodes.ReauthRequired` and return `401 REAUTH_REQUIRED`
-  - [ ] 3.5 Unit tests for each consumer; integration test: change a timeout through the settings API and see the next token and cookie use it; `/auth/refresh` past the cap returns `REAUTH_REQUIRED`; stricter tenant cap on `set-tenant`
-  - [ ] 3.6 Stop for review
+- [x] 3. Use the policy everywhere
+  - [x] 3.1 `TokenService`: `exp` from the policy (tenant token: tenant policy; tenantless: System policy), capped at `auth_time` plus absolute lifetime
+  - [x] 3.2 `AuthCookieWriter`: expiry from the token `exp`; remove the sync-over-async domain lookup; update `IAuthCookieWriter` and callers
+  - [x] 3.3 `TokenRefreshMiddleware`: resolve the policy from the token's `tid`
+  - [x] 3.4 `POST /auth/refresh`, `set-tenant` and tenantless re-issue enforce the absolute cap with the right policy; add `ErrorCodes.ReauthRequired` and return `401 REAUTH_REQUIRED`
+  - [x] 3.5 Unit tests for each consumer; integration test: change a timeout through the settings API and see the next token and cookie use it; `/auth/refresh` past the cap returns `REAUTH_REQUIRED`; stricter tenant cap on `set-tenant`
+  - [x] 3.6 Stop for review. Found and fixed GU-78 on the way (event bus was a singleton, so settings cache invalidation never ran in Development)
 
 - [ ] 4. CSRF and cookie hardening
   - [ ] 4.1 `AddGroundUpAuth`: register antiforgery (header `X-CSRF-Token`, cookie `CsrfToken`, HttpOnly, Strict, Secure from `CookieSecure`)

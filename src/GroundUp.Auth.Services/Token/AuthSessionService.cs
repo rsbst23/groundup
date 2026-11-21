@@ -1,9 +1,9 @@
 using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
-using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
+using GroundUp.Core;
 using GroundUp.Core.Results;
-using Microsoft.Extensions.Options;
 
 namespace GroundUp.Auth.Services.Token;
 
@@ -17,7 +17,7 @@ public sealed class AuthSessionService : IAuthSessionService
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly ITokenService _tokenService;
-    private readonly AuthOptions _options;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthSessionService"/> class.
@@ -25,22 +25,29 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <param name="userTenantRepository">Repository for querying user-tenant memberships.</param>
     /// <param name="tenantRepository">Repository for querying tenant details.</param>
     /// <param name="tokenService">Service for generating JWT tokens.</param>
-    /// <param name="options">Auth configuration options (absolute session lifetime).</param>
+    /// <param name="sessionPolicyProvider">Resolves the effective absolute session lifetime.</param>
     public AuthSessionService(
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
         ITokenService tokenService,
-        IOptions<AuthOptions> options)
+        ISessionPolicyProvider sessionPolicyProvider)
     {
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
         _tokenService = tokenService;
-        _options = options.Value;
+        _sessionPolicyProvider = sessionPolicyProvider;
     }
 
     /// <inheritdoc />
     public async Task<OperationResult<string>> IssueTenantlessSessionAsync(Guid userId, DateTimeOffset? originalAuthTime = null)
     {
+        // A tenantless session is bounded by the System absolute lifetime.
+        if (originalAuthTime is not null
+            && HasReachedAbsoluteLifetime(originalAuthTime.Value, await _sessionPolicyProvider.GetSystemPolicyAsync()))
+        {
+            return ReauthRequired<string>();
+        }
+
         var authTime = originalAuthTime ?? DateTimeOffset.UtcNow;
         var token = await _tokenService.GenerateTenantlessTokenAsync(userId, CreateAuthTimeClaims(authTime));
         if (token is null)
@@ -55,11 +62,18 @@ public sealed class AuthSessionService : IAuthSessionService
     public async Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null)
     {
         // 0. Tenant selection must not extend a session past its absolute lifetime.
-        //    Automatic refresh already enforces this; selecting a tenant reissues a token too.
-        if (originalAuthTime is not null
-            && DateTimeOffset.UtcNow - originalAuthTime.Value >= TimeSpan.FromMinutes(_options.AbsoluteSessionLifetimeMinutes))
+        //    A named tenant is held to that tenant's lifetime (which may be shorter than the
+        //    System value); without one, the System lifetime applies.
+        if (originalAuthTime is not null)
         {
-            return OperationResult<SetTenantResponseDto>.Unauthorized("Session has reached its maximum lifetime. Please sign in again.");
+            var policy = tenantId is not null
+                ? await _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId.Value)
+                : await _sessionPolicyProvider.GetSystemPolicyAsync();
+
+            if (HasReachedAbsoluteLifetime(originalAuthTime.Value, policy))
+            {
+                return ReauthRequired<SetTenantResponseDto>();
+            }
         }
 
         // 1. Query all tenant memberships for user, then filter to active memberships only.
@@ -88,8 +102,16 @@ public sealed class AuthSessionService : IAuthSessionService
         {
             if (memberships.Count == 1)
             {
-                // Auto-select the single tenant
+                // Auto-select the single tenant, which may have a shorter lifetime than the System value
                 var membership = memberships[0];
+                if (originalAuthTime is not null
+                    && HasReachedAbsoluteLifetime(
+                        originalAuthTime.Value,
+                        await _sessionPolicyProvider.GetPolicyForTenantAsync(membership.TenantId)))
+                {
+                    return ReauthRequired<SetTenantResponseDto>();
+                }
+
                 var token = await _tokenService.GenerateTokenAsync(userId, membership.TenantId, authTimeClaims);
 
                 if (token is null)
@@ -147,6 +169,12 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <inheritdoc />
     public async Task<OperationResult<string>> RefreshTokenAsync(Guid userId, Guid tenantId, DateTimeOffset originalAuthTime)
     {
+        // 0. A refresh must not extend a session past the tenant's absolute lifetime.
+        if (HasReachedAbsoluteLifetime(originalAuthTime, await _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId)))
+        {
+            return ReauthRequired<string>();
+        }
+
         // 1. Re-validate user still has an active membership in the tenant.
         //    An inactive membership must not be refreshable.
         var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId);
@@ -171,6 +199,15 @@ public sealed class AuthSessionService : IAuthSessionService
 
         return OperationResult<string>.Ok(token);
     }
+
+    private static bool HasReachedAbsoluteLifetime(DateTimeOffset authTime, SessionPolicy policy)
+        => DateTimeOffset.UtcNow - authTime >= policy.AbsoluteLifetime;
+
+    private static OperationResult<T> ReauthRequired<T>()
+        => OperationResult<T>.Fail(
+            "Session has reached its maximum lifetime. Please sign in again.",
+            401,
+            ErrorCodes.ReauthRequired);
 
     /// <summary>
     /// Creates the auth_time claim as an additional claim for token generation.

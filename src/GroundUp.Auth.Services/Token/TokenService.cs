@@ -3,6 +3,7 @@ using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -18,6 +19,7 @@ public sealed class TokenService : ITokenService
     private readonly IUserRepository _userRepository;
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly ISigningKeyProvider _signingKeyProvider;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
     private readonly AuthOptions _options;
 
     /// <summary>
@@ -26,16 +28,19 @@ public sealed class TokenService : ITokenService
     /// <param name="userRepository">Repository for resolving user details.</param>
     /// <param name="userRoleRepository">Repository for resolving user role assignments.</param>
     /// <param name="signingKeyProvider">Provider for resolving signing keys.</param>
-    /// <param name="options">Auth configuration options.</param>
+    /// <param name="sessionPolicyProvider">Resolves the effective token and absolute session lifetimes.</param>
+    /// <param name="options">Auth configuration options (issuer and audience).</param>
     public TokenService(
         IUserRepository userRepository,
         IUserRoleRepository userRoleRepository,
         ISigningKeyProvider signingKeyProvider,
+        ISessionPolicyProvider sessionPolicyProvider,
         IOptions<AuthOptions> options)
     {
         _userRepository = userRepository;
         _userRoleRepository = userRoleRepository;
         _signingKeyProvider = signingKeyProvider;
+        _sessionPolicyProvider = sessionPolicyProvider;
         _options = options.Value;
     }
 
@@ -96,7 +101,8 @@ public sealed class TokenService : ITokenService
             claims.AddRange(additionalClaims);
         }
 
-        return await SignTokenAsync(claims, tenantId);
+        var policy = await _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId);
+        return await SignTokenAsync(claims, tenantId, policy);
     }
 
     /// <inheritdoc />
@@ -123,15 +129,20 @@ public sealed class TokenService : ITokenService
             claims.AddRange(additionalClaims);
         }
 
+        // No tenant yet: the System session policy applies.
+        var policy = await _sessionPolicyProvider.GetSystemPolicyAsync();
+
         // Guid.Empty selects the system signing key (the token is not scoped to a tenant).
-        return await SignTokenAsync(claims, Guid.Empty);
+        return await SignTokenAsync(claims, Guid.Empty, policy);
     }
 
     /// <summary>
     /// Signs the claims with the key resolved for <paramref name="signingTenantId"/> and writes the token,
     /// including the <c>kid</c> header used to find the key again during validation.
+    /// The expiry is the token lifetime from now, but never later than the absolute session
+    /// lifetime counted from the <c>auth_time</c> claim, so a refreshed token cannot outlive the cap.
     /// </summary>
-    private async Task<string> SignTokenAsync(List<Claim> claims, Guid signingTenantId)
+    private async Task<string> SignTokenAsync(List<Claim> claims, Guid signingTenantId, SessionPolicy policy)
     {
         var signingKeyInfo = await _signingKeyProvider.GetSigningKeyAsync(signingTenantId);
 
@@ -143,7 +154,7 @@ public sealed class TokenService : ITokenService
             Subject = new ClaimsIdentity(claims),
             Issuer = _options.Issuer,
             Audience = _options.Audience,
-            Expires = DateTime.UtcNow.AddMinutes(_options.TokenExpirationMinutes),
+            Expires = ComputeExpiry(claims, policy),
             SigningCredentials = signingCredentials
         };
 
@@ -152,6 +163,26 @@ public sealed class TokenService : ITokenService
         token.Header["kid"] = signingKeyInfo.KeyId;
 
         return tokenHandler.WriteToken(token);
+    }
+
+    private static DateTime ComputeExpiry(List<Claim> claims, SessionPolicy policy)
+    {
+        var now = DateTime.UtcNow;
+        var expiry = now.Add(policy.TokenLifetime);
+
+        var authTimeClaim = claims.FirstOrDefault(c => c.Type == "auth_time");
+        if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
+        {
+            var cap = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix).UtcDateTime.Add(policy.AbsoluteLifetime);
+            if (cap < expiry)
+            {
+                // Callers reject sessions already past the cap before asking for a token, so this
+                // floor only guards against an expiry that is not after the token's issue time.
+                expiry = cap > now ? cap : now.AddSeconds(1);
+            }
+        }
+
+        return expiry;
     }
 
     /// <inheritdoc />

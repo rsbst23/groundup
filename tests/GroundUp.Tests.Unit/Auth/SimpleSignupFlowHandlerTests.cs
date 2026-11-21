@@ -105,7 +105,7 @@ public sealed class SimpleSignupFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Token.Should().Be(TestGeneratedToken);
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestGeneratedToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestGeneratedToken);
     }
 
     [Fact]

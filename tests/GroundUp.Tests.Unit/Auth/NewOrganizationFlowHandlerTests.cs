@@ -397,7 +397,7 @@ public sealed class NewOrganizationFlowHandlerTests
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        _authCookieWriter.Received(1).WriteAuthCookie(
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(
             Arg.Any<HttpContext>(), TestGeneratedToken);
     }
 
@@ -412,7 +412,7 @@ public sealed class NewOrganizationFlowHandlerTests
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        _authCookieWriter.Received(1).WriteIdTokenCookie(
+        _authCookieWriter.Received(1).WriteIdTokenCookieAsync(
             Arg.Any<HttpContext>(), CreateIdTokenWithNonce(TestNonce));
     }
 
@@ -485,8 +485,8 @@ public sealed class NewOrganizationFlowHandlerTests
         // Assert
         await _tokenService.DidNotReceive().GenerateTokenAsync(
             Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<Claim>?>());
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
-        _authCookieWriter.DidNotReceive().WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteIdTokenCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -530,7 +530,7 @@ public sealed class NewOrganizationFlowHandlerTests
         result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
         await _authFlowStateService.Received(1).MarkFailedAsync(
             TestFlowStateId, Arg.Any<string>(), Arg.Any<CancellationToken>());
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion

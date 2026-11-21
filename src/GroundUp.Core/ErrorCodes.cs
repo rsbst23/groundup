@@ -32,6 +32,12 @@ public static class ErrorCodes
     public const string TenantRequired = "TENANT_REQUIRED";
 
     /// <summary>
+    /// The session has reached its absolute lifetime. The user must sign in again with credentials
+    /// (the client starts a login with <c>forceLogin=true</c>).
+    /// </summary>
+    public const string ReauthRequired = "REAUTH_REQUIRED";
+
+    /// <summary>
     /// The request conflicts with the current state of the resource.
     /// </summary>
     public const string Conflict = "CONFLICT";

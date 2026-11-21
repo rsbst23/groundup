@@ -112,7 +112,7 @@ public sealed class LoginFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Token.Should().Be(TestGeneratedToken);
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestGeneratedToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestGeneratedToken);
     }
 
     [Fact]
@@ -280,8 +280,8 @@ public sealed class LoginFlowHandlerTests
         result.RequiresTenantSelection.Should().BeFalse();
         result.TenantList.Should().BeEmpty();
         result.Token.Should().BeNull();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
-        _authCookieWriter.Received(1).WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestTenantlessToken);
+        _authCookieWriter.Received(1).WriteIdTokenCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public sealed class LoginFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.IsTenantless.Should().BeTrue();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestTenantlessToken);
     }
 
     [Fact]
@@ -351,7 +351,7 @@ public sealed class LoginFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public sealed class LoginFlowHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be("ACCESS_DENIED");
         result.HttpStatus.Should().Be(403);
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion
@@ -399,7 +399,7 @@ public sealed class LoginFlowHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Token.Should().Be(TestGeneratedToken);
         result.RequiresTenantSelection.Should().BeFalse();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestGeneratedToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestGeneratedToken);
     }
 
     [Fact]
@@ -493,7 +493,7 @@ public sealed class LoginFlowHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Token.Should().Be(TestGeneratedToken);
         result.RequiresTenantSelection.Should().BeFalse();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestGeneratedToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestGeneratedToken);
     }
 
     [Fact]
@@ -558,7 +558,7 @@ public sealed class LoginFlowHandlerTests
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion
@@ -623,8 +623,8 @@ public sealed class LoginFlowHandlerTests
         // Assert — the cookie holds a GroundUp tenantless token; the Keycloak access token is never stored
         result.IsTenantless.Should().BeTrue();
         result.RequiresTenantSelection.Should().BeTrue();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestTenantlessToken);
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), TestAccessToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestTenantlessToken);
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestAccessToken);
     }
 
     [Fact]
@@ -642,7 +642,7 @@ public sealed class LoginFlowHandlerTests
         await _sut.HandleCallbackAsync(context);
 
         // Assert
-        _authCookieWriter.Received(1).WriteIdTokenCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.Received(1).WriteIdTokenCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -685,7 +685,7 @@ public sealed class LoginFlowHandlerTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.ErrorCode.Should().Be("TOKEN_GENERATION_FAILED");
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     #endregion

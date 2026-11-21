@@ -40,7 +40,7 @@ public sealed class AuthCookieWriterPropertyTests
         var httpContext = new DefaultHttpContext();
 
         // Act
-        sut.WriteAuthCookie(httpContext, "test-token-value");
+        sut.WriteAuthCookieAsync(httpContext, "test-token-value").GetAwaiter().GetResult();
 
         // Assert — the Set-Cookie header should contain a Domain attribute starting with "."
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
@@ -79,7 +79,7 @@ public sealed class AuthCookieWriterPropertyTests
         var httpContext = new DefaultHttpContext();
 
         // Act
-        sut.WriteAuthCookie(httpContext, "test-token-value");
+        sut.WriteAuthCookieAsync(httpContext, "test-token-value").GetAwaiter().GetResult();
 
         // Assert — the Set-Cookie header should NOT contain "domain="
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
@@ -116,7 +116,7 @@ public sealed class AuthCookieWriterPropertyTests
         var httpContext = new DefaultHttpContext();
 
         // Act
-        sut.WriteAuthCookie(httpContext, "test-token-value");
+        sut.WriteAuthCookieAsync(httpContext, "test-token-value").GetAwaiter().GetResult();
 
         // Assert — validate cookie header contains the expected attributes
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
@@ -168,7 +168,7 @@ public sealed class AuthCookieWriterPropertyTests
         Exception? caught = null;
         try
         {
-            sut.WriteAuthCookie(httpContext, testCase.Token!);
+            sut.WriteAuthCookieAsync(httpContext, testCase.Token!).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

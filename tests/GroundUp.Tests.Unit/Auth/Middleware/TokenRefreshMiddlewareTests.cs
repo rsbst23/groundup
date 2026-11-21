@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GroundUp.Auth.Api.Middleware;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,12 +16,16 @@ public sealed class TokenRefreshMiddlewareTests
 {
     private readonly IAuthSessionService _sessionService;
     private readonly IAuthCookieWriter _cookieWriter;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
     private readonly AuthOptions _options;
 
     public TokenRefreshMiddlewareTests()
     {
         _sessionService = Substitute.For<IAuthSessionService>();
         _cookieWriter = Substitute.For<IAuthCookieWriter>();
+        _sessionPolicyProvider = Substitute.For<ISessionPolicyProvider>();
+        _sessionPolicyProvider.GetPolicyForTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(480)));
         _options = new AuthOptions
         {
             TokenExpirationMinutes = 60,
@@ -48,7 +53,7 @@ public sealed class TokenRefreshMiddlewareTests
         Assert.True(nextCalled.Value);
         await _sessionService.DidNotReceive()
             .RefreshTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTimeOffset>());
-        _cookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _cookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -164,7 +169,7 @@ public sealed class TokenRefreshMiddlewareTests
         Assert.True(nextCalled.Value);
         await _sessionService.Received(1)
             .RefreshTokenAsync(userId, tenantId, Arg.Any<DateTimeOffset>());
-        _cookieWriter.Received(1).WriteAuthCookie(context, newToken);
+        _cookieWriter.Received(1).WriteAuthCookieAsync(context, newToken);
     }
 
     [Fact]
@@ -193,8 +198,8 @@ public sealed class TokenRefreshMiddlewareTests
 
         // Assert
         Assert.True(nextCalled.Value);
-        _cookieWriter.Received(1).ClearAuthCookie(context);
-        _cookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _cookieWriter.Received(1).ClearAuthCookieAsync(context);
+        _cookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -346,7 +351,7 @@ public sealed class TokenRefreshMiddlewareTests
         Assert.True(nextCalled.Value);
         await _sessionService.Received(1)
             .RefreshTokenAsync(userId, tenantId, Arg.Any<DateTimeOffset>());
-        _cookieWriter.Received(1).WriteAuthCookie(context, newToken);
+        _cookieWriter.Received(1).WriteAuthCookieAsync(context, newToken);
     }
 
     [Fact]
@@ -381,6 +386,49 @@ public sealed class TokenRefreshMiddlewareTests
         Assert.Equal(originalAuthTimeOffset.ToUnixTimeSeconds(), capturedAuthTime.ToUnixTimeSeconds());
     }
 
+    [Fact]
+    public async Task InvokeAsync_TenantTokenLifetimeShorter_RefreshesAtHalfOfTenantLifetime()
+    {
+        // Arrange: this tenant's tokens last 20 minutes, so a 12-minute-old token is past half
+        // (it would not be under the System 60 minutes).
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(480)));
+        var iat = DateTimeOffset.UtcNow.AddMinutes(-12).ToUnixTimeSeconds();
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-12).ToUnixTimeSeconds();
+        var (context, _) = CreateContext(claims: CreateFullClaims(userId, tenantId, iat, authTime));
+        _sessionService.RefreshTokenAsync(userId, tenantId, Arg.Any<DateTimeOffset>())
+            .Returns(OperationResult<string>.Ok("new-token"));
+
+        // Act
+        await CreateMiddleware(_ => Task.CompletedTask).InvokeAsync(context);
+
+        // Assert
+        await _sessionService.Received(1).RefreshTokenAsync(userId, tenantId, Arg.Any<DateTimeOffset>());
+        await _sessionPolicyProvider.Received().GetPolicyForTenantAsync(tenantId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_TenantAbsoluteCapShorterAndReached_SkipsRefresh()
+    {
+        // Arrange: the tenant caps sessions at 60 minutes; the session is 90 minutes old
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
+        var iat = DateTimeOffset.UtcNow.AddMinutes(-20).ToUnixTimeSeconds();
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-90).ToUnixTimeSeconds();
+        var (context, _) = CreateContext(claims: CreateFullClaims(userId, tenantId, iat, authTime));
+
+        // Act
+        await CreateMiddleware(_ => Task.CompletedTask).InvokeAsync(context);
+
+        // Assert
+        await _sessionService.DidNotReceive()
+            .RefreshTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTimeOffset>());
+    }
+
     // --- Helper methods ---
 
     private TokenRefreshMiddleware CreateMiddleware(RequestDelegate next)
@@ -397,6 +445,7 @@ public sealed class TokenRefreshMiddlewareTests
         services.AddSingleton(Options.Create(_options));
         services.AddSingleton(_sessionService);
         services.AddSingleton(_cookieWriter);
+        services.AddSingleton(_sessionPolicyProvider);
         var sp = services.BuildServiceProvider();
 
         var context = new DefaultHttpContext { RequestServices = sp };

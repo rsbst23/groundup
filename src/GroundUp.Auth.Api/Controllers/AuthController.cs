@@ -3,6 +3,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Core;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -297,7 +298,8 @@ public sealed class AuthController : ControllerBase
 
         if (!result.Success)
         {
-            return StatusCode(result.StatusCode, new { error = result.Message });
+            // errorCode lets the client tell "sign in again" (REAUTH_REQUIRED) from other failures
+            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
         }
 
         var response = result.Data!;
@@ -309,7 +311,7 @@ public sealed class AuthController : ControllerBase
 
         if (!string.IsNullOrEmpty(response.Token))
         {
-            _authCookieWriter.WriteAuthCookie(HttpContext, response.Token);
+            await _authCookieWriter.WriteAuthCookieAsync(HttpContext, response.Token);
         }
 
         return Ok();
@@ -358,13 +360,20 @@ public sealed class AuthController : ControllerBase
 
         if (!result.Success)
         {
-            _authCookieWriter.ClearAuthCookie(HttpContext);
+            await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
+
+            if (result.ErrorCode == ErrorCodes.ReauthRequired)
+            {
+                // The session reached its absolute lifetime: the client must start a forced login.
+                return StatusCode(401, new { error = result.Message, errorCode = result.ErrorCode });
+            }
+
             return StatusCode(403, new { error = result.Message });
         }
 
         if (!string.IsNullOrEmpty(result.Data))
         {
-            _authCookieWriter.WriteAuthCookie(HttpContext, result.Data);
+            await _authCookieWriter.WriteAuthCookieAsync(HttpContext, result.Data);
         }
 
         return Ok();
@@ -383,14 +392,14 @@ public sealed class AuthController : ControllerBase
     /// The client should navigate the browser to <c>logoutUrl</c> to complete SSO logout.
     /// </returns>
     [HttpPost("logout")]
-    public Task<IActionResult> Logout(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken = default)
     {
         var authOptions = _authOptions.Value;
         var keycloakOpts = _keycloakOptions.Value;
 
         // Clear both the auth cookie and the id_token hint cookie
-        _authCookieWriter.ClearAuthCookie(HttpContext);
-        _authCookieWriter.ClearIdTokenCookie(HttpContext);
+        await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
+        await _authCookieWriter.ClearIdTokenCookieAsync(HttpContext);
 
         var postLogoutRedirectUri = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}/";
 
@@ -406,7 +415,7 @@ public sealed class AuthController : ControllerBase
             logoutUrl += $"&id_token_hint={Uri.EscapeDataString(idToken)}";
         }
 
-        return Task.FromResult<IActionResult>(Ok(new { logoutUrl }));
+        return Ok(new { logoutUrl });
     }
 
     /// <summary>
@@ -642,12 +651,12 @@ public sealed class AuthController : ControllerBase
             var tenantlessResult = await _authSessionService.IssueTenantlessSessionAsync(userId.Value, originalAuthTime);
             if (tenantlessResult.Success && !string.IsNullOrEmpty(tenantlessResult.Data))
             {
-                _authCookieWriter.WriteAuthCookie(HttpContext, tenantlessResult.Data);
+                await _authCookieWriter.WriteAuthCookieAsync(HttpContext, tenantlessResult.Data);
             }
             else
             {
                 // The membership is already gone; never leave the old tenant-scoped token in place.
-                _authCookieWriter.ClearAuthCookie(HttpContext);
+                await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
             }
 
             return Ok(new { success = true, currentTenantId = (Guid?)null });

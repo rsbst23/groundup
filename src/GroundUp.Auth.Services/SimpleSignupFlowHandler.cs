@@ -217,8 +217,8 @@ public sealed class SimpleSignupFlowHandler : IFlowHandler
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext is not null)
         {
-            _authCookieWriter.WriteAuthCookie(httpContext, token);
-            _authCookieWriter.WriteIdTokenCookie(httpContext, tokenResponse.IdToken ?? string.Empty);
+            await _authCookieWriter.WriteAuthCookieAsync(httpContext, token);
+            await _authCookieWriter.WriteIdTokenCookieAsync(httpContext, tokenResponse.IdToken ?? string.Empty);
         }
 
         _logger.LogInformation(
