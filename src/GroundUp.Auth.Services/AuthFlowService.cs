@@ -2,6 +2,7 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class AuthFlowService : IAuthFlowService
     private readonly IEnumerable<IFlowHandler> _flowHandlers;
     private readonly HostResolvedTenant _hostResolvedTenant;
     private readonly IOptions<AuthOptions> _authOptions;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
     private readonly ILogger<AuthFlowService> _logger;
 
     /// <summary>
@@ -33,6 +35,7 @@ public sealed class AuthFlowService : IAuthFlowService
     /// <param name="flowHandlers">All registered flow handler implementations.</param>
     /// <param name="hostResolvedTenant">The host-resolved tenant for the current request.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
+    /// <param name="sessionPolicyProvider">Supplies the absolute session lifetime sent as <c>max_age</c>.</param>
     /// <param name="logger">Logger instance.</param>
     public AuthFlowService(
         IAuthUrlBuilder authUrlBuilder,
@@ -41,6 +44,7 @@ public sealed class AuthFlowService : IAuthFlowService
         IEnumerable<IFlowHandler> flowHandlers,
         HostResolvedTenant hostResolvedTenant,
         IOptions<AuthOptions> authOptions,
+        ISessionPolicyProvider sessionPolicyProvider,
         ILogger<AuthFlowService> logger)
     {
         _authUrlBuilder = authUrlBuilder;
@@ -49,6 +53,7 @@ public sealed class AuthFlowService : IAuthFlowService
         _flowHandlers = flowHandlers;
         _hostResolvedTenant = hostResolvedTenant;
         _authOptions = authOptions;
+        _sessionPolicyProvider = sessionPolicyProvider;
         _logger = logger;
     }
 
@@ -70,7 +75,19 @@ public sealed class AuthFlowService : IAuthFlowService
         // Build the authorization URL (generates state, nonce, PKCE)
         // Sign-up flows get prompt=create so users land on Keycloak's registration form
         var isSignup = request.FlowType == FlowType.NewOrganization || request.FlowType == FlowType.SimpleSignup;
-        var urlRequest = new AuthUrlRequest(realmOverride, redirectUri, IsSignup: isSignup);
+
+        // max_age is the absolute session lifetime: of the host-pinned tenant when the host names
+        // one (tenant values can only be shorter), otherwise the System value.
+        var policy = tenant is not null
+            ? await _sessionPolicyProvider.GetPolicyForTenantAsync(tenant.Id, cancellationToken)
+            : await _sessionPolicyProvider.GetSystemPolicyAsync(cancellationToken);
+
+        var urlRequest = new AuthUrlRequest(
+            realmOverride,
+            redirectUri,
+            IsSignup: isSignup,
+            MaxAgeSeconds: (int)policy.AbsoluteLifetime.TotalSeconds,
+            ForceLogin: request.ForceLogin);
         var urlResult = await _authUrlBuilder.BuildAuthorizationUrlAsync(urlRequest, cancellationToken);
 
         if (!urlResult.Success)

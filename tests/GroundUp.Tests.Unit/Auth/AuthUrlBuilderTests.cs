@@ -302,6 +302,52 @@ public sealed class AuthUrlBuilderTests
     }
 
     [Fact]
+    public async Task BuildAuthorizationUrlAsync_MaxAgeSet_UrlContainsMaxAge()
+    {
+        var request = new AuthUrlRequest(null, "https://app.example.com/auth/callback", MaxAgeSeconds: 28800);
+
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["max_age"].Should().Be("28800");
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_MaxAgeNotSet_UrlHasNoMaxAge()
+    {
+        var request = new AuthUrlRequest(null, "https://app.example.com/auth/callback");
+
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["max_age"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_ForceLogin_UrlContainsPromptLogin()
+    {
+        var request = new AuthUrlRequest(null, "https://app.example.com/auth/callback", ForceLogin: true, MaxAgeSeconds: 600);
+
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["prompt"].Should().Be("login");
+        query["max_age"].Should().Be("600");
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_SignupWithForceLogin_KeepsPromptCreate()
+    {
+        // A sign-up form always asks for credentials; prompt=create wins over prompt=login.
+        var request = new AuthUrlRequest(null, "https://app.example.com/auth/callback", IsSignup: true, ForceLogin: true);
+
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
+        query["prompt"].Should().Be("create");
+    }
+
+    [Fact]
     public async Task BuildAuthorizationUrlAsync_IsSignupDefault_UrlHasNoPromptParameter()
     {
         // Arrange — IsSignup defaults to false

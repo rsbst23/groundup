@@ -91,6 +91,19 @@ public sealed class AuthUrlBuilderService : IAuthUrlBuilder
         {
             queryParams["prompt"] = "create";
         }
+        else if (request.ForceLogin)
+        {
+            // Ask for credentials even when the identity provider's SSO session is alive, so the
+            // new ID token carries a fresh auth_time (used after REAUTH_REQUIRED).
+            queryParams["prompt"] = "login";
+        }
+
+        // The identity provider re-authenticates a session older than this and must return
+        // auth_time, so a silent single sign-on cannot outlive the absolute session lifetime.
+        if (request.MaxAgeSeconds is > 0)
+        {
+            queryParams["max_age"] = request.MaxAgeSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
 
         var queryString = string.Join("&", queryParams.Select(
             kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,8 @@ namespace GroundUp.Auth.Services;
 public sealed class NewOrganizationFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
+    private readonly IIdTokenValidator _idTokenValidator;
+    private readonly CallbackSessionGuard _sessionGuard;
     private readonly IAuthFlowStateService _authFlowStateService;
     private readonly IUserRepository _userRepository;
     private readonly IOrganizationProvisioningService _organizationProvisioningService;
@@ -30,6 +33,8 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
     /// </summary>
     public NewOrganizationFlowHandler(
         IIdentityProviderService identityProviderService,
+        IIdTokenValidator idTokenValidator,
+        CallbackSessionGuard sessionGuard,
         IAuthFlowStateService authFlowStateService,
         IUserRepository userRepository,
         IOrganizationProvisioningService organizationProvisioningService,
@@ -40,6 +45,8 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         ILogger<NewOrganizationFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
+        _idTokenValidator = idTokenValidator;
+        _sessionGuard = sessionGuard;
         _authFlowStateService = authFlowStateService;
         _userRepository = userRepository;
         _organizationProvisioningService = organizationProvisioningService;
@@ -72,12 +79,23 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
             return FlowResult.Error("CODE_EXCHANGE_FAILED", "Failed to exchange authorization code for tokens.");
         }
 
-        // 2. Validate id_token nonce
-        if (!ValidateNonce(tokenResponse.IdToken, state.Nonce))
+        // 2. Validate the ID token (signature, issuer, audience, expiry, nonce) before trusting it
+        var idTokenResult = await _idTokenValidator.ValidateAsync(tokenResponse.IdToken, state.Nonce, state.Realm);
+        if (!idTokenResult.Success || idTokenResult.Data is null)
         {
-            _logger.LogWarning("NewOrganization flow failed: nonce mismatch for state {StateId}", state.Id);
-            await _authFlowStateService.MarkFailedAsync(state.Id, "Nonce mismatch");
-            return FlowResult.Error("NONCE_MISMATCH", "ID token nonce does not match the expected value.");
+            _logger.LogWarning("NewOrganization flow failed: ID token rejected ({ErrorCode}) for state {StateId}",
+                idTokenResult.ErrorCode, state.Id);
+            await _authFlowStateService.MarkFailedAsync(state.Id, "ID token rejected");
+            return FlowResult.Error(idTokenResult.ErrorCode ?? IdTokenErrorCodes.Invalid, idTokenResult.Message);
+        }
+
+        // Count the session from the identity provider's auth_time. A new organization has no
+        // tenant-level session settings yet, so the System lifetime applies. Checked before the
+        // organization is created, so a refused sign-in creates nothing.
+        var authTime = _sessionGuard.ResolveAuthTime(idTokenResult.Data);
+        if (await _sessionGuard.CheckAsync(authTime, tenantId: null) is { } systemCapReached)
+        {
+            return systemCapReached;
         }
 
         // 3. Retrieve user information
@@ -115,8 +133,8 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         // tenant so token generation resolves the founder's roles in that tenant.
         _tenantContext.TenantId = tenantId;
 
-        // 6. Generate GroundUp JWT token with auth_time = now
-        var authTimeClaim = new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64);
+        // 6. Generate GroundUp JWT token carrying the identity provider's auth_time
+        var authTimeClaim = new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64);
         var token = await _tokenService.GenerateTokenAsync(userId, tenantId, new[] { authTimeClaim });
 
         if (token is null)
@@ -186,54 +204,6 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
 
         throw new InvalidOperationException(
             $"Failed to resolve or create user with ExternalUserId '{userInfo.ExternalUserId}'");
-    }
-
-    /// <summary>
-    /// Validates the nonce claim in the id_token against the expected nonce.
-    /// </summary>
-    private static bool ValidateNonce(string? idToken, string expectedNonce)
-    {
-        if (string.IsNullOrEmpty(idToken))
-        {
-            return false;
-        }
-
-        try
-        {
-            // Decode the JWT payload without signature verification (already validated by IDP)
-            var parts = idToken.Split('.');
-            if (parts.Length != 3)
-            {
-                return false;
-            }
-
-            var payload = parts[1];
-            // Add Base64 padding if needed
-            var remainder = payload.Length % 4;
-            if (remainder == 2)
-            {
-                payload += "==";
-            }
-            else if (remainder == 3)
-            {
-                payload += "=";
-            }
-
-            var standardBase64 = payload.Replace('-', '+').Replace('_', '/');
-            var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(standardBase64));
-
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("nonce", out var nonceElement))
-            {
-                return string.Equals(nonceElement.GetString(), expectedNonce, StringComparison.Ordinal);
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     /// <summary>

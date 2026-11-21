@@ -57,6 +57,7 @@ public static class KeycloakServiceCollectionExtensions
 
         // Scoped service implementations
         services.AddScoped<IIdentityProviderService, KeycloakIdentityProviderService>();
+        services.AddScoped<IIdTokenValidator, KeycloakIdTokenValidator>();
         services.AddScoped<IIdentityProviderAdminService, KeycloakIdentityProviderAdminService>();
 
         // Singleton link builder

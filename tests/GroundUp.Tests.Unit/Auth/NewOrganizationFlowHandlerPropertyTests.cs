@@ -154,6 +154,8 @@ public sealed class NewOrganizationFlowHandlerPropertyTests
 
         return new NewOrganizationFlowHandler(
             idpService,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             authFlowStateService,
             userRepository,
             organizationProvisioningService,

@@ -13,7 +13,12 @@ namespace GroundUp.Auth.Services;
 /// <param name="ReturnUrl">
 /// Optional post-authentication redirect URL for the client.
 /// </param>
+/// <param name="ForceLogin">
+/// When true, the identity provider must ask for credentials even if its single sign-on session
+/// is still alive (<c>prompt=login</c>). Clients set it after a <c>REAUTH_REQUIRED</c> response.
+/// </param>
 public sealed record FlowInitiationRequest(
     FlowType FlowType,
     string? OrganizationName = null,
-    string? ReturnUrl = null);
+    string? ReturnUrl = null,
+    bool ForceLogin = false);

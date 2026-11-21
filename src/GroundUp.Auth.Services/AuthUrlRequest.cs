@@ -12,7 +12,17 @@ namespace GroundUp.Auth.Services;
 /// When true, appends <c>prompt=create</c> to the authorization URL so that
 /// users land on Keycloak's registration form directly. Requires Keycloak 26.1 or later.
 /// </param>
+/// <param name="MaxAgeSeconds">
+/// When set, appends <c>max_age</c>: the identity provider re-authenticates the user if they last
+/// signed in longer ago than this, and must include <c>auth_time</c> in the ID token.
+/// </param>
+/// <param name="ForceLogin">
+/// When true (and not a sign-up), appends <c>prompt=login</c> so the identity provider asks for
+/// credentials even if its single sign-on session is still alive.
+/// </param>
 public sealed record AuthUrlRequest(
     string? RealmOverride,
     string RedirectUri,
-    bool IsSignup = false);
+    bool IsSignup = false,
+    int? MaxAgeSeconds = null,
+    bool ForceLogin = false);

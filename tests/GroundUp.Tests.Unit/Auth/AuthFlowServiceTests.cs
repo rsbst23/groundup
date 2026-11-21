@@ -20,6 +20,8 @@ public sealed class AuthFlowServiceTests
     private readonly HostResolvedTenant _hostResolvedTenant;
     private readonly AuthOptions _authOptions;
     private readonly ILogger<AuthFlowService> _logger;
+    private readonly GroundUp.Auth.Services.Session.ISessionPolicyProvider _sessionPolicyProvider =
+        GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.PolicyProvider();
     private readonly AuthFlowService _sut;
 
     // Reusable test data
@@ -50,6 +52,59 @@ public sealed class AuthFlowServiceTests
     }
 
     #region InitiateFlowAsync Tests
+
+    [Fact]
+    public async Task InitiateFlowAsync_NoHostTenant_SendsSystemAbsoluteLifetimeAsMaxAge()
+    {
+        // Arrange — the policy double uses 480 minutes everywhere
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(new FlowInitiationRequest(FlowType.Login), CreateHttpContext());
+
+        // Assert
+        await _authUrlBuilder.Received(1).BuildAuthorizationUrlAsync(
+            Arg.Is<AuthUrlRequest>(r => r.MaxAgeSeconds == 480 * 60 && !r.ForceLogin),
+            Arg.Any<CancellationToken>());
+        await _sessionPolicyProvider.Received(1).GetSystemPolicyAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_HostPinnedTenant_UsesThatTenantsLifetime()
+    {
+        // Arrange — the host names a tenant whose sessions are capped at 90 minutes
+        _hostResolvedTenant.Tenant = CreateStandardTenant();
+        var tenantId = TestTenantId;
+        _sessionPolicyProvider.GetPolicyForTenantAsync(tenantId, Arg.Any<CancellationToken>())
+            .Returns(new GroundUp.Auth.Services.Session.SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(90)));
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(new FlowInitiationRequest(FlowType.Login), CreateHttpContext());
+
+        // Assert
+        await _authUrlBuilder.Received(1).BuildAuthorizationUrlAsync(
+            Arg.Is<AuthUrlRequest>(r => r.MaxAgeSeconds == 90 * 60),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_ForceLogin_PassesForceLoginToUrlBuilder()
+    {
+        // Arrange
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(new FlowInitiationRequest(FlowType.Login, ForceLogin: true), CreateHttpContext());
+
+        // Assert
+        await _authUrlBuilder.Received(1).BuildAuthorizationUrlAsync(
+            Arg.Is<AuthUrlRequest>(r => r.ForceLogin),
+            Arg.Any<CancellationToken>());
+    }
 
     [Fact]
     public async Task InitiateFlowAsync_ValidRequest_CreatesStateWithAllFieldsPopulated()
@@ -478,6 +533,7 @@ public sealed class AuthFlowServiceTests
             handlers ?? Array.Empty<IFlowHandler>(),
             _hostResolvedTenant,
             Options.Create(_authOptions),
+            _sessionPolicyProvider,
             _logger);
     }
 

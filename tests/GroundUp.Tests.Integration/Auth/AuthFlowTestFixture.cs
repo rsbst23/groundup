@@ -165,6 +165,10 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             services.RemoveAll<IIdentityProviderService>();
             services.AddSingleton(MockIdentityProviderService);
 
+            // The Keycloak ID token validator needs Keycloak's JWKS; validate the test-signed tokens instead.
+            services.RemoveAll<IIdTokenValidator>();
+            services.AddSingleton<IIdTokenValidator, TestIdTokenValidator>();
+
             // Register IUnitOfWork backed by AuthDbContext for transactional flow handlers
             services.RemoveAll<IUnitOfWork>();
             services.AddScoped<IUnitOfWork, AuthDbContextUnitOfWork>();
@@ -278,8 +282,13 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
     /// <param name="sub">The subject claim (Keycloak user ID).</param>
     /// <param name="nonce">The nonce claim value.</param>
     /// <param name="email">The email claim.</param>
-    /// <returns>A JWT string with the specified claims (unsigned — validation is mocked).</returns>
-    public static string GenerateFakeIdToken(string sub, string nonce, string email = "user@example.com")
+    /// <param name="authTime">Optional <c>auth_time</c> claim (when the user last authenticated).</param>
+    /// <returns>A JWT signed with <see cref="TestIdTokenValidator.SigningKey"/>.</returns>
+    public static string GenerateFakeIdToken(
+        string sub,
+        string nonce,
+        string email = "user@example.com",
+        DateTimeOffset? authTime = null)
     {
         var claims = new List<Claim>
         {
@@ -289,8 +298,13 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             new("name", "Test User")
         };
 
-        // Create a minimal JWT structure (unsigned — the IDP service is mocked)
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("fake-key-for-id-token-testing-minimum-32-bytes!"));
+        if (authTime is { } t)
+        {
+            claims.Add(new Claim("auth_time", t.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64));
+        }
+
+        // Signed with a test key that TestIdTokenValidator checks (the real validator needs Keycloak's JWKS)
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestIdTokenValidator.SigningKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(

@@ -1,9 +1,8 @@
 using System.Security.Claims;
-using System.Text;
-using System.Text.Json;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using Microsoft.AspNetCore.Http;
@@ -21,6 +20,8 @@ namespace GroundUp.Auth.Services;
 public sealed class LoginFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
+    private readonly IIdTokenValidator _idTokenValidator;
+    private readonly CallbackSessionGuard _sessionGuard;
     private readonly IUserRepository _userRepository;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
@@ -37,6 +38,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// </summary>
     public LoginFlowHandler(
         IIdentityProviderService identityProviderService,
+        IIdTokenValidator idTokenValidator,
+        CallbackSessionGuard sessionGuard,
         IUserRepository userRepository,
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
@@ -49,6 +52,8 @@ public sealed class LoginFlowHandler : IFlowHandler
         ILogger<LoginFlowHandler> logger)
     {
         _identityProviderService = identityProviderService;
+        _idTokenValidator = idTokenValidator;
+        _sessionGuard = sessionGuard;
         _userRepository = userRepository;
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
@@ -83,12 +88,22 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Error("CODE_EXCHANGE_FAILED", "Failed to exchange authorization code for tokens.");
         }
 
-        // 2. Validate id_token nonce
-        if (!ValidateNonce(tokenResponse.IdToken, state.Nonce))
+        // 2. Validate the ID token (signature, issuer, audience, expiry, nonce) before trusting it
+        var idTokenResult = await _idTokenValidator.ValidateAsync(tokenResponse.IdToken, state.Nonce, state.Realm);
+        if (!idTokenResult.Success || idTokenResult.Data is null)
         {
-            _logger.LogWarning("Login flow failed: nonce mismatch for state {StateId}", state.Id);
-            await _authFlowStateService.MarkFailedAsync(state.Id, "Nonce mismatch");
-            return FlowResult.Error("NONCE_MISMATCH", "ID token nonce does not match the expected value.");
+            _logger.LogWarning("Login flow failed: ID token rejected ({ErrorCode}) for state {StateId}",
+                idTokenResult.ErrorCode, state.Id);
+            await _authFlowStateService.MarkFailedAsync(state.Id, "ID token rejected");
+            return FlowResult.Error(idTokenResult.ErrorCode ?? IdTokenErrorCodes.Invalid, idTokenResult.Message);
+        }
+
+        // The session is counted from the identity provider's auth_time, so a silent single
+        // sign-on does not restart it. Refuse a session already past the System lifetime.
+        var authTime = _sessionGuard.ResolveAuthTime(idTokenResult.Data);
+        if (await _sessionGuard.CheckAsync(authTime, tenantId: null) is { } systemCapReached)
+        {
+            return systemCapReached;
         }
 
         // 3. Retrieve user information
@@ -128,15 +143,15 @@ public sealed class LoginFlowHandler : IFlowHandler
         // 7. Host-pinned scenarios
         if (context.HostResolvedTenant is not null)
         {
-            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant, tokenResponse.IdToken);
+            return await HandleHostPinnedAsync(user, activeMemberships, context.HostResolvedTenant, tokenResponse.IdToken, authTime);
         }
 
         // 8. Non-host-pinned scenarios based on membership count
         return activeMemberships.Count switch
         {
-            0 => await HandleZeroMembershipsAsync(user, membershipsResult.Data, tokenResponse.IdToken),
-            1 => await HandleSingleMembershipAsync(user, activeMemberships[0], tokenResponse.IdToken),
-            _ => await HandleMultipleMembershipsAsync(user, activeMemberships, tokenResponse)
+            0 => await HandleZeroMembershipsAsync(user, membershipsResult.Data, tokenResponse.IdToken, authTime),
+            1 => await HandleSingleMembershipAsync(user, activeMemberships[0], tokenResponse.IdToken, authTime),
+            _ => await HandleMultipleMembershipsAsync(user, activeMemberships, tokenResponse, authTime)
         };
     }
 
@@ -147,7 +162,8 @@ public sealed class LoginFlowHandler : IFlowHandler
         UserDto user,
         List<UserTenantDto> activeMemberships,
         TenantDto hostTenant,
-        string? idToken)
+        string? idToken,
+        DateTimeOffset authTime)
     {
         var membership = activeMemberships.FirstOrDefault(m => m.TenantId == hostTenant.Id);
 
@@ -160,8 +176,13 @@ public sealed class LoginFlowHandler : IFlowHandler
                 "You do not have access to this organization.", httpStatus: 403);
         }
 
-        // User is a member — issue token scoped to the host-resolved tenant
-        var token = await GenerateTokenWithAuthTimeAsync(user.Id, hostTenant.Id);
+        // User is a member — issue token scoped to the host-resolved tenant (if within its lifetime)
+        if (await _sessionGuard.CheckAsync(authTime, hostTenant.Id) is { } tenantCapReached)
+        {
+            return tenantCapReached;
+        }
+
+        var token = await GenerateTokenWithAuthTimeAsync(user.Id, hostTenant.Id, authTime);
         if (token is null)
         {
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
@@ -182,11 +203,15 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// A user who previously left the default tenant still has a deactivated membership row, and a
     /// user has only one row per tenant, so that row is reactivated instead of inserting a new one.
     /// </summary>
+    /// <param name="user">The signed-in user.</param>
     /// <param name="allMemberships">All of the user's membership rows, active or not.</param>
+    /// <param name="idToken">The raw ID token, kept for the logout hint cookie.</param>
+    /// <param name="authTime">When the user last authenticated (from the ID token).</param>
     private async Task<FlowResult> HandleZeroMembershipsAsync(
         UserDto user,
         List<UserTenantDto> allMemberships,
-        string? idToken)
+        string? idToken,
+        DateTimeOffset authTime)
     {
         // Check for default tenant configuration
         var defaultTenantSlugResult = await _settingsService.GetAsync<string>(
@@ -197,7 +222,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         {
             // Nothing to enter. The user is still signed in: a tenantless session lets them
             // create an organization (or accept an invitation later) instead of hitting a dead end.
-            if (!await TryWriteTenantlessSessionAsync(user.Id, idToken))
+            if (!await TryWriteTenantlessSessionAsync(user.Id, idToken, authTime))
             {
                 return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
             }
@@ -223,6 +248,12 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         var defaultTenant = tenantResult.Data;
+
+        // Check the default tenant's lifetime before joining, so a refused sign-in changes nothing.
+        if (await _sessionGuard.CheckAsync(authTime, defaultTenant.Id) is { } tenantCapReached)
+        {
+            return tenantCapReached;
+        }
 
         var previousMembership = allMemberships.FirstOrDefault(m => m.TenantId == defaultTenant.Id);
         if (previousMembership is not null)
@@ -265,7 +296,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         }
 
         // Issue token scoped to the default tenant
-        var token = await GenerateTokenWithAuthTimeAsync(user.Id, defaultTenant.Id);
+        var token = await GenerateTokenWithAuthTimeAsync(user.Id, defaultTenant.Id, authTime);
         if (token is null)
         {
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
@@ -282,9 +313,18 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// <summary>
     /// Handles the single-membership scenario: auto-select the one tenant.
     /// </summary>
-    private async Task<FlowResult> HandleSingleMembershipAsync(UserDto user, UserTenantDto membership, string? idToken)
+    private async Task<FlowResult> HandleSingleMembershipAsync(
+        UserDto user,
+        UserTenantDto membership,
+        string? idToken,
+        DateTimeOffset authTime)
     {
-        var token = await GenerateTokenWithAuthTimeAsync(user.Id, membership.TenantId);
+        if (await _sessionGuard.CheckAsync(authTime, membership.TenantId) is { } tenantCapReached)
+        {
+            return tenantCapReached;
+        }
+
+        var token = await GenerateTokenWithAuthTimeAsync(user.Id, membership.TenantId, authTime);
         if (token is null)
         {
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
@@ -306,7 +346,8 @@ public sealed class LoginFlowHandler : IFlowHandler
     private async Task<FlowResult> HandleMultipleMembershipsAsync(
         UserDto user,
         List<UserTenantDto> activeMemberships,
-        TokenResponseDto tokenResponse)
+        TokenResponseDto tokenResponse,
+        DateTimeOffset authTime)
     {
         // Load tenant details for the memberships to filter by RealmName
         var membershipTenantIds = activeMemberships.Select(m => m.TenantId).ToList();
@@ -337,7 +378,12 @@ public sealed class LoginFlowHandler : IFlowHandler
         // If after filtering we have exactly 1 standard tenant, auto-select it
         if (standardTenants.Count == 1)
         {
-            var token = await GenerateTokenWithAuthTimeAsync(user.Id, standardTenants[0].Id);
+            if (await _sessionGuard.CheckAsync(authTime, standardTenants[0].Id) is { } tenantCapReached)
+            {
+                return tenantCapReached;
+            }
+
+            var token = await GenerateTokenWithAuthTimeAsync(user.Id, standardTenants[0].Id, authTime);
             if (token is null)
             {
                 return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
@@ -354,7 +400,7 @@ public sealed class LoginFlowHandler : IFlowHandler
         // 2+ standard tenants: issue a tenantless GroundUp token (identity only, no tid, no roles).
         // The session stays tenantless until POST /auth/set-tenant selects a tenant. The Keycloak
         // access token is not kept: it is short-lived and cannot be used to look up the user's roles.
-        if (!await TryWriteTenantlessSessionAsync(user.Id, tokenResponse.IdToken))
+        if (!await TryWriteTenantlessSessionAsync(user.Id, tokenResponse.IdToken, authTime))
         {
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
         }
@@ -440,17 +486,12 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Issues a tenantless token (auth_time = now) and writes it, plus the id_token cookie used for
-    /// logout, to the response. Returns false when the token could not be generated.
+    /// Issues a tenantless token carrying <paramref name="authTime"/> and writes it, plus the id_token
+    /// cookie used for logout, to the response. Returns false when the token could not be generated.
     /// </summary>
-    private async Task<bool> TryWriteTenantlessSessionAsync(Guid userId, string? idToken)
+    private async Task<bool> TryWriteTenantlessSessionAsync(Guid userId, string? idToken, DateTimeOffset authTime)
     {
-        var authTimeClaim = new Claim(
-            "auth_time",
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
-            ClaimValueTypes.Integer64);
-
-        var token = await _tokenService.GenerateTenantlessTokenAsync(userId, new[] { authTimeClaim });
+        var token = await _tokenService.GenerateTenantlessTokenAsync(userId, new[] { AuthTimeClaim(authTime) });
         if (token is null)
         {
             return false;
@@ -462,63 +503,13 @@ public sealed class LoginFlowHandler : IFlowHandler
     }
 
     /// <summary>
-    /// Generates a GroundUp JWT token with the auth_time claim set to current UTC time.
+    /// Generates a tenant-scoped GroundUp JWT carrying <paramref name="authTime"/> (from the ID token).
     /// </summary>
-    private async Task<string?> GenerateTokenWithAuthTimeAsync(Guid userId, Guid tenantId)
-    {
-        var authTimeClaim = new Claim(
-            "auth_time",
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
-            ClaimValueTypes.Integer64);
+    private Task<string?> GenerateTokenWithAuthTimeAsync(Guid userId, Guid tenantId, DateTimeOffset authTime) =>
+        _tokenService.GenerateTokenAsync(userId, tenantId, new[] { AuthTimeClaim(authTime) });
 
-        return await _tokenService.GenerateTokenAsync(userId, tenantId, new[] { authTimeClaim });
-    }
-
-    /// <summary>
-    /// Validates the nonce claim in the id_token against the expected nonce stored in AuthFlowState.
-    /// Uses manual JWT payload decoding (no signature verification — IDP already validated the token).
-    /// </summary>
-    private static bool ValidateNonce(string? idToken, string expectedNonce)
-    {
-        if (string.IsNullOrEmpty(idToken))
-        {
-            return false;
-        }
-
-        try
-        {
-            var parts = idToken.Split('.');
-            if (parts.Length != 3)
-            {
-                return false;
-            }
-
-            var payload = parts[1];
-            // Add padding for Base64URL to Base64 conversion
-            var remainder = payload.Length % 4;
-            var padded = remainder switch
-            {
-                2 => payload + "==",
-                3 => payload + "=",
-                _ => payload
-            };
-
-            var base64 = padded.Replace('-', '+').Replace('_', '/');
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("nonce", out var nonceElement))
-            {
-                return string.Equals(nonceElement.GetString(), expectedNonce, StringComparison.Ordinal);
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    private static Claim AuthTimeClaim(DateTimeOffset authTime) =>
+        new("auth_time", authTime.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64);
 
     /// <summary>
     /// Writes the authentication cookie using the current HTTP context.

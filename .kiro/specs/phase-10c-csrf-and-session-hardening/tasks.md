@@ -40,13 +40,13 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [ ] 5.2 Manual check: POST from Swagger with the cookie succeeds (owner, in the browser). Automated: sample test checks the interceptors are served; a Node run through Swashbuckle 6.9's parser checked GET untouched, POST gets the token, caching, refetch after 403, no header when signed out
   - [x] 5.3 Stop for review (moved into PR B)
 
-- [ ] 6. ID token validation, `auth_time` and forced re-authentication
-  - [ ] 6.1 `IIdTokenValidator` (interface in Services, Keycloak implementation): signature via realm JWKS, `iss`, `aud`, `exp`, `nonce`; returns `AuthTime`
-  - [ ] 6.2 Replace the three `ValidateNonce` copies in `LoginFlowHandler`, `SimpleSignupFlowHandler`, `NewOrganizationFlowHandler`; use `validated.AuthTime ?? now` with a warning when missing
-  - [ ] 6.3 `AuthUrlRequest`: add `MaxAgeSeconds` and `ForcePrompt`; `AuthUrlBuilderService` writes `max_age` and `prompt=login`; `GET /auth/login` accepts `forceLogin`
-  - [ ] 6.4 Stale session at the callback: if `auth_time` is older than the cap after login, write no cookie and return the existing JSON error shape with `401` and `errorCode: REAUTH_REQUIRED`. The API never redirects. The client then calls `GET /auth/login?forceLogin=true`, receives a new `redirectUrl` and performs the redirect itself, as for any login. Add a test that `/auth/login`, `/auth/signup` and `/auth/logout` still return `redirectUrl` JSON
-  - [ ] 6.5 Unit tests: validator cases (valid, bad signature, wrong iss, wrong aud, expired, wrong nonce); fresh login, silent login keeps old `auth_time`, silent login past cap, missing claim; URL builder cases
-  - [ ] 6.6 Stop for review (end of PR C)
+- [x] 6. ID token validation, `auth_time` and forced re-authentication
+  - [x] 6.1 `IIdTokenValidator` (interface in Services, Keycloak implementation): signature via realm JWKS, `iss`, `aud`, `exp`, `nonce`; returns `AuthTime`. As built: separate interface (not on `IIdentityProviderService`); issuer accepted at the public or internal base URL; JWKS fetched from the internal URL; `azp` checked when there are several audiences
+  - [x] 6.2 Replace the three `ValidateNonce` copies in `LoginFlowHandler`, `SimpleSignupFlowHandler`, `NewOrganizationFlowHandler`; use `validated.AuthTime ?? now` with a warning when missing (shared `CallbackSessionGuard`)
+  - [x] 6.3 `AuthUrlRequest`: add `MaxAgeSeconds` and `ForceLogin`; `AuthUrlBuilderService` writes `max_age` and `prompt=login`; `POST /auth/login` accepts `forceLogin`
+  - [x] 6.4 Stale session at the callback: if `auth_time` is older than the cap after login, write no cookie and return the existing JSON error shape with `401` and `errorCode: REAUTH_REQUIRED`. The API never redirects. The client then calls `POST /auth/login?forceLogin=true`, receives a new `redirectUrl` and performs the redirect itself, as for any login. Checked against the System lifetime right after validation and against the tenant's lifetime before any join or token, so a refused sign-in changes nothing. Tests confirm `/auth/login` and `/auth/signup` still return `redirectUrl` (logout returns `logoutUrl`, unchanged and covered by existing tests)
+  - [x] 6.5 Unit tests: validator cases (valid, bad signature, unsigned, wrong iss, wrong aud, azp, expired, wrong nonce, key rotation, JWKS down); fresh login, silent login keeps old `auth_time`, silent login past cap, stricter tenant cap, missing claim; URL builder cases
+  - [x] 6.6 Stop for review (end of PR C)
 
 - [ ] 7. Keycloak realm, verification and documentation
   - [ ] 7.1 `keycloak/realm.json`: `ssoSessionIdleTimeout` 1800, `ssoSessionMaxLifespan` 28800

@@ -342,9 +342,14 @@ public abstract class AuthFlowTestBase
     /// <param name="sub">The external user ID (Keycloak sub claim).</param>
     /// <param name="nonce">The nonce that the handler will validate against the stored nonce.</param>
     /// <param name="email">The user's email address.</param>
-    protected void SetupSuccessfulCodeExchange(string sub, string nonce, string email = "user@example.com")
+    /// <param name="authTime">Optional <c>auth_time</c> for the ID token (when the user last authenticated).</param>
+    protected void SetupSuccessfulCodeExchange(
+        string sub,
+        string nonce,
+        string email = "user@example.com",
+        DateTimeOffset? authTime = null)
     {
-        var idToken = AuthFlowTestFixture.GenerateFakeIdToken(sub, nonce, email);
+        var idToken = AuthFlowTestFixture.GenerateFakeIdToken(sub, nonce, email, authTime);
         var tokenResponse = new TokenResponseDto(
             AccessToken: "fake-access-token-" + Guid.NewGuid().ToString("N"),
             RefreshToken: "fake-refresh-token",
