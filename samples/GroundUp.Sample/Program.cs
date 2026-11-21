@@ -71,7 +71,12 @@ app.UseGroundUpAuth();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+    {
+        // "Try it out" uses the auth cookie, so POSTs need a CSRF token (see SwaggerCsrfInterceptors).
+        options.UseRequestInterceptor(GroundUp.Sample.Swagger.SwaggerCsrfInterceptors.Request);
+        options.UseResponseInterceptor(GroundUp.Sample.Swagger.SwaggerCsrfInterceptors.Response);
+    });
 }
 
 app.MapControllers();
