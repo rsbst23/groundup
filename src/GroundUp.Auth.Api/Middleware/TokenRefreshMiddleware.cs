@@ -1,5 +1,6 @@
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -10,13 +11,15 @@ namespace GroundUp.Auth.Api.Middleware;
 /// <summary>
 /// Sliding-window token refresh middleware. Runs after <see cref="JwtAuthenticationMiddleware"/>
 /// and reissues the GroundUp JWT when the token has passed 50% of its lifetime, bounded by
-/// <see cref="AuthOptions.AbsoluteSessionLifetimeMinutes"/>.
+/// the tenant's absolute session lifetime. Both come from the tenant's
+/// <see cref="ISessionPolicyProvider"/> policy (the <c>auth.session.*</c> settings), resolved
+/// from the token's <c>tid</c> claim.
 /// <para>
 /// Skips refresh when:
 /// <list type="bullet">
 ///   <item>The request is not authenticated</item>
 ///   <item>The token has no <c>tid</c> claim (pending-selection / tenant-less)</item>
-///   <item>The token age is less than 50% of <see cref="AuthOptions.TokenExpirationMinutes"/></item>
+///   <item>The token age is less than 50% of the tenant's token lifetime</item>
 ///   <item>The original auth time has exceeded the absolute session cap</item>
 /// </list>
 /// </para>
@@ -84,11 +87,17 @@ public class TokenRefreshMiddleware
             return;
         }
 
+        // The tenant's effective session policy. Resolved here from the token's tid (not from the
+        // request's tenant context) because this middleware runs before tenant resolution.
+        var policy = await context.RequestServices
+            .GetRequiredService<ISessionPolicyProvider>()
+            .GetPolicyForTenantAsync(tenantId, context.RequestAborted);
+
         var issuedAt = DateTimeOffset.FromUnixTimeSeconds(iatUnix);
         var tokenAge = DateTimeOffset.UtcNow - issuedAt;
-        var halfLifetime = TimeSpan.FromMinutes(options.TokenExpirationMinutes / 2.0);
+        var halfLifetime = TimeSpan.FromTicks(policy.TokenLifetime.Ticks / 2);
 
-        // 4. Skip if token age < 50% of TokenExpirationMinutes
+        // 4. Skip if token age < 50% of the token lifetime
         if (tokenAge < halfLifetime)
         {
             return;
@@ -105,7 +114,7 @@ public class TokenRefreshMiddleware
         var elapsedSinceAuth = DateTimeOffset.UtcNow - originalAuthTime;
 
         // 6. Skip if absolute session cap reached (user must re-authenticate)
-        if (elapsedSinceAuth >= TimeSpan.FromMinutes(options.AbsoluteSessionLifetimeMinutes))
+        if (elapsedSinceAuth >= policy.AbsoluteLifetime)
         {
             return;
         }
@@ -126,15 +135,15 @@ public class TokenRefreshMiddleware
         if (result.Success && !string.IsNullOrEmpty(result.Data))
         {
             // Success: rewrite the cookie with the new token
-            cookieWriter.WriteAuthCookie(context, result.Data);
+            await cookieWriter.WriteAuthCookieAsync(context, result.Data);
         }
         else
         {
-            // Failure (membership revoked): clear cookie, continue pipeline
+            // Failure (membership revoked, or the session reached its lifetime): clear cookie, continue pipeline
             _logger.LogWarning(
-                "Token refresh denied for user {UserId} in tenant {TenantId}. Clearing cookie.",
-                userId, tenantId);
-            cookieWriter.ClearAuthCookie(context);
+                "Token refresh denied for user {UserId} in tenant {TenantId} ({ErrorCode}). Clearing cookie.",
+                userId, tenantId, result.ErrorCode);
+            await cookieWriter.ClearAuthCookieAsync(context);
         }
     }
 }

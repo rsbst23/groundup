@@ -3,6 +3,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Core;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,7 +29,8 @@ public sealed class AuthController : ControllerBase
     private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
-    private readonly IAntiforgery? _antiforgery;
+    private readonly IAntiforgery _antiforgery;
+    private readonly IOptions<AntiforgeryOptions> _antiforgeryOptions;
 
     /// <summary>
     /// Initializes a new instance of <see cref="AuthController"/>.
@@ -43,7 +45,8 @@ public sealed class AuthController : ControllerBase
     /// <param name="organizationProvisioningService">Creates organizations for authenticated users.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
-    /// <param name="antiforgery">Optional antiforgery service for CSRF token provisioning.</param>
+    /// <param name="antiforgery">Issues the CSRF request token returned by <c>GET /auth/csrf</c>.</param>
+    /// <param name="antiforgeryOptions">Antiforgery cookie settings, used to clear the cookie at logout.</param>
     public AuthController(
         IAuthFlowService authFlowService,
         IAuthSessionService authSessionService,
@@ -55,7 +58,8 @@ public sealed class AuthController : ControllerBase
         IOrganizationProvisioningService organizationProvisioningService,
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
-        IAntiforgery? antiforgery = null)
+        IAntiforgery antiforgery,
+        IOptions<AntiforgeryOptions> antiforgeryOptions)
     {
         _authFlowService = authFlowService;
         _authSessionService = authSessionService;
@@ -68,6 +72,7 @@ public sealed class AuthController : ControllerBase
         _authOptions = authOptions;
         _keycloakOptions = keycloakOptions;
         _antiforgery = antiforgery;
+        _antiforgeryOptions = antiforgeryOptions;
     }
 
     /// <summary>
@@ -168,7 +173,7 @@ public sealed class AuthController : ControllerBase
             // Signed in with no current tenant. The cookie holds a tenantless token (written by the
             // handler). requiresTenantSelection is true when there is something to choose from;
             // false with an empty list means the user has no tenant yet (they can create one).
-            ProvisionAntiforgeryToken();
+            // The client gets its CSRF token from GET /auth/csrf after this response.
             return Ok(new
             {
                 requiresTenantSelection = flowResult.RequiresTenantSelection,
@@ -176,8 +181,8 @@ public sealed class AuthController : ControllerBase
             });
         }
 
-        // Success with token — cookie already written by the flow handler
-        ProvisionAntiforgeryToken();
+        // Success with token — cookie already written by the flow handler.
+        // The client gets its CSRF token from GET /auth/csrf after this response.
         return Ok(new { token = flowResult.Token, redirectUrl = flowResult.RedirectUrl ?? "/" });
     }
 
@@ -222,8 +227,6 @@ public sealed class AuthController : ControllerBase
             .Select(c => c.Value)
             .ToList();
 
-        ProvisionAntiforgeryToken();
-
         return Ok(new
         {
             userId = userId?.ToString() ?? subClaim,
@@ -232,6 +235,31 @@ public sealed class AuthController : ControllerBase
             tenantId,
             roles
         });
+    }
+
+    /// <summary>
+    /// Issues the CSRF request token for a signed-in browser client. The response also sets
+    /// (or refreshes) the HttpOnly antiforgery cookie the token is paired with.
+    /// <para>
+    /// Client flow: call this once after sign-in, keep the token in memory, and send it as the
+    /// <c>X-CSRF-Token</c> header on every POST, PUT, PATCH and DELETE. On a
+    /// <c>403 CSRF_VALIDATION_FAILED</c>, call this again and retry once. Clients that send an
+    /// <c>Authorization: Bearer</c> header do not need it.
+    /// </para>
+    /// </summary>
+    /// <returns>HTTP 200 with <c>{ token }</c>; HTTP 401 when unauthenticated.</returns>
+    [HttpGet("csrf")]
+    public IActionResult Csrf()
+    {
+        if (HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            return Unauthorized();
+        }
+
+        var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
+        Response.Headers.CacheControl = "no-store";
+
+        return Ok(new { token = tokens.RequestToken });
     }
 
     /// <summary>
@@ -297,7 +325,8 @@ public sealed class AuthController : ControllerBase
 
         if (!result.Success)
         {
-            return StatusCode(result.StatusCode, new { error = result.Message });
+            // errorCode lets the client tell "sign in again" (REAUTH_REQUIRED) from other failures
+            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
         }
 
         var response = result.Data!;
@@ -309,7 +338,7 @@ public sealed class AuthController : ControllerBase
 
         if (!string.IsNullOrEmpty(response.Token))
         {
-            _authCookieWriter.WriteAuthCookie(HttpContext, response.Token);
+            await _authCookieWriter.WriteAuthCookieAsync(HttpContext, response.Token);
         }
 
         return Ok();
@@ -358,13 +387,20 @@ public sealed class AuthController : ControllerBase
 
         if (!result.Success)
         {
-            _authCookieWriter.ClearAuthCookie(HttpContext);
+            await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
+
+            if (result.ErrorCode == ErrorCodes.ReauthRequired)
+            {
+                // The session reached its absolute lifetime: the client must start a forced login.
+                return StatusCode(401, new { error = result.Message, errorCode = result.ErrorCode });
+            }
+
             return StatusCode(403, new { error = result.Message });
         }
 
         if (!string.IsNullOrEmpty(result.Data))
         {
-            _authCookieWriter.WriteAuthCookie(HttpContext, result.Data);
+            await _authCookieWriter.WriteAuthCookieAsync(HttpContext, result.Data);
         }
 
         return Ok();
@@ -383,14 +419,28 @@ public sealed class AuthController : ControllerBase
     /// The client should navigate the browser to <c>logoutUrl</c> to complete SSO logout.
     /// </returns>
     [HttpPost("logout")]
-    public Task<IActionResult> Logout(CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken = default)
     {
         var authOptions = _authOptions.Value;
         var keycloakOpts = _keycloakOptions.Value;
 
         // Clear both the auth cookie and the id_token hint cookie
-        _authCookieWriter.ClearAuthCookie(HttpContext);
-        _authCookieWriter.ClearIdTokenCookie(HttpContext);
+        await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
+        await _authCookieWriter.ClearIdTokenCookieAsync(HttpContext);
+
+        // The antiforgery cookie is bound to the signed-out identity; remove it too.
+        var antiforgeryCookie = _antiforgeryOptions.Value.Cookie;
+        if (!string.IsNullOrEmpty(antiforgeryCookie.Name))
+        {
+            Response.Cookies.Delete(antiforgeryCookie.Name, new CookieOptions
+            {
+                Path = antiforgeryCookie.Path ?? "/",
+                Domain = antiforgeryCookie.Domain,
+                HttpOnly = true,
+                Secure = authOptions.CookieSecure,
+                SameSite = SameSiteMode.Strict
+            });
+        }
 
         var postLogoutRedirectUri = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}/";
 
@@ -406,7 +456,7 @@ public sealed class AuthController : ControllerBase
             logoutUrl += $"&id_token_hint={Uri.EscapeDataString(idToken)}";
         }
 
-        return Task.FromResult<IActionResult>(Ok(new { logoutUrl }));
+        return Ok(new { logoutUrl });
     }
 
     /// <summary>
@@ -642,12 +692,12 @@ public sealed class AuthController : ControllerBase
             var tenantlessResult = await _authSessionService.IssueTenantlessSessionAsync(userId.Value, originalAuthTime);
             if (tenantlessResult.Success && !string.IsNullOrEmpty(tenantlessResult.Data))
             {
-                _authCookieWriter.WriteAuthCookie(HttpContext, tenantlessResult.Data);
+                await _authCookieWriter.WriteAuthCookieAsync(HttpContext, tenantlessResult.Data);
             }
             else
             {
                 // The membership is already gone; never leave the old tenant-scoped token in place.
-                _authCookieWriter.ClearAuthCookie(HttpContext);
+                await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
             }
 
             return Ok(new { success = true, currentTenantId = (Guid?)null });
@@ -675,17 +725,5 @@ public sealed class AuthController : ControllerBase
         return !string.IsNullOrEmpty(userIdClaim) && Guid.TryParse(userIdClaim, out var userId)
             ? userId
             : null;
-    }
-
-    /// <summary>
-    /// Provisions the antiforgery cookie token so that the client can supply the request token
-    /// on subsequent state-changing requests (POST /auth/set-tenant, refresh, logout).
-    /// </summary>
-    private void ProvisionAntiforgeryToken()
-    {
-        if (_antiforgery is not null)
-        {
-            _antiforgery.GetAndStoreTokens(HttpContext);
-        }
     }
 }

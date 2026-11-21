@@ -149,8 +149,8 @@ public sealed class PendingSelectionTests : AuthFlowTestBase
             .GetUserInfoAsync(keycloakToken)
             .Returns(new ExternalUserInfo(externalSub, email, "Set Tenant User", null));
 
-        // Act — POST /auth/set-tenant with the Keycloak token and the target tenantId
-        var request = CreateAuthenticatedRequest(HttpMethod.Post, "/auth/set-tenant", keycloakToken);
+        // Act — POST /auth/set-tenant with the Keycloak token (cookie, so a CSRF token is required)
+        var request = await CreateCookieRequestWithCsrfAsync(HttpMethod.Post, "/auth/set-tenant", keycloakToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { tenantId }),
             Encoding.UTF8,

@@ -354,6 +354,51 @@ public sealed class AuthControllerTests
 
     #endregion
 
+    #region GET /auth/csrf
+
+    [Fact]
+    public void Csrf_Unauthenticated_Returns401AndIssuesNoToken()
+    {
+        // Act
+        var result = _sut.Csrf();
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        _antiforgery.DidNotReceive().GetAndStoreTokens(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public void Csrf_Authenticated_ReturnsRequestTokenWithNoStore()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        _antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
+            .Returns(new AntiforgeryTokenSet("request-token-123", "cookie-token", "CsrfToken", "X-CSRF-Token"));
+
+        // Act
+        var result = _sut.Csrf();
+
+        // Assert
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        GetAnonymousObjectProperties(ok.Value!)["token"].Should().Be("request-token-123");
+        _sut.ControllerContext.HttpContext.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+    }
+
+    [Fact]
+    public void Me_Authenticated_DoesNotIssueAntiforgeryTokens()
+    {
+        // Arrange — tokens come only from GET /auth/csrf now
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+
+        // Act
+        _sut.Me();
+
+        // Assert
+        _antiforgery.DidNotReceive().GetAndStoreTokens(Arg.Any<HttpContext>());
+    }
+
+    #endregion
+
     #region GET /auth/me
 
     [Fact]
@@ -557,7 +602,7 @@ public sealed class AuthControllerTests
         await _sut.SetTenant(request);
 
         // Assert
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestToken);
     }
 
     #endregion
@@ -596,7 +641,7 @@ public sealed class AuthControllerTests
 
         // Assert
         result.Should().BeOfType<OkResult>();
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), newToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), newToken);
     }
 
     [Fact]
@@ -621,7 +666,55 @@ public sealed class AuthControllerTests
         // Assert
         var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(403);
-        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+        _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public async Task Refresh_SessionPastAbsoluteLifetime_Returns401WithReauthRequiredAndClearsCookie()
+    {
+        // Arrange
+        var authTimeUnix = DateTimeOffset.UtcNow.AddMinutes(-600).ToUnixTimeSeconds();
+        var claims = new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("tid", TestTenantId.ToString()),
+            new Claim("auth_time", authTimeUnix.ToString())
+        };
+        SetAuthenticatedUser(claims);
+
+        _authSessionService.RefreshTokenAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset>())
+            .Returns(OperationResult<string>.Fail("Session has reached its maximum lifetime.", 401, GroundUp.Core.ErrorCodes.ReauthRequired));
+
+        // Act
+        var result = await _sut.Refresh();
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(401);
+        GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be(GroundUp.Core.ErrorCodes.ReauthRequired);
+        await _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public async Task SetTenant_SessionPastAbsoluteLifetime_Returns401WithReauthRequired()
+    {
+        // Arrange
+        var authTimeUnix = DateTimeOffset.UtcNow.AddMinutes(-600).ToUnixTimeSeconds();
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("auth_time", authTimeUnix.ToString())
+        });
+        _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
+            .Returns(OperationResult<SetTenantResponseDto>.Fail("Session has reached its maximum lifetime.", 401, GroundUp.Core.ErrorCodes.ReauthRequired));
+
+        // Act
+        var result = await _sut.SetTenant(new SetTenantRequestDto(TestTenantId));
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(401);
+        GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be(GroundUp.Core.ErrorCodes.ReauthRequired);
     }
 
     [Fact]
@@ -654,7 +747,7 @@ public sealed class AuthControllerTests
         var result = await _sut.Logout();
 
         // Assert — cookie cleared
-        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
+        _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
 
         // Assert — 200 with logoutUrl pointing to Keycloak end_session
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -664,6 +757,18 @@ public sealed class AuthControllerTests
         logoutUrl.Should().Contain("/protocol/openid-connect/logout");
         logoutUrl.Should().Contain("client_id=groundup-app");
         logoutUrl.Should().Contain("post_logout_redirect_uri=");
+    }
+
+    [Fact]
+    public async Task Logout_ExpiresTheAntiforgeryCookie()
+    {
+        // Act
+        await _sut.Logout();
+
+        // Assert
+        var setCookie = _sut.ControllerContext.HttpContext.Response.Headers.SetCookie.ToString();
+        setCookie.Should().Contain("CsrfToken=;");
+        setCookie.Should().Contain("expires=Thu, 01 Jan 1970");
     }
 
     [Fact]
@@ -1047,7 +1152,7 @@ public sealed class AuthControllerTests
         await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
 
         // Assert — the active tenant stays as is; the user switches later via set-tenant
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
         await _authSessionService.DidNotReceive().SetTenantAsync(
             Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
     }
@@ -1324,7 +1429,7 @@ public sealed class AuthControllerTests
         body["currentTenantId"].Should().BeNull();
         body.Should().NotContainKey("noTenants");
 
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), "tenantless-token");
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), "tenantless-token");
         await _authSessionService.Received(1).IssueTenantlessSessionAsync(
             TestUserId,
             Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()));
@@ -1352,8 +1457,8 @@ public sealed class AuthControllerTests
         // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         GetAnonymousObjectProperties(okResult.Value!)["currentTenantId"].Should().BeNull();
-        _authCookieWriter.Received(1).ClearAuthCookie(Arg.Any<HttpContext>());
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -1377,8 +1482,8 @@ public sealed class AuthControllerTests
         var body = GetAnonymousObjectProperties(okResult.Value!);
         body["success"].Should().Be(true);
         body["currentTenantId"].Should().Be(currentTenantId);
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
-        _authCookieWriter.DidNotReceive().ClearAuthCookie(Arg.Any<HttpContext>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
         await _authSessionService.DidNotReceive().IssueTenantlessSessionAsync(
             Arg.Any<Guid>(), Arg.Any<DateTimeOffset?>());
     }
@@ -1399,8 +1504,8 @@ public sealed class AuthControllerTests
         var body = GetAnonymousObjectProperties(okResult.Value!);
         body["success"].Should().Be(true);
         body["currentTenantId"].Should().BeNull();
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
-        _authCookieWriter.DidNotReceive().ClearAuthCookie(Arg.Any<HttpContext>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
     }
 
     [Fact]
@@ -1494,7 +1599,7 @@ public sealed class AuthControllerTests
             TestUserId,
             TestTenantId,
             Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()));
-        _authCookieWriter.Received(1).WriteAuthCookie(Arg.Any<HttpContext>(), TestToken);
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestToken);
     }
 
     [Fact]
@@ -1514,7 +1619,7 @@ public sealed class AuthControllerTests
 
         // Assert
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(401);
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -1532,7 +1637,7 @@ public sealed class AuthControllerTests
         var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(201);
         GetAnonymousObjectProperties(objectResult.Value!)["id"].Should().Be(newTenantId);
-        _authCookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -1565,7 +1670,8 @@ public sealed class AuthControllerTests
             _organizationProvisioningService,
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),
-            _antiforgery);
+            _antiforgery,
+            Options.Create(new AntiforgeryOptions { Cookie = { Name = "CsrfToken" } }));
 
         controller.ControllerContext = new ControllerContext
         {

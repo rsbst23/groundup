@@ -16,24 +16,25 @@ namespace GroundUp.Auth.Services;
 /// </list>
 /// </para>
 /// <para>
-/// Cookie expiration MUST align with <see cref="Configuration.AuthOptions.TokenExpirationMinutes"/>.
-/// Phase 10C implements; 10A defines the contract only.
+/// The auth cookie MUST expire when the token it holds expires, so the cookie follows the
+/// effective session policy (token lifetime and absolute session cap).
 /// </para>
 /// </summary>
 public interface IAuthCookieWriter
 {
     /// <summary>
-    /// Writes the authentication cookie to the response.
+    /// Writes the authentication cookie to the response. The cookie expires with the token.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="token">The JWT token value to store in the cookie.</param>
-    void WriteAuthCookie(HttpContext httpContext, string token);
+    /// <exception cref="ArgumentException">The token is null, empty or whitespace.</exception>
+    Task WriteAuthCookieAsync(HttpContext httpContext, string token);
 
     /// <summary>
     /// Clears the authentication cookie from the response.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
-    void ClearAuthCookie(HttpContext httpContext);
+    Task ClearAuthCookieAsync(HttpContext httpContext);
 
     /// <summary>
     /// Writes the Keycloak id_token to a secondary HttpOnly cookie for use as
@@ -42,11 +43,11 @@ public interface IAuthCookieWriter
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
     /// <param name="idToken">The raw Keycloak id_token JWT string.</param>
-    void WriteIdTokenCookie(HttpContext httpContext, string idToken);
+    Task WriteIdTokenCookieAsync(HttpContext httpContext, string idToken);
 
     /// <summary>
     /// Clears the id_token cookie from the response.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
-    void ClearIdTokenCookie(HttpContext httpContext);
+    Task ClearIdTokenCookieAsync(HttpContext httpContext);
 }

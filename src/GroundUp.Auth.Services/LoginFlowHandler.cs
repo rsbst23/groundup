@@ -167,8 +167,8 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
         }
 
-        WriteCookie(token);
-        WriteIdTokenCookie(idToken);
+        await WriteCookieAsync(token);
+        await WriteIdTokenCookieAsync(idToken);
         _logger.LogInformation(
             "Login flow: host-pinned auto-select for user {UserId} in tenant {TenantId}",
             user.Id, hostTenant.Id);
@@ -271,8 +271,8 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
         }
 
-        WriteCookie(token);
-        WriteIdTokenCookie(idToken);
+        await WriteCookieAsync(token);
+        await WriteIdTokenCookieAsync(idToken);
         _logger.LogInformation(
             "Login flow: auto-joined user {UserId} to default tenant {TenantId}",
             user.Id, defaultTenant.Id);
@@ -290,8 +290,8 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
         }
 
-        WriteCookie(token);
-        WriteIdTokenCookie(idToken);
+        await WriteCookieAsync(token);
+        await WriteIdTokenCookieAsync(idToken);
         _logger.LogInformation(
             "Login flow: auto-selected single tenant {TenantId} for user {UserId}",
             membership.TenantId, user.Id);
@@ -343,8 +343,8 @@ public sealed class LoginFlowHandler : IFlowHandler
                 return FlowResult.Error("TOKEN_GENERATION_FAILED", "Failed to generate authentication token.");
             }
 
-            WriteCookie(token);
-            WriteIdTokenCookie(tokenResponse.IdToken);
+            await WriteCookieAsync(token);
+            await WriteIdTokenCookieAsync(tokenResponse.IdToken);
             _logger.LogInformation(
                 "Login flow: auto-selected single standard tenant {TenantId} for user {UserId} (enterprise tenants filtered)",
                 standardTenants[0].Id, user.Id);
@@ -456,8 +456,8 @@ public sealed class LoginFlowHandler : IFlowHandler
             return false;
         }
 
-        WriteCookie(token);
-        WriteIdTokenCookie(idToken);
+        await WriteCookieAsync(token);
+        await WriteIdTokenCookieAsync(idToken);
         return true;
     }
 
@@ -523,25 +523,25 @@ public sealed class LoginFlowHandler : IFlowHandler
     /// <summary>
     /// Writes the authentication cookie using the current HTTP context.
     /// </summary>
-    private void WriteCookie(string token)
+    private async Task WriteCookieAsync(string token)
     {
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext is not null)
         {
-            _authCookieWriter.WriteAuthCookie(httpContext, token);
+            await _authCookieWriter.WriteAuthCookieAsync(httpContext, token);
         }
     }
 
     /// <summary>
     /// Writes the Keycloak id_token to its secondary cookie for use as id_token_hint at logout.
     /// </summary>
-    private void WriteIdTokenCookie(string? idToken)
+    private async Task WriteIdTokenCookieAsync(string? idToken)
     {
         if (string.IsNullOrWhiteSpace(idToken)) return;
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext is not null)
         {
-            _authCookieWriter.WriteIdTokenCookie(httpContext, idToken);
+            await _authCookieWriter.WriteIdTokenCookieAsync(httpContext, idToken);
         }
     }
 }

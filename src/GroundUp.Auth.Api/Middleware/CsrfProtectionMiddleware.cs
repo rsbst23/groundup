@@ -1,20 +1,25 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace GroundUp.Auth.Api.Middleware;
 
 /// <summary>
-/// Validates anti-forgery tokens on state-changing requests (POST, PUT, DELETE, PATCH)
-/// when authentication is cookie-based. Bearer token authentication is not vulnerable
-/// to CSRF and is skipped.
+/// Validates anti-forgery tokens on state-changing requests (POST, PUT, PATCH, DELETE and any
+/// other method that is not GET, HEAD, OPTIONS or TRACE) when the caller was authenticated by
+/// the auth cookie. A browser attaches that cookie to cross-site requests on its own, so those
+/// requests must prove they came from the application by sending the request token in the
+/// <see cref="AuthConstants.CsrfHeaderName"/> header (obtained from <c>GET /auth/csrf</c>).
 /// <para>
-/// Reads the <c>X-CSRF-Token</c> header and validates via ASP.NET Core's
-/// <see cref="IAntiforgery"/> service. Returns HTTP 403 Forbidden if validation fails.
+/// Skipped when the caller authenticated with an <c>Authorization: Bearer</c> header (a browser
+/// never adds that header by itself) or is not authenticated (there is no identity to forge,
+/// for example a sign-in started with an expired cookie still present).
 /// </para>
 /// <para>
-/// If <see cref="IAntiforgery"/> is not registered in DI (consuming application
-/// did not call <c>AddAntiforgery()</c>), CSRF validation is skipped gracefully.
+/// Fails closed: if <see cref="IAntiforgery"/> is not registered (the host did not call
+/// <c>AddGroundUpAuthApi()</c>), cookie-authenticated state-changing requests are rejected with
+/// HTTP 500 instead of being let through.
 /// </para>
 /// </summary>
 public class CsrfProtectionMiddleware
@@ -23,68 +28,85 @@ public class CsrfProtectionMiddleware
     {
         HttpMethods.Get,
         HttpMethods.Head,
-        HttpMethods.Options
+        HttpMethods.Options,
+        HttpMethods.Trace
     };
 
     private readonly RequestDelegate _next;
+    private readonly ILogger<CsrfProtectionMiddleware> _logger;
 
     /// <summary>
     /// Initializes a new instance of <see cref="CsrfProtectionMiddleware"/>.
     /// </summary>
     /// <param name="next">The next middleware in the pipeline.</param>
-    public CsrfProtectionMiddleware(RequestDelegate next)
+    /// <param name="logger">Logger for configuration errors.</param>
+    public CsrfProtectionMiddleware(RequestDelegate next, ILogger<CsrfProtectionMiddleware> logger)
     {
         _next = next;
+        _logger = logger;
     }
 
     /// <summary>
     /// Validates the anti-forgery token for cookie-authenticated state-changing requests.
-    /// Safe methods (GET, HEAD, OPTIONS) and bearer-authenticated requests are skipped.
     /// </summary>
     /// <param name="context">The current HTTP context.</param>
     public async Task InvokeAsync(HttpContext context)
     {
-        // Skip safe methods — not vulnerable to CSRF
-        if (SafeMethods.Contains(context.Request.Method))
+        if (!RequiresValidation(context))
         {
             await _next(context);
             return;
         }
 
-        // Skip if auth is bearer-based (not vulnerable to CSRF)
-        if (context.Items.TryGetValue("AuthSource", out var authSource)
-            && authSource is string source
-            && string.Equals(source, "header", StringComparison.OrdinalIgnoreCase))
+        var antiforgery = context.RequestServices.GetService<IAntiforgery>();
+        if (antiforgery is null)
         {
-            await _next(context);
-            return;
-        }
+            _logger.LogError(
+                "CSRF protection is not configured: IAntiforgery is not registered. Call services.AddGroundUpAuthApi(). Rejecting {Method} {Path}.",
+                context.Request.Method,
+                context.Request.Path);
 
-        // Only enforce CSRF on cookie-authenticated state-changing requests
-        if (authSource is string cookieSource
-            && string.Equals(cookieSource, "cookie", StringComparison.OrdinalIgnoreCase))
-        {
-            var antiforgery = context.RequestServices.GetService<IAntiforgery>();
-            if (antiforgery is not null)
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new
             {
-                try
-                {
-                    await antiforgery.ValidateRequestAsync(context);
-                }
-                catch (AntiforgeryValidationException)
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(new
-                    {
-                        message = "CSRF token validation failed",
-                        errorCode = "CSRF_VALIDATION_FAILED"
-                    });
-                    return;
-                }
-            }
+                message = "CSRF protection is not configured",
+                errorCode = AuthConstants.CsrfNotConfiguredErrorCode
+            });
+            return;
+        }
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "CSRF token validation failed",
+                errorCode = AuthConstants.CsrfValidationFailedErrorCode
+            });
+            return;
         }
 
         await _next(context);
+    }
+
+    private static bool RequiresValidation(HttpContext context)
+    {
+        if (SafeMethods.Contains(context.Request.Method))
+        {
+            return false;
+        }
+
+        if (context.User.Identity?.IsAuthenticated != true)
+        {
+            return false;
+        }
+
+        return context.Items.TryGetValue("AuthSource", out var authSource)
+            && authSource is string source
+            && string.Equals(source, "cookie", StringComparison.OrdinalIgnoreCase);
     }
 }

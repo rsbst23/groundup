@@ -383,8 +383,8 @@ public sealed class LoginFlowHandlerPropertyTests
             return result.IsSuccess.ToProperty();
         }
 
-        cookieWriter.Received().WriteAuthCookie(Arg.Any<HttpContext>(), TenantlessTokenValue);
-        cookieWriter.DidNotReceive().WriteAuthCookie(Arg.Any<HttpContext>(), keycloakToken);
+        cookieWriter.Received().WriteAuthCookieAsync(Arg.Any<HttpContext>(), TenantlessTokenValue);
+        cookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), keycloakToken);
         return (result.IsTenantless && result.Token is null).ToProperty();
     }
 }

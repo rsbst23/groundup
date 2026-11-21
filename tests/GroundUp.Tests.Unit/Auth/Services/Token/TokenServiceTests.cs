@@ -5,6 +5,7 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Results;
 using Microsoft.Extensions.Options;
@@ -19,6 +20,7 @@ public sealed class TokenServiceTests
     private readonly IUserRepository _userRepository;
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly ISigningKeyProvider _signingKeyProvider;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
     private readonly TokenService _sut;
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -29,6 +31,10 @@ public sealed class TokenServiceTests
         _userRepository = Substitute.For<IUserRepository>();
         _userRoleRepository = Substitute.For<IUserRoleRepository>();
         _signingKeyProvider = Substitute.For<ISigningKeyProvider>();
+        _sessionPolicyProvider = Substitute.For<ISessionPolicyProvider>();
+        var defaultPolicy = new SessionPolicy(TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(480));
+        _sessionPolicyProvider.GetSystemPolicyAsync(Arg.Any<CancellationToken>()).Returns(defaultPolicy);
+        _sessionPolicyProvider.GetPolicyForTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(defaultPolicy);
 
         var options = Options.Create(new AuthOptions
         {
@@ -38,7 +44,7 @@ public sealed class TokenServiceTests
             TokenExpirationMinutes = 60
         });
 
-        _sut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, options);
+        _sut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, _sessionPolicyProvider, options);
 
         // Default signing key setup
         var keyBytes = Encoding.UTF8.GetBytes(SigningKey);
@@ -403,7 +409,7 @@ public sealed class TokenServiceTests
             Audience = "TestAudience",
             TokenExpirationMinutes = 60
         });
-        var differentSut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, differentOptions);
+        var differentSut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, _sessionPolicyProvider, differentOptions);
 
         // Act
         var principal = await differentSut.ValidateTokenAsync(token!);
@@ -429,7 +435,7 @@ public sealed class TokenServiceTests
             Audience = "OtherAudience",
             TokenExpirationMinutes = 60
         });
-        var differentSut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, differentOptions);
+        var differentSut = new TokenService(_userRepository, _userRoleRepository, _signingKeyProvider, _sessionPolicyProvider, differentOptions);
 
         // Act
         var principal = await differentSut.ValidateTokenAsync(token!);
@@ -499,6 +505,91 @@ public sealed class TokenServiceTests
         var expTime = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
         var expectedExp = before.AddMinutes(60);
         Assert.InRange(expTime, expectedExp.AddSeconds(-30), expectedExp.AddSeconds(30));
+    }
+
+    private static DateTimeOffset ReadExp(string token)
+    {
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        var seconds = long.Parse(
+            jwt.Claims.First(c => c.Type == "exp").Value,
+            System.Globalization.CultureInfo.InvariantCulture);
+        return DateTimeOffset.FromUnixTimeSeconds(seconds);
+    }
+
+    [Fact]
+    public async Task GenerateTokenAsync_TenantPolicyShorter_UsesTenantTokenLifetime()
+    {
+        // Arrange: this tenant limits tokens to 20 minutes
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles();
+        SetupSystemRoles();
+        _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(480)));
+        var before = DateTimeOffset.UtcNow;
+
+        // Act
+        var token = await _sut.GenerateTokenAsync(_userId, _tenantId);
+
+        // Assert
+        var expected = before.AddMinutes(20);
+        Assert.InRange(ReadExp(token!), expected.AddSeconds(-30), expected.AddSeconds(30));
+        await _sessionPolicyProvider.Received().GetPolicyForTenantAsync(_tenantId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateTokenAsync_AuthTimeNearAbsoluteCap_ExpiryIsCappedAtAbsoluteLifetime()
+    {
+        // Arrange: the user authenticated 475 minutes ago and the cap is 480 minutes,
+        // so a fresh 60-minute token may only live 5 more minutes.
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles();
+        SetupSystemRoles();
+        var authTime = DateTimeOffset.UtcNow.AddMinutes(-475);
+        var claims = new[] { new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64) };
+        var before = DateTimeOffset.UtcNow;
+
+        // Act
+        var token = await _sut.GenerateTokenAsync(_userId, _tenantId, claims);
+
+        // Assert
+        var expected = before.AddMinutes(5);
+        Assert.InRange(ReadExp(token!), expected.AddSeconds(-30), expected.AddSeconds(30));
+    }
+
+    [Fact]
+    public async Task GenerateTokenAsync_AuthTimeRecent_ExpiryIsFullTokenLifetime()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles();
+        SetupSystemRoles();
+        var claims = new[] { new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64) };
+        var before = DateTimeOffset.UtcNow;
+
+        // Act
+        var token = await _sut.GenerateTokenAsync(_userId, _tenantId, claims);
+
+        // Assert
+        var expected = before.AddMinutes(60);
+        Assert.InRange(ReadExp(token!), expected.AddSeconds(-30), expected.AddSeconds(30));
+    }
+
+    [Fact]
+    public async Task GenerateTenantlessTokenAsync_UsesSystemPolicy()
+    {
+        // Arrange
+        SetupUser(_userId, "user@test.com", "Test User");
+        _sessionPolicyProvider.GetSystemPolicyAsync(Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(240)));
+        var before = DateTimeOffset.UtcNow;
+
+        // Act
+        var token = await _sut.GenerateTenantlessTokenAsync(_userId);
+
+        // Assert
+        var expected = before.AddMinutes(30);
+        Assert.InRange(ReadExp(token!), expected.AddSeconds(-30), expected.AddSeconds(30));
+        await _sessionPolicyProvider.DidNotReceive().GetPolicyForTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

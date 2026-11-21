@@ -32,7 +32,7 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 
 #### Acceptance Criteria
 
-1. Antiforgery services SHALL be registered by `AddGroundUpAuth` with an explicit request-header name (not the framework default) and an HttpOnly, Secure-in-production, SameSite antiforgery cookie.
+1. Antiforgery services SHALL be registered by `AddGroundUpAuthApi` (the auth module's HTTP registration; `UseGroundUpAuth` refuses to start without it) with an explicit request-header name (not the framework default) and an HttpOnly, Secure-in-production, SameSite antiforgery cookie.
 2. For requests authenticated by the `AuthToken` cookie, every method other than GET, HEAD, OPTIONS and TRACE SHALL be rejected with `403 CSRF_VALIDATION_FAILED` unless a valid antiforgery token is supplied in the header.
 3. Requests authenticated by an `Authorization: Bearer` header SHALL remain exempt (a browser does not attach that header on its own).
 4. The `/auth/callback` GET SHALL remain protected by the existing state cookie and nonce, not by the antiforgery token.

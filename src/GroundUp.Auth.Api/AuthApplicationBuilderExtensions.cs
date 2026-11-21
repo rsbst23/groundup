@@ -1,5 +1,7 @@
 using GroundUp.Auth.Api.Middleware;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GroundUp.Auth.Api;
 
@@ -37,8 +39,18 @@ public static class AuthApplicationBuilderExtensions
     /// </summary>
     /// <param name="app">The application builder.</param>
     /// <returns>The <see cref="IApplicationBuilder"/> for method chaining.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Antiforgery services are not registered (<c>services.AddGroundUpAuthApi()</c> was not called).
+    /// Fails at startup rather than leaving cookie-authenticated requests without CSRF protection.
+    /// </exception>
     public static IApplicationBuilder UseGroundUpAuth(this IApplicationBuilder app)
     {
+        if (app.ApplicationServices.GetService<IAntiforgery>() is null)
+        {
+            throw new InvalidOperationException(
+                "CSRF protection is not configured. Call services.AddGroundUpAuthApi() when registering services.");
+        }
+
         app.UseMiddleware<HostTenantResolutionMiddleware>();
         app.UseMiddleware<JwtAuthenticationMiddleware>();
         app.UseMiddleware<TokenRefreshMiddleware>();

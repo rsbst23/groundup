@@ -193,11 +193,62 @@ public abstract class AuthFlowTestBase
     }
 
     /// <summary>
+    /// Creates a cookie-authenticated request that passes CSRF protection, the way a browser
+    /// client does: calls <c>GET /auth/csrf</c> with the auth cookie, then sends the auth cookie,
+    /// the antiforgery cookie and the <c>X-CSRF-Token</c> header on the returned request.
+    /// </summary>
+    /// <param name="method">HTTP method of the request to build.</param>
+    /// <param name="url">Request URL.</param>
+    /// <param name="token">The token stored in the auth cookie.</param>
+    /// <param name="host">Optional Host header (for subdomain tenant tests).</param>
+    protected async Task<HttpRequestMessage> CreateCookieRequestWithCsrfAsync(
+        HttpMethod method,
+        string url,
+        string token,
+        string? host = null)
+    {
+        var (requestToken, csrfCookie) = await GetCsrfTokenAsync(token, host);
+
+        var request = new HttpRequestMessage(method, url);
+        if (host is not null)
+        {
+            request.Headers.Host = host;
+        }
+
+        request.Headers.Add("Cookie", $"AuthToken={token}; CsrfToken={csrfCookie}");
+        request.Headers.Add("X-CSRF-Token", requestToken);
+        return request;
+    }
+
+    /// <summary>
+    /// Calls <c>GET /auth/csrf</c> with the auth cookie and returns the request token from the body
+    /// and the antiforgery cookie value from <c>Set-Cookie</c>.
+    /// </summary>
+    protected async Task<(string RequestToken, string CookieToken)> GetCsrfTokenAsync(string token, string? host = null)
+    {
+        var csrfRequest = new HttpRequestMessage(HttpMethod.Get, "/auth/csrf");
+        if (host is not null)
+        {
+            csrfRequest.Headers.Host = host;
+        }
+
+        csrfRequest.Headers.Add("Cookie", $"AuthToken={token}");
+        var response = await Client.SendAsync(csrfRequest);
+        response.EnsureSuccessStatusCode();
+
+        using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var requestToken = json.RootElement.GetProperty("token").GetString()!;
+        var cookieToken = ExtractCookieValue(response, "CsrfToken")
+            ?? throw new InvalidOperationException("GET /auth/csrf did not set the CsrfToken cookie.");
+
+        return (requestToken, cookieToken);
+    }
+
+    /// <summary>
     /// Creates an HTTP request authenticated with an <c>Authorization: Bearer</c> header.
-    /// <c>CsrfProtectionMiddleware</c> skips bearer-authenticated requests, so tests of state-changing
-    /// endpoints (POST, PUT, DELETE) stay independent of CSRF handling. Note: the Sample app currently
-    /// does not register antiforgery services, so the middleware also skips cookie-authenticated
-    /// requests today; this is tracked as a separate CSRF follow-up.
+    /// <c>CsrfProtectionMiddleware</c> skips bearer-authenticated requests (a browser never adds that
+    /// header on its own), so tests of state-changing endpoints that are not about CSRF use this.
+    /// Use <see cref="CreateCookieRequestWithCsrfAsync"/> for the cookie path.
     /// </summary>
     protected HttpRequestMessage CreateBearerRequest(HttpMethod method, string url, string token)
     {

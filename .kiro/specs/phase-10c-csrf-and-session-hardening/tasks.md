@@ -18,27 +18,27 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [x] 2.4 Unit tests: clamp, cross-field, fallback, validator cases, seeder bounds; integration test: set a tenant value above System is rejected, below is accepted and resolved
   - [ ] 2.5 Stop for review (end of PR A)
 
-- [ ] 3. Use the policy everywhere
-  - [ ] 3.1 `TokenService`: `exp` from the policy (tenant token: tenant policy; tenantless: System policy), capped at `auth_time` plus absolute lifetime
-  - [ ] 3.2 `AuthCookieWriter`: expiry from the token `exp`; remove the sync-over-async domain lookup; update `IAuthCookieWriter` and callers
-  - [ ] 3.3 `TokenRefreshMiddleware`: resolve the policy from the token's `tid`
-  - [ ] 3.4 `POST /auth/refresh`, `set-tenant` and tenantless re-issue enforce the absolute cap with the right policy; add `ErrorCodes.ReauthRequired` and return `401 REAUTH_REQUIRED`
-  - [ ] 3.5 Unit tests for each consumer; integration test: change a timeout through the settings API and see the next token and cookie use it; `/auth/refresh` past the cap returns `REAUTH_REQUIRED`; stricter tenant cap on `set-tenant`
-  - [ ] 3.6 Stop for review
+- [x] 3. Use the policy everywhere
+  - [x] 3.1 `TokenService`: `exp` from the policy (tenant token: tenant policy; tenantless: System policy), capped at `auth_time` plus absolute lifetime
+  - [x] 3.2 `AuthCookieWriter`: expiry from the token `exp`; remove the sync-over-async domain lookup; update `IAuthCookieWriter` and callers
+  - [x] 3.3 `TokenRefreshMiddleware`: resolve the policy from the token's `tid`
+  - [x] 3.4 `POST /auth/refresh`, `set-tenant` and tenantless re-issue enforce the absolute cap with the right policy; add `ErrorCodes.ReauthRequired` and return `401 REAUTH_REQUIRED`
+  - [x] 3.5 Unit tests for each consumer; integration test: change a timeout through the settings API and see the next token and cookie use it; `/auth/refresh` past the cap returns `REAUTH_REQUIRED`; stricter tenant cap on `set-tenant`
+  - [x] 3.6 Stop for review. Found and fixed GU-78 on the way (event bus was a singleton, so settings cache invalidation never ran in Development)
 
-- [ ] 4. CSRF and cookie hardening
-  - [ ] 4.1 `AddGroundUpAuth`: register antiforgery (header `X-CSRF-Token`, cookie `CsrfToken`, HttpOnly, Strict, Secure from `CookieSecure`)
-  - [ ] 4.2 `CsrfProtectionMiddleware`: fail closed without `IAntiforgery`; TRACE is safe
-  - [ ] 4.3 `GET /auth/csrf`; remove `ProvisionAntiforgeryToken()` and its three call sites; clear the antiforgery cookie on logout
-  - [ ] 4.4 Startup validator: refuse to start when `CookieSecure=false` outside Development, warn in Development; warn on single-label default domain with host tenant resolution
-  - [ ] 4.5 Unit tests asserting attributes of `AuthToken`, `IdToken`, `AuthState` and `CsrfToken`; middleware cases; startup validator cases
-  - [ ] 4.6 Integration tests on the cookie path: no token 403, valid token succeeds, Bearer succeeds, GET never blocked; add a test helper that builds cookie plus token requests
-  - [ ] 4.7 Stop for review (end of PR B)
+- [x] 4. CSRF and cookie hardening
+  - [x] 4.1 Register antiforgery (header `X-CSRF-Token`, cookie `CsrfToken`, HttpOnly, Strict, Secure from `CookieSecure`). As built: in a new `AddGroundUpAuthApi()` (see design 2.1); `UseGroundUpAuth` throws without it
+  - [x] 4.2 `CsrfProtectionMiddleware`: fail closed without `IAntiforgery`; TRACE is safe; enforced only when authenticated by the cookie
+  - [x] 4.3 `GET /auth/csrf`; remove `ProvisionAntiforgeryToken()` and its three call sites; clear the antiforgery cookie on logout
+  - [x] 4.4 Startup validator: refuse to start when `CookieSecure=false` outside Development, warn in Development; warn on a single-label default domain (host resolution is always on with `UseGroundUpAuth`)
+  - [x] 4.5 Unit tests asserting attributes of `AuthToken`, `IdToken`, `AuthState` and `CsrfToken`; middleware cases; startup validator cases
+  - [x] 4.6 Integration tests on the cookie path: no token 403, valid token succeeds, Bearer succeeds, GET never blocked; add a test helper that builds cookie plus token requests
+  - [x] 4.7 Stop for review (end of PR B)
 
-- [ ] 5. Swagger script (sample)
-  - [ ] 5.1 Add the Swagger UI script that fetches `/auth/csrf` once, adds `X-CSRF-Token` to non-safe requests, and refetches once after a 403; wire it into `UseSwaggerUI`
-  - [ ] 5.2 Manual check: POST from Swagger with the cookie succeeds
-  - [ ] 5.3 Stop for review
+- [x] 5. Swagger script (sample)
+  - [x] 5.1 Add the Swagger UI script that fetches `/auth/csrf` once, adds `X-CSRF-Token` to non-safe requests, and refetches once after a 403; wire it into `UseSwaggerUI`. As built: Swashbuckle request/response interceptors (`SwaggerCsrfInterceptors`); a 403 clears the cached token so the next request refetches (Swagger UI cannot retry a request itself)
+  - [ ] 5.2 Manual check: POST from Swagger with the cookie succeeds (owner, in the browser). Automated: sample test checks the interceptors are served; a Node run through Swashbuckle 6.9's parser checked GET untouched, POST gets the token, caching, refetch after 403, no header when signed out
+  - [x] 5.3 Stop for review (moved into PR B)
 
 - [ ] 6. ID token validation, `auth_time` and forced re-authentication
   - [ ] 6.1 `IIdTokenValidator` (interface in Services, Keycloak implementation): signature via realm JWKS, `iss`, `aud`, `exp`, `nonce`; returns `AuthTime`

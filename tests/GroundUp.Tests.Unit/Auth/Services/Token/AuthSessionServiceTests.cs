@@ -2,10 +2,10 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
-using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Token;
+using GroundUp.Core;
 using GroundUp.Core.Results;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace GroundUp.Tests.Unit.Auth.Services.Token;
@@ -15,6 +15,7 @@ public sealed class AuthSessionServiceTests
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly ITokenService _tokenService;
+    private readonly ISessionPolicyProvider _sessionPolicyProvider;
     private readonly AuthSessionService _sut;
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -28,15 +29,16 @@ public sealed class AuthSessionServiceTests
         _tenantRepository = Substitute.For<ITenantRepository>();
         _tokenService = Substitute.For<ITokenService>();
 
+        _sessionPolicyProvider = Substitute.For<ISessionPolicyProvider>();
+        var defaultPolicy = new SessionPolicy(TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(480));
+        _sessionPolicyProvider.GetSystemPolicyAsync(Arg.Any<CancellationToken>()).Returns(defaultPolicy);
+        _sessionPolicyProvider.GetPolicyForTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(defaultPolicy);
+
         _sut = new AuthSessionService(
             _userTenantRepository,
             _tenantRepository,
             _tokenService,
-            Options.Create(new AuthOptions
-            {
-                TokenExpirationMinutes = 60,
-                AbsoluteSessionLifetimeMinutes = 480
-            }));
+            _sessionPolicyProvider);
 
         // Default token generation returns a token
         _tokenService.GenerateTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
@@ -463,7 +465,136 @@ public sealed class AuthSessionServiceTests
         Assert.NotNull(result.Data!.Token);
     }
 
+    [Fact]
+    public async Task SetTenantAsync_SessionPastAbsoluteLifetime_ReturnsReauthRequiredCode()
+    {
+        // Arrange
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-481));
+
+        // Assert
+        Assert.Equal(ErrorCodes.ReauthRequired, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SetTenantAsync_SelectedTenantHasStricterCap_ReturnsReauthRequired()
+    {
+        // Arrange: System allows 480 minutes, this tenant only 60. The session is 90 minutes old.
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-90));
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal(401, result.StatusCode);
+        Assert.Equal(ErrorCodes.ReauthRequired, result.ErrorCode);
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>());
+    }
+
+    [Fact]
+    public async Task SetTenantAsync_OtherTenantHasStricterCap_SelectedTenantIssuesToken()
+    {
+        // Arrange: only tenant 2 is strict; the user selects tenant 1
+        SetupMemberships(new List<UserTenantDto>
+        {
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+        });
+        _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId2, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-90));
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data!.Token);
+    }
+
+    [Fact]
+    public async Task SetTenantAsync_AutoSelectedTenantHasStricterCap_ReturnsReauthRequired()
+    {
+        // Arrange: no tenant named, one membership, and that tenant's cap has passed
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, null, DateTimeOffset.UtcNow.AddMinutes(-90));
+
+        // Assert
+        Assert.Equal(ErrorCodes.ReauthRequired, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SetTenantAsync_NoOriginalAuthTime_SkipsCapCheck()
+    {
+        // Arrange: first issuance from an identity-provider token
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+
+        // Act
+        var result = await _sut.SetTenantAsync(_userId, _tenantId1);
+
+        // Assert
+        Assert.True(result.Success);
+        await _sessionPolicyProvider.DidNotReceive().GetPolicyForTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // --- RefreshTokenAsync: absolute cap ---
+
+    [Fact]
+    public async Task RefreshTokenAsync_SessionPastTenantCap_ReturnsReauthRequiredAndIssuesNoToken()
+    {
+        // Arrange
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
+            .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
+
+        // Act
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-61));
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal(401, result.StatusCode);
+        Assert.Equal(ErrorCodes.ReauthRequired, result.ErrorCode);
+        await _tokenService.DidNotReceive().GenerateTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>());
+    }
+
+    [Fact]
+    public async Task RefreshTokenAsync_SessionInsideCap_IssuesToken()
+    {
+        // Arrange
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+
+        // Act
+        var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-100));
+
+        // Assert
+        Assert.True(result.Success);
+    }
+
     // --- IssueTenantlessSessionAsync ---
+
+    [Fact]
+    public async Task IssueTenantlessSessionAsync_SessionPastSystemCap_ReturnsReauthRequired()
+    {
+        // Act
+        var result = await _sut.IssueTenantlessSessionAsync(_userId, DateTimeOffset.UtcNow.AddMinutes(-481));
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal(401, result.StatusCode);
+        Assert.Equal(ErrorCodes.ReauthRequired, result.ErrorCode);
+        await _tokenService.DidNotReceive().GenerateTenantlessTokenAsync(
+            Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>());
+    }
 
     [Fact]
     public async Task IssueTenantlessSessionAsync_WithOriginalAuthTime_PreservesAuthTime()
