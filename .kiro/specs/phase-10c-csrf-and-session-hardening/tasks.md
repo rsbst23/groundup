@@ -49,12 +49,12 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [x] 6.6 Stop for review (end of PR C)
 
 - [ ] 7. Keycloak realm, verification and documentation
-  - [ ] 7.1 `keycloak/realm.json`: `ssoSessionIdleTimeout` 1800, `ssoSessionMaxLifespan` 28800
-  - [ ] 7.2 Verify against Keycloak 26.3: `auth_time` present on silent login and unchanged, changes after `prompt=login`, `max_age` forces the form; add a mapper to `realm.json` if needed; record results
-  - [ ] 7.3 Startup warning when the System absolute lifetime exceeds the realm's SSO Session Max, only if readable without extra permissions; otherwise document
-  - [ ] 7.4 `MANUAL_TESTING.md`: Part 1.2 realm values for an existing realm; CSRF header and `/auth/csrf` for Swagger; Part 11 uses the setting; a step proving a silent login past the cap shows the login form; mention `forceLogin`
-  - [ ] 7.5 Administrator note: tenants only shorten, realm values are the outer limit and the system administrator's concern, cache staleness until GU-47; note cascade order in `ARCHITECTURE.md`
-  - [ ] 7.6 Update the token-revocation spec: entry lifetime is the System token lifetime maximum
+  - [x] 7.1 `keycloak/realm.json`: `ssoSessionIdleTimeout` 1800, `ssoSessionMaxLifespan` 28800
+  - [ ] 7.2 Verify against Keycloak 26.3: `auth_time` present on silent login and unchanged, changes after `prompt=login`, `max_age` forces the form; add a mapper to `realm.json` if needed; record results. Steps: `MANUAL_TESTING.md` Part 14 (owner, in the browser). Result: _pending_
+  - [x] 7.3 Startup warning when the System absolute lifetime exceeds the realm's SSO Session Max. Decided: documented, not built. Reading the realm needs an admin API call to Keycloak at every start (Keycloak may not be up yet, and the startup validators only check configuration today). `ARCHITECTURE.md` "Sessions" says to keep the two in step by policy
+  - [x] 7.4 `MANUAL_TESTING.md`: Part 1.2 realm values for an existing realm; CSRF header and `/auth/csrf` for Swagger and REST clients; Part 11 uses the settings API (no `appsettings` edit, no restart); new Part 14 proves a silent login keeps `auth_time`, `forceLogin` shows the form, and `max_age` forces the form for an old session; Recipe 3 uses the settings API; troubleshooting rows for `CSRF_VALIDATION_FAILED`, `REAUTH_REQUIRED`, `ID_TOKEN_INVALID`, blank Swagger, single-label domain
+  - [x] 7.5 Administrator note in `ARCHITECTURE.md`: settings cascade order, session timeouts (tenants only shorten, realm values are the outer limit and the system administrator's concern), cookie table, CSRF client contract, cache staleness until GU-47
+  - [x] 7.6 Token-revocation spec: entries are kept for the setting's maximum token lifetime (120 minutes), because the System value can change while older tokens live; the default token lifetime is now the seeded setting
 
 - [ ] 8. Final review
   - [ ] 8.1 Full code review against requirements 1 to 6 and the cookie table; run all test suites against the baselines

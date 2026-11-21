@@ -144,3 +144,41 @@ builder.Services.AddGroundUpEvents();                           // Event bus
 ```
 
 The consuming app only writes the parts unique to its domain. GroundUp provides the infrastructure.
+
+Applications that use the auth endpoints and middleware also call `AddGroundUpAuth(...)`, `AddGroundUpAuthApi()` (CSRF protection) and `AddGroundUpAuthKeycloak()`, then `app.UseGroundUpAuth()`. `UseGroundUpAuth` refuses to start without `AddGroundUpAuthApi()`.
+
+## Settings Cascade
+
+A setting is resolved along a **scope chain ordered most specific first**, for example `User → Group → Case → Tenant → System` in an application that defines those levels. The first level with a value wins; each parent level is the default for the levels below it, and the definition's default value applies when no level has a value. GroundUp creates the `System` and `Tenant` levels if the application has not (`DefaultSettingLevelSeeder`); applications add deeper levels and register their own `IScopeChainProvider`, which must keep the most-specific-first order. There is no parent-level lock. Rules that limit a child by its parent (such as the session timeouts below) are written as an `ISettingWriteValidator`.
+
+Settings are cached in memory. A change made through `ISettingsService` clears the cache on the instance that made it; other instances see it after the cache TTL (15 minutes by default) until the caching module (Phase 15, GU-47) provides shared invalidation.
+
+## Sessions (Administrator Notes)
+
+**Two timeouts, as runtime settings** (group "Security > Sessions"):
+
+| Setting | Range | Default | Meaning |
+|---|---|---|---|
+| `auth.session.token-lifetime-minutes` | 2 to 120 | 60 | How long a sign-in token is valid. Also the inactivity timeout: a user who makes no request for this long must sign in again. |
+| `auth.session.absolute-lifetime-minutes` | 10 to 1440 | 480 | The longest a session can last from the user's last real sign-in, however active they are. Must be at least the token lifetime. |
+
+- Both can be set at the **System** level and per **tenant**. A tenant value can only **shorten** the System value: a longer one is rejected when it is written, and if the System value is later lowered below an existing tenant value, the System value applies.
+- A change applies from the next token issue or refresh. Existing tokens keep their expiry, but the absolute limit is checked against the current value at every refresh and tenant switch, so shortening it takes effect without waiting.
+- The session is counted from the identity provider's `auth_time` (when the user really authenticated), so a silent single sign-on does not restart it. Every login request carries `max_age` with the absolute lifetime, so Keycloak asks for credentials when its own session is older. When a session has reached the limit the API returns `401` with `errorCode: REAUTH_REQUIRED`; the client then starts `POST /auth/login?forceLogin=true`.
+- No token expires later than the user's last sign-in plus the absolute lifetime.
+- Until settings authorization exists (GU-77), the settings API does not restrict who can change these values.
+
+**Keycloak's own limits are the outer boundary.** The realm's **SSO Session Idle** and **SSO Session Max** (Realm settings → Sessions) apply to every user of the shared realm and cannot be set per tenant. They are the system administrator's responsibility in the Keycloak admin console, and they are the values a compliance reviewer will look at alongside the two settings above. `keycloak/realm.json` sets 30 minutes idle and 8 hours maximum for development, equal to the default absolute lifetime; the organization's own session policy decides the final numbers. If `auth.session.absolute-lifetime-minutes` is raised above the realm's SSO Session Max, Keycloak's limit becomes the real one. GroundUp does not read the realm values at startup to warn about this (that would need an admin API call at every start); keep the two in step by policy.
+
+**Cookies.** Every auth cookie is HttpOnly and takes `Secure` from `GroundUp:Auth:CookieSecure`; the application refuses to start with `CookieSecure=false` outside Development.
+
+| Cookie | Purpose | SameSite | Domain | Expires |
+|---|---|---|---|---|
+| `AuthToken` | GroundUp session token | `CookieSameSite` (default Strict) | `.{auth.application.default-domain}` | with the token |
+| `IdToken` | `id_token_hint` for logout | as `AuthToken` | as `AuthToken` | with the auth cookie |
+| `AuthState` | login flow state across the redirect to Keycloak | Lax (Strict would drop it on the return from Keycloak) | host only | 10 minutes |
+| `CsrfToken` | antiforgery cookie token | Strict | host only | browser session |
+
+A single-label default domain such as `localhost` logs a warning: browsers drop the cookie on subdomain hosts, so subdomain tenants need a domain such as `groundup.test`.
+
+**CSRF.** A POST, PUT, PATCH or DELETE authenticated by the `AuthToken` cookie must send the token from `GET /auth/csrf` in the `X-CSRF-Token` header, or it gets `403 CSRF_VALIDATION_FAILED`. A browser client calls `/auth/csrf` once after sign-in, keeps the token in memory, and calls it again after a 403. Requests with an `Authorization: Bearer` header (mobile apps, services, MCP clients) need no CSRF token.
