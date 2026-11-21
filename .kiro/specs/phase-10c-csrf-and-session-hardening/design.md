@@ -19,7 +19,11 @@ Items marked **(confirm)** are details to verify in code when the task is implem
 
 ### 2.1 Registration
 
-`AddGroundUpAuth` calls `AddAntiforgery` with:
+As built: registration is in a new `AddGroundUpAuthApi()` in `GroundUp.Auth.Api`, not in `AddGroundUpAuth`. `GroundUp.Auth.Services` does not reference the ASP.NET Core framework, where `AddAntiforgery` lives. `UseGroundUpAuth` throws at startup if `IAntiforgery` is not registered, and the middleware also fails closed. The antiforgery cookie is host-only (the antiforgery options cannot read the database-held default domain), which works because the browser calls the API on the host it loaded the token from.
+
+CSRF is enforced only when the user is authenticated by the cookie. A request carrying an expired or invalid cookie is anonymous and is not blocked, so a stale cookie cannot stop a new sign-in.
+
+The original plan: `AddGroundUpAuth` calls `AddAntiforgery` with:
 - `HeaderName = "X-CSRF-Token"`
 - `Cookie.Name = "CsrfToken"`. The `__Host-` prefix is not used because it forbids a Domain attribute.
 - `Cookie.HttpOnly = true`, `Cookie.SecurePolicy` from `AuthOptions.CookieSecure` (Always or None), `Cookie.SameSite = Strict`, `Cookie.Path = "/"`.

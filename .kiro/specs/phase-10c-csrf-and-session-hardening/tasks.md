@@ -26,14 +26,14 @@ PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = g
   - [x] 3.5 Unit tests for each consumer; integration test: change a timeout through the settings API and see the next token and cookie use it; `/auth/refresh` past the cap returns `REAUTH_REQUIRED`; stricter tenant cap on `set-tenant`
   - [x] 3.6 Stop for review. Found and fixed GU-78 on the way (event bus was a singleton, so settings cache invalidation never ran in Development)
 
-- [ ] 4. CSRF and cookie hardening
-  - [ ] 4.1 `AddGroundUpAuth`: register antiforgery (header `X-CSRF-Token`, cookie `CsrfToken`, HttpOnly, Strict, Secure from `CookieSecure`)
-  - [ ] 4.2 `CsrfProtectionMiddleware`: fail closed without `IAntiforgery`; TRACE is safe
-  - [ ] 4.3 `GET /auth/csrf`; remove `ProvisionAntiforgeryToken()` and its three call sites; clear the antiforgery cookie on logout
-  - [ ] 4.4 Startup validator: refuse to start when `CookieSecure=false` outside Development, warn in Development; warn on single-label default domain with host tenant resolution
-  - [ ] 4.5 Unit tests asserting attributes of `AuthToken`, `IdToken`, `AuthState` and `CsrfToken`; middleware cases; startup validator cases
-  - [ ] 4.6 Integration tests on the cookie path: no token 403, valid token succeeds, Bearer succeeds, GET never blocked; add a test helper that builds cookie plus token requests
-  - [ ] 4.7 Stop for review (end of PR B)
+- [x] 4. CSRF and cookie hardening
+  - [x] 4.1 Register antiforgery (header `X-CSRF-Token`, cookie `CsrfToken`, HttpOnly, Strict, Secure from `CookieSecure`). As built: in a new `AddGroundUpAuthApi()` (see design 2.1); `UseGroundUpAuth` throws without it
+  - [x] 4.2 `CsrfProtectionMiddleware`: fail closed without `IAntiforgery`; TRACE is safe; enforced only when authenticated by the cookie
+  - [x] 4.3 `GET /auth/csrf`; remove `ProvisionAntiforgeryToken()` and its three call sites; clear the antiforgery cookie on logout
+  - [x] 4.4 Startup validator: refuse to start when `CookieSecure=false` outside Development, warn in Development; warn on a single-label default domain (host resolution is always on with `UseGroundUpAuth`)
+  - [x] 4.5 Unit tests asserting attributes of `AuthToken`, `IdToken`, `AuthState` and `CsrfToken`; middleware cases; startup validator cases
+  - [x] 4.6 Integration tests on the cookie path: no token 403, valid token succeeds, Bearer succeeds, GET never blocked; add a test helper that builds cookie plus token requests
+  - [x] 4.7 Stop for review (end of PR B)
 
 - [ ] 5. Swagger script (sample)
   - [ ] 5.1 Add the Swagger UI script that fetches `/auth/csrf` once, adds `X-CSRF-Token` to non-safe requests, and refetches once after a 403; wire it into `UseSwaggerUI`

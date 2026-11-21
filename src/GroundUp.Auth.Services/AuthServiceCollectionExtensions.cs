@@ -144,6 +144,9 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<LastAdminGuard>();
         services.AddScoped<IOrganizationProvisioningService, OrganizationProvisioningService>();
 
+        // Startup checks on cookie settings (CookieSecure outside Development, single-label domain)
+        services.AddHostedService<AuthCookieStartupValidator>();
+
         // Cleanup sweeper (hosted service)
         services.AddHostedService<AuthFlowStateCleanupSweeper>();
     }

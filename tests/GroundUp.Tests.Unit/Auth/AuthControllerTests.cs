@@ -354,6 +354,51 @@ public sealed class AuthControllerTests
 
     #endregion
 
+    #region GET /auth/csrf
+
+    [Fact]
+    public void Csrf_Unauthenticated_Returns401AndIssuesNoToken()
+    {
+        // Act
+        var result = _sut.Csrf();
+
+        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        _antiforgery.DidNotReceive().GetAndStoreTokens(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public void Csrf_Authenticated_ReturnsRequestTokenWithNoStore()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        _antiforgery.GetAndStoreTokens(Arg.Any<HttpContext>())
+            .Returns(new AntiforgeryTokenSet("request-token-123", "cookie-token", "CsrfToken", "X-CSRF-Token"));
+
+        // Act
+        var result = _sut.Csrf();
+
+        // Assert
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        GetAnonymousObjectProperties(ok.Value!)["token"].Should().Be("request-token-123");
+        _sut.ControllerContext.HttpContext.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+    }
+
+    [Fact]
+    public void Me_Authenticated_DoesNotIssueAntiforgeryTokens()
+    {
+        // Arrange — tokens come only from GET /auth/csrf now
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+
+        // Act
+        _sut.Me();
+
+        // Assert
+        _antiforgery.DidNotReceive().GetAndStoreTokens(Arg.Any<HttpContext>());
+    }
+
+    #endregion
+
     #region GET /auth/me
 
     [Fact]
@@ -712,6 +757,18 @@ public sealed class AuthControllerTests
         logoutUrl.Should().Contain("/protocol/openid-connect/logout");
         logoutUrl.Should().Contain("client_id=groundup-app");
         logoutUrl.Should().Contain("post_logout_redirect_uri=");
+    }
+
+    [Fact]
+    public async Task Logout_ExpiresTheAntiforgeryCookie()
+    {
+        // Act
+        await _sut.Logout();
+
+        // Assert
+        var setCookie = _sut.ControllerContext.HttpContext.Response.Headers.SetCookie.ToString();
+        setCookie.Should().Contain("CsrfToken=;");
+        setCookie.Should().Contain("expires=Thu, 01 Jan 1970");
     }
 
     [Fact]
@@ -1613,7 +1670,8 @@ public sealed class AuthControllerTests
             _organizationProvisioningService,
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),
-            _antiforgery);
+            _antiforgery,
+            Options.Create(new AntiforgeryOptions { Cookie = { Name = "CsrfToken" } }));
 
         controller.ControllerContext = new ControllerContext
         {

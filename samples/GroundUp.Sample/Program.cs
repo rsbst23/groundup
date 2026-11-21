@@ -30,6 +30,7 @@ builder.Services.AddGroundUpSetup(builder.Configuration);
 // GroundUp auth services
 builder.Services.AddGroundUpAuthPostgres(connectionString);
 builder.Services.AddGroundUpAuth(builder.Configuration);
+builder.Services.AddGroundUpAuthApi();
 builder.Services.AddGroundUpAuthKeycloak();
 
 // Settings seeder

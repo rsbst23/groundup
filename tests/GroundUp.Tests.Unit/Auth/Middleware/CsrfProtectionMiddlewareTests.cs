@@ -1,7 +1,10 @@
+using System.Security.Claims;
+using GroundUp.Auth.Api;
 using GroundUp.Auth.Api.Middleware;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace GroundUp.Tests.Unit.Auth.Middleware;
@@ -19,12 +22,13 @@ public sealed class CsrfProtectionMiddlewareTests
     [InlineData("GET")]
     [InlineData("HEAD")]
     [InlineData("OPTIONS")]
+    [InlineData("TRACE")]
     public async Task InvokeAsync_SafeMethods_SkipsValidation(string method)
     {
         // Arrange
         var context = CreateContext(method, authSource: "cookie");
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -48,7 +52,7 @@ public sealed class CsrfProtectionMiddlewareTests
         // Arrange
         var context = CreateContext(method, authSource: "header");
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -69,7 +73,7 @@ public sealed class CsrfProtectionMiddlewareTests
         var context = CreateContext("POST", authSource: "cookie");
         _antiforgery.ValidateRequestAsync(context).Returns(Task.CompletedTask);
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -91,7 +95,7 @@ public sealed class CsrfProtectionMiddlewareTests
         _antiforgery.ValidateRequestAsync(context)
             .Returns(Task.FromException(new AntiforgeryValidationException("Invalid token")));
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -105,24 +109,22 @@ public sealed class CsrfProtectionMiddlewareTests
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }
 
-    [Fact]
-    public async Task InvokeAsync_CookieAuth_PutMethod_EnforcesCsrf()
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("DELETE")]
+    [InlineData("PATCH")]
+    [InlineData("PROPFIND")]
+    public async Task InvokeAsync_CookieAuth_OtherNonSafeMethods_EnforcesCsrf(string method)
     {
         // Arrange
-        var context = CreateContext("PUT", authSource: "cookie");
+        var context = CreateContext(method, authSource: "cookie");
         _antiforgery.ValidateRequestAsync(context).Returns(Task.CompletedTask);
-        var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
+        var middleware = CreateMiddleware(_ => Task.CompletedTask);
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert
-        Assert.True(nextCalled);
         await _antiforgery.Received(1).ValidateRequestAsync(context);
     }
 
@@ -130,9 +132,9 @@ public sealed class CsrfProtectionMiddlewareTests
     public async Task InvokeAsync_NoAuthSource_PostMethod_SkipsCsrf()
     {
         // Arrange — no AuthSource in Items (anonymous request)
-        var context = CreateContext("POST", authSource: null);
+        var context = CreateContext("POST", authSource: null, authenticated: false);
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -147,18 +149,13 @@ public sealed class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_CookieAuth_AntiforgeryNotRegistered_SkipsGracefully()
+    public async Task InvokeAsync_CookiePresentButNotAuthenticated_SkipsCsrf()
     {
-        // Arrange — no IAntiforgery in DI
-        var services = new ServiceCollection();
-        var sp = services.BuildServiceProvider();
-
-        var context = new DefaultHttpContext { RequestServices = sp };
-        context.Request.Method = "POST";
-        context.Items["AuthSource"] = "cookie";
-
+        // Arrange — an expired or invalid cookie: the source is "cookie" but nobody is signed in,
+        // so there is no identity to forge (for example POST /auth/login with a stale cookie).
+        var context = CreateContext("POST", authSource: "cookie", authenticated: false);
         var nextCalled = false;
-        var middleware = new CsrfProtectionMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -167,25 +164,35 @@ public sealed class CsrfProtectionMiddlewareTests
         // Act
         await middleware.InvokeAsync(context);
 
-        // Assert — proceeds without error
+        // Assert
         Assert.True(nextCalled);
+        await _antiforgery.DidNotReceive().ValidateRequestAsync(Arg.Any<HttpContext>());
     }
 
-    [Theory]
-    [InlineData("DELETE")]
-    [InlineData("PATCH")]
-    public async Task InvokeAsync_CookieAuth_OtherStateChangingMethods_EnforcesCsrf(string method)
+    [Fact]
+    public async Task InvokeAsync_CookieAuth_AntiforgeryNotRegistered_FailsClosedWith500()
     {
-        // Arrange
-        var context = CreateContext(method, authSource: "cookie");
-        _antiforgery.ValidateRequestAsync(context).Returns(Task.CompletedTask);
-        var middleware = new CsrfProtectionMiddleware(_ => Task.CompletedTask);
+        // Arrange — no IAntiforgery in DI
+        var context = new DefaultHttpContext { RequestServices = new ServiceCollection().BuildServiceProvider() };
+        context.Request.Method = "POST";
+        context.Items["AuthSource"] = "cookie";
+        context.User = AuthenticatedUser();
+        context.Response.Body = new MemoryStream();
+
+        var nextCalled = false;
+        var middleware = CreateMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
 
         // Act
         await middleware.InvokeAsync(context);
 
-        // Assert
-        await _antiforgery.Received(1).ValidateRequestAsync(context);
+        // Assert — rejected, not let through
+        Assert.False(nextCalled);
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        Assert.Contains(AuthConstants.CsrfNotConfiguredErrorCode, ReadBody(context));
     }
 
     [Fact]
@@ -196,16 +203,14 @@ public sealed class CsrfProtectionMiddlewareTests
         context.Response.Body = new MemoryStream();
         _antiforgery.ValidateRequestAsync(context)
             .Returns(Task.FromException(new AntiforgeryValidationException("bad")));
-        var middleware = new CsrfProtectionMiddleware(_ => Task.CompletedTask);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask);
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert — body contains the documented errorCode and content type is JSON
         Assert.StartsWith("application/json", context.Response.ContentType);
-        context.Response.Body.Seek(0, SeekOrigin.Begin);
-        var body = new StreamReader(context.Response.Body).ReadToEnd();
-        Assert.Contains("CSRF_VALIDATION_FAILED", body);
+        Assert.Contains(AuthConstants.CsrfValidationFailedErrorCode, ReadBody(context));
     }
 
     [Theory]
@@ -217,7 +222,7 @@ public sealed class CsrfProtectionMiddlewareTests
         // Arrange — cookie casing variants should still trigger CSRF enforcement
         var context = CreateContext("POST", authSource: casing);
         _antiforgery.ValidateRequestAsync(context).Returns(Task.CompletedTask);
-        var middleware = new CsrfProtectionMiddleware(_ => Task.CompletedTask);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask);
 
         // Act
         await middleware.InvokeAsync(context);
@@ -228,7 +233,19 @@ public sealed class CsrfProtectionMiddlewareTests
 
     // --- Helper methods ---
 
-    private DefaultHttpContext CreateContext(string method, string? authSource)
+    private static CsrfProtectionMiddleware CreateMiddleware(RequestDelegate next) =>
+        new(next, NullLogger<CsrfProtectionMiddleware>.Instance);
+
+    private static ClaimsPrincipal AuthenticatedUser() =>
+        new(new ClaimsIdentity(new[] { new Claim("sub", Guid.NewGuid().ToString()) }, "GroundUp"));
+
+    private static string ReadBody(HttpContext context)
+    {
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        return new StreamReader(context.Response.Body).ReadToEnd();
+    }
+
+    private DefaultHttpContext CreateContext(string method, string? authSource, bool authenticated = true)
     {
         var services = new ServiceCollection();
         services.AddSingleton(_antiforgery);
@@ -236,6 +253,11 @@ public sealed class CsrfProtectionMiddlewareTests
 
         var context = new DefaultHttpContext { RequestServices = sp };
         context.Request.Method = method;
+
+        if (authenticated)
+        {
+            context.User = AuthenticatedUser();
+        }
 
         if (authSource is not null)
         {

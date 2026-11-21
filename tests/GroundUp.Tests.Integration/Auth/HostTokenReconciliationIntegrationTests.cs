@@ -350,10 +350,13 @@ public sealed class HostTokenReconciliationIntegrationTests : AuthFlowTestBase
 
         var token = GenerateValidToken(userId, tenantAId);
 
-        // Act — call POST /auth/set-tenant (an /auth/* exempt path) to switch to tenant B
-        var request = new HttpRequestMessage(HttpMethod.Post, "/auth/set-tenant");
-        request.Headers.Host = $"{slugB}.{AuthFlowTestFixture.TestDefaultDomain}";
-        request.Headers.Add("Cookie", $"AuthToken={token}");
+        // Act — call POST /auth/set-tenant (an /auth/* exempt path) to switch to tenant B.
+        // Cookie-authenticated, so the request carries a CSRF token from GET /auth/csrf.
+        var request = await CreateCookieRequestWithCsrfAsync(
+            HttpMethod.Post,
+            "/auth/set-tenant",
+            token,
+            host: $"{slugB}.{AuthFlowTestFixture.TestDefaultDomain}");
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { tenantId = tenantBId }),
             System.Text.Encoding.UTF8,
