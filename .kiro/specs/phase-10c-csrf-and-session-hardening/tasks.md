@@ -1,21 +1,21 @@
-# Tasks: CSRF Protection, Cookie Hardening and Session Timeouts
+﻿# Tasks: CSRF Protection, Cookie Hardening and Session Timeouts
 
 Rules: one numbered task group at a time. After each group: build, run tests, commit, then stop for review. Never commit to main. Branch: `phase-10c/csrf-and-session-hardening`. Test baselines in the session brief must not get worse. Tests are written with each group.
 
 PR boundaries: PR A = groups 1-2, PR B = groups 3-4, PR C = groups 5-6, PR D = groups 7-8.
 
-- [ ] 1. Settings foundation
-  - [ ] 1.1 Document the scope-chain contract (most specific first) on `IScopeChainProvider`; reorder `DefaultScopeChainProvider` to emit Tenant, then System (the resolution engine already takes the first match and needs no change). Its unit tests and the `AuthFlowTestFixture` comment describe an older behavior (Tenant only, empty without a tenant) and need updating
-  - [ ] 1.2 Impact check: find settings, seeders, tests and sample data with values at both System and Tenant; update tests that assumed the old order
-  - [ ] 1.3 Add optional `MinValue` and `MaxValue` to `EnsureSettingDefinitionRequest` and map them in `EnsureDefinitionAsync`
-  - [ ] 1.4 Add `ISettingWriteValidator` (Core) and call all registered validators from `SettingsService.SetAsync` after the built-in checks; check whether `CustomValidatorType` is used anywhere and note the result
-  - [ ] 1.5 Unit tests: five-level chain (User, Group, Case, Tenant, System) resolves most specific first; Min/Max set by `EnsureDefinitionAsync`; validator rejection returns 400; no validators registered changes nothing
+- [x] 1. Settings foundation
+  - [x] 1.1 Document the scope-chain contract (most specific first) on `IScopeChainProvider`; reorder `DefaultScopeChainProvider` to emit Tenant, then System (the resolution engine already takes the first match and needs no change). Its unit tests and the `AuthFlowTestFixture` comment describe an older behavior (Tenant only, empty without a tenant) and need updating
+  - [x] 1.2 Impact check: find settings, seeders, tests and sample data with values at both System and Tenant; update tests that assumed the old order
+  - [x] 1.3 Add optional `MinValue` and `MaxValue` to `EnsureSettingDefinitionRequest` and map them in `EnsureDefinitionAsync`
+  - [x] 1.4 Add `ISettingWriteValidator` (Core) and call all registered validators from `SettingsService.SetAsync` after the built-in checks; check whether `CustomValidatorType` is used anywhere and note the result
+  - [x] 1.5 Unit tests: five-level chain (User, Group, Case, Tenant, System) resolves most specific first; Min/Max set by `EnsureDefinitionAsync`; validator rejection returns 400; no validators registered changes nothing
 
-- [ ] 2. Session settings and policy provider
-  - [ ] 2.1 `DefaultAuthSettingsSeeder`: add `auth.session.token-lifetime-minutes` (2-120, default 60) and `auth.session.absolute-lifetime-minutes` (10-1440, default 480), System and Tenant levels, group "Security > Sessions"; seed defaults from `AuthOptions` clamped to bounds, warn when clamped
-  - [ ] 2.2 `ISessionPolicyProvider` and `SessionPolicy`: tenant chain `[Tenant, System]` built from level names, clamp to System, cross-field rule, fallback to `AuthOptions` on failure
-  - [ ] 2.3 `SessionPolicyWriteValidator` (registered by the auth module): tenant not above System (read from the database), `absolute >= token` at the same level
-  - [ ] 2.4 Unit tests: clamp, cross-field, fallback, validator cases, seeder bounds; integration test: set a tenant value above System is rejected, below is accepted and resolved
+- [x] 2. Session settings and policy provider
+  - [x] 2.1 `DefaultAuthSettingsSeeder`: add `auth.session.token-lifetime-minutes` (2-120, default 60) and `auth.session.absolute-lifetime-minutes` (10-1440, default 480), System and Tenant levels, group "Security > Sessions". Seeded defaults are the fixed 60 and 480, not `AuthOptions` values: the seeder lives in `Auth.Data.Postgres`, which `AuthOptions` (in `Auth.Services`) cannot be referenced from. `AuthOptions` stays as the runtime fallback in the provider
+  - [x] 2.2 `ISessionPolicyProvider` and `SessionPolicy`: tenant chain `[Tenant, System]` built from level names, clamp to System, cross-field rule, fallback to `AuthOptions` on failure
+  - [x] 2.3 `SessionPolicyWriteValidator` (registered by the auth module): tenant not above System (read from the database), `absolute >= token` at the same level
+  - [x] 2.4 Unit tests: clamp, cross-field, fallback, validator cases, seeder bounds; integration test: set a tenant value above System is rejected, below is accepted and resolved
   - [ ] 2.5 Stop for review (end of PR A)
 
 - [ ] 3. Use the policy everywhere

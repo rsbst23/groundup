@@ -32,14 +32,52 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyFiveTimes()
+    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlySevenTimes()
     {
         // Act
         await _sut.SeedAsync();
 
         // Assert
-        await _settingsService.Received(5).EnsureDefinitionAsync(
+        await _settingsService.Received(7).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SeedAsync_CreatesTokenLifetimeSetting_WithBoundsAndSystemAndTenantLevels()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == "auth.session.token-lifetime-minutes"
+                && r.DataType == GroundUp.Core.Enums.SettingDataType.Int
+                && r.DefaultValue == "60"
+                && r.MinValue == "2"
+                && r.MaxValue == "120"
+                && r.GroupDisplayName == "Security > Sessions"
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system", "tenant" })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SeedAsync_CreatesAbsoluteLifetimeSetting_WithBoundsAndSystemAndTenantLevels()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == "auth.session.absolute-lifetime-minutes"
+                && r.DataType == GroundUp.Core.Enums.SettingDataType.Int
+                && r.DefaultValue == "480"
+                && r.MinValue == "10"
+                && r.MaxValue == "1440"
+                && r.GroupDisplayName == "Security > Sessions"
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system", "tenant" })),
             Arg.Any<CancellationToken>());
     }
 
@@ -115,8 +153,8 @@ public sealed class DefaultAuthSettingsSeederTests
         await _sut.SeedAsync();
         await _sut.SeedAsync();
 
-        // Assert — 10 total calls (5 per run), all succeed without error
-        await _settingsService.Received(10).EnsureDefinitionAsync(
+        // Assert — 14 total calls (7 per run), all succeed without error
+        await _settingsService.Received(14).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }
