@@ -1,5 +1,6 @@
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Models;
+using GroundUp.Data.Abstractions;
 using GroundUp.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -31,6 +32,9 @@ public static class SettingsServiceCollectionExtensions
         this IServiceCollection services,
         Action<SettingsCacheOptions>? configureCacheOptions = null)
     {
+        // The System and Tenant levels, created if the application has not seeded them
+        services.AddScoped<IDataSeeder, DefaultSettingLevelSeeder>();
+
         // Phase 6B: resolution service
         services.AddScoped<ISettingsService, SettingsService>();
 

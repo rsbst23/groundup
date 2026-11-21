@@ -1,3 +1,5 @@
+using System.Globalization;
+using GroundUp.Auth.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Enums;
@@ -95,6 +97,36 @@ public sealed class DefaultAuthSettingsSeeder : IDataSeeder
             GroupKey: "auth.application",
             GroupDisplayName: "Auth Application",
             AllowedLevelNames: ["system"]),
+            cancellationToken);
+
+        // Session timeouts. System administrators set the System value; a tenant may only
+        // shorten it (enforced by SessionPolicyWriteValidator and again at resolution time).
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: SessionSettingKeys.TokenLifetimeMinutes,
+            DataType: SettingDataType.Int,
+            DefaultValue: SessionSettingKeys.TokenLifetimeDefault.ToString(CultureInfo.InvariantCulture),
+            DisplayName: "Token Lifetime (minutes)",
+            Description: "How long a sign-in token is valid. A user who makes no request for this long must sign in again. A tenant value cannot be longer than the System value.",
+            Category: "Sessions",
+            GroupKey: "auth.session",
+            GroupDisplayName: "Security > Sessions",
+            AllowedLevelNames: ["system", "tenant"],
+            MinValue: SessionSettingKeys.TokenLifetimeMin.ToString(CultureInfo.InvariantCulture),
+            MaxValue: SessionSettingKeys.TokenLifetimeMax.ToString(CultureInfo.InvariantCulture)),
+            cancellationToken);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: SessionSettingKeys.AbsoluteLifetimeMinutes,
+            DataType: SettingDataType.Int,
+            DefaultValue: SessionSettingKeys.AbsoluteLifetimeDefault.ToString(CultureInfo.InvariantCulture),
+            DisplayName: "Absolute Session Lifetime (minutes)",
+            Description: "The longest a session can last from the user's last real sign-in, however active they are. Must be at least the token lifetime. A tenant value cannot be longer than the System value.",
+            Category: "Sessions",
+            GroupKey: "auth.session",
+            GroupDisplayName: "Security > Sessions",
+            AllowedLevelNames: ["system", "tenant"],
+            MinValue: SessionSettingKeys.AbsoluteLifetimeMin.ToString(CultureInfo.InvariantCulture),
+            MaxValue: SessionSettingKeys.AbsoluteLifetimeMax.ToString(CultureInfo.InvariantCulture)),
             cancellationToken);
 
         _logger.LogInformation("Auth settings definitions seeded successfully");

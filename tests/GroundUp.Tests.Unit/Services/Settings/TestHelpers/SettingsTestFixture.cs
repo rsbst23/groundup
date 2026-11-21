@@ -75,6 +75,23 @@ public sealed class SettingsTestFixture : IDisposable
     }
 
     /// <summary>
+    /// Creates a SettingsService with the given cross-value write validators.
+    /// </summary>
+    public SettingsService CreateServiceWithValidators(
+        TestSettingsDbContext context,
+        params ISettingWriteValidator[] validators)
+    {
+        return new SettingsService(
+            context,
+            EventBus,
+            ScopeChainProvider,
+            MemoryCache,
+            CacheOptions,
+            CacheKeyTracker,
+            writeValidators: validators);
+    }
+
+    /// <summary>
     /// Creates a SettingsService with the default mock encryption provider.
     /// </summary>
     public SettingsService CreateServiceWithEncryption(TestSettingsDbContext context)

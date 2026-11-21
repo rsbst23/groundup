@@ -36,9 +36,9 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 2. For requests authenticated by the `AuthToken` cookie, every method other than GET, HEAD, OPTIONS and TRACE SHALL be rejected with `403 CSRF_VALIDATION_FAILED` unless a valid antiforgery token is supplied in the header.
 3. Requests authenticated by an `Authorization: Bearer` header SHALL remain exempt (a browser does not attach that header on its own).
 4. The `/auth/callback` GET SHALL remain protected by the existing state cookie and nonce, not by the antiforgery token.
-5. A client SHALL have a documented way to obtain the request token after sign-in and after a token refresh. The design SHALL choose between a response header on `GET /auth/me`, a dedicated `GET /auth/csrf` endpoint, or both. `ProvisionAntiforgeryToken()` SHALL either deliver the token or be removed.
+5. A client SHALL obtain the request token from a dedicated `GET /auth/csrf` endpoint (body `{ "token": ... }`, `Cache-Control: no-store`). `ProvisionAntiforgeryToken()` and its call sites SHALL be removed. `CsrfProtectionMiddleware` SHALL fail closed when `IAntiforgery` is not registered, and TRACE SHALL count as a safe method.
 6. Integration tests SHALL cover the cookie path: a POST with the cookie and no token returns 403; with a valid token succeeds; with a Bearer header succeeds without a token; a GET is never blocked.
-7. The Swagger UI and `MANUAL_TESTING.md` SHALL keep working. Swagger posts with the cookie, so the design SHALL state how it supplies the token (for example an operation filter or a documented header) or how a development-only exemption is limited so it cannot reach production.
+7. The Swagger UI and `MANUAL_TESTING.md` SHALL keep working. The sample's Swagger UI SHALL load a script that fetches `/auth/csrf` once and adds `X-CSRF-Token` to every non-safe request. There SHALL be no Development exemption.
 
 ### Requirement 2: Cookie hardening review
 
@@ -49,8 +49,8 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 1. The design SHALL list every cookie the auth module sets (`AuthToken`, `IdToken`, `AuthState`, the antiforgery cookie) with its purpose, HttpOnly, Secure, SameSite, Domain, Path and expiry, and justify each.
 2. All of them SHALL be HttpOnly unless the design documents a reason a script must read one, and no cookie SHALL carry a token a script does not need.
 3. `AuthState` must survive the cross-site redirect back from Keycloak, so it cannot be `SameSite=Strict`. The design SHALL pick the strictest value that works. `AuthToken` SHALL use the strictest value that still works for the supported client types.
-4. Secure SHALL default to true and only be false in an explicitly development configuration. Startup SHALL log a warning, or refuse to start outside Development, if it is false. Every cookie SHALL take its Secure flag from this one setting. (The `AuthState` cookie hard-coded `Secure = true` and ignored it, which made callbacks fail on plain-http development hosts other than `localhost`; fixed in commit `829bc45`, and a test now covers it. The design SHALL make sure no other cookie, including the IdToken and antiforgery cookies, bypasses the setting.)
-5. The cookie `Domain` (`.<default-domain>`) SHALL be reviewed for how widely it exposes the cookie across subdomains, and for the single-label host `localhost` case used in development. Observed in manual testing: a cookie with `Domain=.localhost` is accepted on `localhost` but silently dropped on `my-org.localhost`, so a single-label default domain cannot work with subdomain tenants. The design SHALL either reject a single-label default domain when subdomain tenant resolution is in use, or log a clear warning at startup. Subdomain testing uses a two-part domain such as `groundup.test`.
+4. Secure SHALL default to true. Startup SHALL refuse to start outside Development if it is false, and log a warning in Development. Every cookie SHALL take its Secure flag from this one setting. (The `AuthState` cookie hard-coded `Secure = true` and ignored it, which made callbacks fail on plain-http development hosts other than `localhost`; fixed in commit `829bc45`, and a test now covers it. The design SHALL make sure no other cookie, including the IdToken and antiforgery cookies, bypasses the setting.)
+5. The cookie `Domain` (`.<default-domain>`) SHALL be reviewed for how widely it exposes the cookie across subdomains, and for the single-label host `localhost` case used in development. Observed in manual testing: a cookie with `Domain=.localhost` is accepted on `localhost` but silently dropped on `my-org.localhost`, so a single-label default domain cannot work with subdomain tenants. Startup SHALL log a clear warning when the default domain is a single label and host tenant resolution is in use. Subdomain testing uses a two-part domain such as `groundup.test`.
 6. Cookie expiry SHALL follow the effective token lifetime from Requirement 4, not a fixed configured value.
 7. Unit tests SHALL assert the attributes written for each cookie.
 
@@ -66,6 +66,9 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 4. When the absolute lifetime has passed, the application SHALL make the next sign-in require credentials. The design SHALL choose how: always send `max_age` (the effective absolute lifetime, in seconds) on the authorization request so the identity provider re-authenticates a stale session, and/or send `prompt=login` after the application has rejected a session for age. Either way a silent SSO login SHALL NOT produce a token whose `auth_time` is older than the cap.
 5. After a login, a token whose `auth_time` is already older than the effective absolute lifetime SHALL be rejected with `401` and a machine-readable code (for example `REAUTH_REQUIRED`) so the client can start a forced login.
 6. Tests SHALL cover: a fresh login (new `auth_time`), a silent login (old `auth_time` preserved), a silent login past the cap (rejected with `REAUTH_REQUIRED`), and the missing-claim fallback.
+7. The ID token SHALL be validated before any claim is trusted: signature against the realm's JWKS, `iss`, `aud`, `exp` and `nonce`. A shared `IdTokenValidator` SHALL replace the three private nonce checks. A validation failure ends the login, writes no cookie and clears the state cookie.
+8. `GET /auth/login` SHALL accept `forceLogin=true`, which adds `prompt=login`. Every login request carries `max_age`.
+9. `POST /auth/refresh` and the tenantless re-issue SHALL enforce the absolute cap, and a token's `exp` SHALL NOT extend past `auth_time` plus the effective absolute lifetime.
 
 ### Requirement 4: Session timeouts are runtime settings
 
@@ -81,7 +84,9 @@ A review of the auth cookie handling, plus the manual testing of token refresh a
 4. The cross-field rule `absolute-lifetime >= token-lifetime` SHALL be enforced when either value is set, at each level, and the effective pair SHALL be re-checked at resolution time. The current startup-only validation of `AuthOptions` remains as the check on the fallback defaults.
 5. The effective values SHALL be used by: token generation (`exp`), the auth cookie expiry, `TokenRefreshMiddleware` (half-lifetime refresh and the absolute cap), `set-tenant` (absolute cap), and the tenantless token. A tenant-scoped token uses the effective values for its tenant. A tenantless token (no tenant yet) uses the System values.
 6. A change SHALL apply from the next token issue or refresh: existing tokens keep their `exp`, but the absolute cap is evaluated against the current effective value at refresh and `set-tenant`, so shortening takes effect without waiting for tokens to expire.
-7. Setting the System level SHALL require a system administrator. Setting a tenant's level SHALL require TenantAdmin of that tenant (or a system administrator). Authorization lives in the service layer, as with all other settings. Every change SHALL publish the existing `SettingChangedEvent` so it is auditable.
+7. Authorization of settings writes (system administrator for the System level, TenantAdmin for a tenant level) is moved to a separate story covering the whole Settings module, including the initial-setup exception. Every change SHALL publish the existing `SettingChangedEvent` so it is auditable.
+12. The Settings scope chain SHALL be ordered most specific first (for example User, Group, Case, Tenant, System). The first level with a value wins, and each parent is the default for the levels below it. `DefaultScopeChainProvider` SHALL emit Tenant before System (it emits System first today). `IScopeChainProvider` documentation SHALL state the order.
+13. `EnsureSettingDefinitionRequest` SHALL accept optional `MinValue` and `MaxValue`. Cross-value rules (tenant not above System, absolute not below token lifetime) SHALL be enforced by a new optional `ISettingWriteValidator` extension point called from `SetAsync`.
 8. The per-request lookup in `TokenRefreshMiddleware` SHALL use the settings cache (no database query on a cache hit) and SHALL resolve the scope chain from the token's `tid` explicitly, because that middleware runs before tenant resolution.
 9. Keycloak's own SSO Session Idle and SSO Session Max apply to every user of the shared realm and cannot be set per tenant. They remain a system-administrator concern in the Keycloak admin console. The app-enforced limits in this requirement are the lever tenant administrators have. The design SHALL state this boundary in the administrator documentation. Changing Keycloak's realm values from GroundUp's own API is out of scope for this spec.
 10. The token-revocation spec keeps revocation entries only as long as the longest possible token lifetime. With tenant overrides never longer than the System value, that bound is the System value, and the revocation design SHALL use it.
@@ -116,9 +121,10 @@ Agreed with the project owner:
 4. **Bounds** (also delegated):
    - `auth.session.token-lifetime-minutes`: minimum 2, maximum 120, default 60 (the token-revocation spec proposes a default of 15; whichever ships sets the seeded default). The minimum of 2 keeps the manual refresh test usable; shorter is never a security problem.
    - `auth.session.absolute-lifetime-minutes`: minimum 10, maximum 1440 (24 hours), default 480. It must always be at least the token lifetime.
-5. **Swagger and CSRF (Requirement 1.7):** deferred. Decide when this spec is worked on.
+5. **Swagger and CSRF (Requirement 1.7):** Swagger supplies the token through a UI script and `GET /auth/csrf`. No Development exemption.
+6. **Settings authorization:** separate story, discussed later.
+7. **ID token validation** is in this spec (Requirement 3.7).
 
 ## Open Questions for the Design
 
-1. **Swagger and CSRF (Requirement 1.7).** Swagger supplying the token, or a Development-only exemption. To be discussed when this spec is worked on.
-2. Does the Settings module's definition metadata support minimum and maximum values, or does the bound check need to live in the auth module? The design confirms this before choosing where to validate (Requirements 4.1 and 4.3).
+Resolved. Settings definitions support Min and Max (enforced in `SetAsync`), but seeders cannot set them yet (Requirement 4.13). See design.md.

@@ -7,6 +7,7 @@ using GroundUp.Auth.Services.Bootstrap;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Abstractions;
 using GroundUp.Events;
@@ -126,6 +127,10 @@ public static class AuthServiceCollectionExtensions
 
         // Bootstrap services
         services.AddScoped<IIdentityBootstrapService, IdentityBootstrapService>();
+
+        // Session timeouts from settings, with the tenant-not-above-System rule on write
+        services.AddScoped<ISessionPolicyProvider, SessionPolicyProvider>();
+        services.AddScoped<ISettingWriteValidator, SessionPolicyWriteValidator>();
 
         // Auth dispatcher services (Phase 10C)
         services.AddScoped<IAuthCookieWriter, AuthCookieWriter>();

@@ -52,6 +52,62 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task GetScopeChainAsync_TenantAndSystemLevelsExist_ReturnsTenantFirstThenSystem()
+    {
+        // Arrange
+        var tenantId = Guid.NewGuid();
+        var tenantContext = Substitute.For<ITenantContext>();
+        tenantContext.TenantId.Returns(tenantId);
+
+        var systemLevel = new SettingLevel
+        {
+            Id = Guid.NewGuid(), Name = "System", DisplayOrder = 0, CreatedAt = DateTime.UtcNow
+        };
+        var tenantLevel = new SettingLevel
+        {
+            Id = Guid.NewGuid(), Name = "Tenant", DisplayOrder = 1, CreatedAt = DateTime.UtcNow
+        };
+        _context.Set<SettingLevel>().AddRange(systemLevel, tenantLevel);
+        await _context.SaveChangesAsync();
+
+        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+
+        // Act
+        var result = await provider.GetScopeChainAsync();
+
+        // Assert: most specific first
+        result.Should().HaveCount(2);
+        result[0].LevelId.Should().Be(tenantLevel.Id);
+        result[0].ScopeId.Should().Be(tenantId);
+        result[1].LevelId.Should().Be(systemLevel.Id);
+        result[1].ScopeId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetScopeChainAsync_NoTenantContext_ReturnsSystemOnly()
+    {
+        // Arrange
+        var tenantContext = Substitute.For<ITenantContext>();
+        tenantContext.TenantId.Returns(Guid.Empty);
+
+        var systemLevel = new SettingLevel
+        {
+            Id = Guid.NewGuid(), Name = "System", DisplayOrder = 0, CreatedAt = DateTime.UtcNow
+        };
+        _context.Set<SettingLevel>().Add(systemLevel);
+        await _context.SaveChangesAsync();
+
+        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+
+        // Act
+        var result = await provider.GetScopeChainAsync();
+
+        // Assert
+        result.Should().ContainSingle();
+        result[0].LevelId.Should().Be(systemLevel.Id);
+    }
+
+    [Fact]
     public async Task GetScopeChainAsync_TenantIdIsEmpty_ReturnsEmptyList()
     {
         // Arrange
@@ -68,7 +124,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task GetScopeChainAsync_TenantLevelNotFound_ReturnsEmptyList()
+    public async Task GetScopeChainAsync_TenantLevelNotFound_ReturnsSystemOnly()
     {
         // Arrange
         var tenantId = Guid.NewGuid();
@@ -91,8 +147,9 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         // Act
         var result = await provider.GetScopeChainAsync();
 
-        // Assert
-        result.Should().BeEmpty();
+        // Assert: the System level is always part of the chain
+        result.Should().ContainSingle();
+        result[0].LevelId.Should().Be(systemLevel.Id);
     }
 
     public void Dispose()

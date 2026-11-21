@@ -169,10 +169,11 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             services.RemoveAll<IUnitOfWork>();
             services.AddScoped<IUnitOfWork, AuthDbContextUnitOfWork>();
 
-            // Replace the default scope chain provider with one that always includes the
-            // System level. The DefaultScopeChainProvider returns empty when TenantId is
-            // Guid.Empty (which is the case during auth callbacks), preventing system-level
-            // settings like auth.application.default-domain from being resolved.
+            // Replace the default scope chain provider with a System-only one. During auth
+            // callbacks there is no tenant context (TenantId is Guid.Empty), so tests resolve
+            // system-level settings like auth.application.default-domain only. The default
+            // provider now also returns the System level when no tenant is active, so this
+            // replacement is redundant and can be removed when convenient.
             services.RemoveAll<GroundUp.Core.Abstractions.IScopeChainProvider>();
             services.AddScoped<GroundUp.Core.Abstractions.IScopeChainProvider, AuthFlowTestScopeChainProvider>();
 
