@@ -49,7 +49,7 @@ The in-memory store is per process. With several application instances, only the
 2. A revocation for a user and tenant SHALL apply to tokens whose `tid` equals that tenant and whose issued-at is earlier than the cutoff time.
 3. A revocation for a user across all tenants SHALL apply to every token for that user, including tenantless tokens, whose issued-at is earlier than the cutoff time.
 4. A token issued after the cutoff time SHALL NOT be treated as revoked. This is what lets a user leave, rejoin, and sign in again.
-5. The default implementation SHALL be in-memory and thread-safe, and SHALL drop entries older than the maximum possible token lifetime (`TokenExpirationMinutes`, plus any clock allowance), so memory use is bounded by the number of revocations in that window.
+5. The default implementation SHALL be in-memory and thread-safe, and SHALL drop entries older than the maximum possible token lifetime, plus any clock allowance, so memory use is bounded by the number of revocations in that window. Since GU-72 the token lifetime is the runtime setting `auth.session.token-lifetime-minutes`, and a tenant value can never exceed the System value. The System value can change while older tokens are still alive, so the safe bound is the setting's maximum (120 minutes, `SessionSettingKeys.TokenLifetimeMax`), not the current System value.
 6. The abstraction and the default implementation SHALL carry a code comment and a reference in the Phase 15 entry of BUILD_PHASES.md stating that the in-memory store must be replaced by an `ICache`-backed implementation when the caching module is built.
 7. The cutoff time SHALL come from `TimeProvider` (or an equivalent injectable clock) so tests control it.
 
@@ -94,7 +94,7 @@ The in-memory store is per process. With several application instances, only the
 
 #### Acceptance Criteria
 
-1. The default `TokenExpirationMinutes` SHALL change from 60 to 15. The existing validation `AbsoluteSessionLifetimeMinutes >= TokenExpirationMinutes` SHALL still hold with the defaults.
+1. The default token lifetime SHALL change from 60 to 15 minutes. Since GU-72 that default is the seeded value of `auth.session.token-lifetime-minutes` (`SessionSettingKeys.TokenLifetimeDefault`); `AuthOptions.TokenExpirationMinutes` is only the fallback when settings cannot be read, and SHALL change with it. The rule absolute lifetime >= token lifetime SHALL still hold with the defaults.
 2. Sliding refresh SHALL keep working with the shorter lifetime (refresh at the halfway point). Existing tests that assume 60 minutes SHALL be updated, not skipped.
 3. Documentation SHALL state the revocation guarantee in one place: immediate on a single instance; at most `TokenExpirationMinutes` across instances until the caching module replaces the store.
 4. The revocation check SHALL work for tenantless tokens (no `tid`), using the user-wide cutoff. The tenantless-sessions spec SHALL reference this spec for its token validation.

@@ -29,7 +29,7 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 | 8 | Log in again; rejoin through the default tenant | Bob, in My Test Org | unchanged | My Test Org (same row) | `my-test-org` |
 | 9 | Log in with nowhere to go | Bob, **no current tenant** | unchanged | none (left) | empty |
 | 10 | Create an organization from a tenantless session | Bob, in Tenantless Org | unchanged | Tenantless Org | empty |
-| 11, 12, 13 | Optional: token refresh, subdomains, email verification | Alice, then the Part 13 users | — | — | empty (Part 12 changes the default *domain*; put it back) |
+| 11, 12, 13, 14 | Optional: token refresh, subdomains, email verification, session lifetime and forced sign-in | Alice, then the Part 13 users | — | — | empty (Part 12 changes the default *domain*; put it back) |
 
 ### Words used
 
@@ -39,7 +39,8 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 ### Running requests
 
 - Run requests in Swagger **in the same browser** you use for Keycloak. The browser sends your `AuthToken` cookie automatically. Swagger does not show `Set-Cookie`; use DevTools → Application → Cookies to watch it change.
-- With a REST client instead, send the cookie yourself: `Cookie: AuthToken=<value>`.
+- **CSRF protection.** A POST, PUT, PATCH or DELETE authenticated by the cookie must carry a CSRF token in the `X-CSRF-Token` header, or it gets **403** `CSRF_VALIDATION_FAILED`. Swagger does this for you: before the first such request it calls `GET /auth/csrf` in the background and adds the header (DevTools → Network shows the extra call once). GET requests and requests with an `Authorization: Bearer` header never need it.
+- With a REST client instead, send the cookie yourself: `Cookie: AuthToken=<value>`. For a POST, PUT, PATCH or DELETE, first call `GET /auth/csrf` with that cookie, then send `Cookie: AuthToken=<value>; CsrfToken=<CsrfToken cookie from that response>` and the header `X-CSRF-Token: <token from its body>`. Or use `Authorization: Bearer <token>` instead of the cookie, which needs no CSRF token.
 - `GET /api/projects` is used throughout as an example of a tenant-scoped endpoint.
 
 ### Recipes (used by many parts)
@@ -137,6 +138,7 @@ Go to http://localhost:8080 → log in as `admin` / `admin` → select the **gro
 3. **Save.**
 4. **Enable user registration.** **Realm settings → Login** → toggle **User registration** On. (The `realm.json` import is skipped if the realm already existed, so this may be off.)
 5. **Create the admin client.** **Clients → Create client**: Client ID `groundup-admin`, Client authentication **ON**, Standard flow **OFF**, Direct access grants **OFF**, Service account roles **ON** → Save. On the **Credentials** tab copy the **Client secret**. On **Service account roles** → **Assign role** → filter by clients → assign `realm-admin`.
+6. **Session limits.** **Realm settings → Sessions**: **SSO Session Idle** `30` minutes and **SSO Session Max** `8` hours → Save. `realm.json` sets these for a new realm; an existing realm keeps whatever it had (Keycloak's own default maximum is 10 hours, longer than the app's 8-hour cap). These two values apply to every user of the realm and are the system administrator's responsibility.
 
 ### 1.3 Run the wizard
 
@@ -424,15 +426,20 @@ Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user 
 
 ---
 
-## Part 11 (Optional): Token Refresh
+## Part 11 (Optional): Token Refresh and Session Timeout Settings
 
-Not changed by the tenantless-session work. Run it as Alice: log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4).
+Run it as Alice: log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4).
 
-1. In `appsettings.Development.json`, temporarily set `"TokenExpirationMinutes": 2` (under `GroundUp:Auth`). Restart the app and sign in again.
-2. Refresh only happens in a window: the token must be **more than half its lifetime old but not yet expired**. With a 2-minute lifetime that is **between 1 and 2 minutes** after signing in. Wait about 70 seconds, then `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`). The old token is replaced in place.
+The timeouts are runtime settings, changed through the settings API with no restart: `auth.session.token-lifetime-minutes` (2 to 120, default 60; also the inactivity timeout) and `auth.session.absolute-lifetime-minutes` (10 to 1440, default 480). Each can be set at the System level and, shorter only, per tenant. `appsettings` values are only a fallback when settings cannot be read. The settings API has no authorization yet (GU-77), so any caller can change them.
 
-   If you wait **past 2 minutes** the token has expired and cannot be refreshed. The browser drops the cookie, `GET /auth/me` returns **401**, and you have to log in again (Recipe 1). That is correct behavior; it just means you missed the window. Sign in again and retry.
-3. Restore `TokenExpirationMinutes` to `60` and restart.
+1. **Find the level ids.** `GET /api/settings/levels` → note the `id` of `System` and of `Tenant`.
+2. **Shorten the token lifetime.** `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`. Expected: **200**; note `data.id` for step 6. Then `POST /auth/refresh`: the new `AuthToken` expires in 2 minutes (DevTools → Application → Cookies, **Expires**).
+3. **Refresh.** Refresh only happens in a window: the token must be **more than half its lifetime old but not yet expired**, so **between 1 and 2 minutes** after it was issued. Wait about 70 seconds, then `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`).
+
+   If you wait **past 2 minutes** the token has expired and cannot be refreshed: `GET /auth/me` returns **401** and you log in again (Recipe 1). That is correct; you missed the window.
+4. **A tenant can only shorten.** Using `My Test Org`'s id from `GET /auth/me/tenants`: `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "5", "levelId": "<Tenant id>", "scopeId": "<My Test Org id>" }`. Expected: **400**, the tenant value cannot be longer than the System value (2). With `"value": "2"` it is accepted (**200**; note `data.id`).
+5. **Bounds and the cross-field rule.** `"value": "1"` at the System level → **400** (minimum 2). `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "1", ... }` → **400** (minimum 10).
+6. **Put it back.** `DELETE /api/settings/values/<id>` for each id you noted. The defaults apply again on the next token.
 
 ---
 
@@ -620,6 +627,40 @@ Set the default tenant (Recipe 3, `my-test-org`), restart, log out fully, then `
 2. Stop the mail catcher when you are done: `docker rm -f groundup-mailpit`.
 3. If you changed `FlowStateExpirationMinutes`, set it back to `10` and restart.
 
+---
+
+## Part 14 (Optional): Session Lifetime and Forced Sign-In
+
+Checks that the session is counted from when the user really typed their password (Keycloak's `auth_time`), that a silent single sign-on does not restart it, and that the app makes Keycloak ask for the password again when the session is too old. Run it as Alice, scoped to `My Test Org`, with the timeouts at their defaults.
+
+**How to read `auth_time`.** In DevTools → Application → Cookies, copy the `AuthToken` value and decode it (paste into https://jwt.io, or in PowerShell: `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($t.Split('.')[1].Replace('-','+').Replace('_','/')).PadRight((($t.Split('.')[1].Length+3) -band -4),'=')))` with `$t` set to the token). `auth_time` is Unix seconds; convert with `[DateTimeOffset]::FromUnixTimeSeconds(<value>).ToLocalTime()`.
+
+### 14.1 The login URL carries `max_age`
+`POST /auth/login`. **Expected:** the `redirectUrl` contains `max_age=28800` (8 hours, the default absolute lifetime) and no `prompt`.
+
+### 14.2 A silent sign-on keeps the original `auth_time`
+1. Log out fully (Recipe 2), then log in as Alice **with the password** (Recipe 1) and select `My Test Org` if asked. Note `auth_time`: it is the moment you submitted the password, so it can be a minute or two earlier than the token's `iat` (for example if you chose a tenant first).
+2. Wait 2 minutes. Run Recipe 1 again **without logging out fully** (a plain `POST /auth/logout` is fine; opening `logoutUrl` would end Keycloak's session and defeat the test). Keycloak signs you in **without** a form.
+3. **Expected:** the new `AuthToken` has the **same** `auth_time` as in step 1, with a later `iat`. A user with two organizations lands on the picker, so this token has no `tid`; selecting a tenant keeps the same `auth_time` too.
+
+### 14.3 `forceLogin` asks for the password
+1. `POST /auth/login?forceLogin=true`. **Expected:** the `redirectUrl` contains `prompt=login` and `max_age`.
+2. Open it. **Expected:** Keycloak shows the **login form** even though its session is alive. Sign in.
+3. **Expected:** `auth_time` in the new `AuthToken` is now (it moved forward). This is what a client does after a `401 REAUTH_REQUIRED`.
+
+### 14.4 `max_age` makes an old session ask for the password
+Uses the shortest allowed absolute lifetime (10 minutes), so it takes about 11 minutes.
+
+1. Set the System values through the settings API (Part 11 shows how to get the System level id): `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`, then `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "10", "levelId": "<System id>" }`. Note each response's `data.id`. No restart is needed.
+2. Log in with the password (`POST /auth/login?forceLogin=true`, Recipe 1 step 2). `POST /auth/login` now returns `max_age=600`.
+3. Wait 11 minutes. Run Recipe 1 (`POST /auth/login`, no `forceLogin`).
+4. **Expected:** Keycloak shows the **login form**, even though its own SSO session (30 minutes idle, 8 hours maximum) is still alive, because the last sign-in is older than `max_age`. After you sign in, `auth_time` is now.
+5. **Put it back:** `DELETE /api/settings/values/<id>` for both ids from step 1.
+
+> If a stale session ever reaches the callback anyway (for example a clock difference), the callback returns `401 { "errorCode": "REAUTH_REQUIRED" }` and writes no cookie. The automated tests cover that path.
+
+**Record the result** (Keycloak version and whether 14.2 to 14.4 matched) in the Phase 10C spec's tasks file, task 7.2.
+
 > **Worth knowing:** with "Verify email" off, Keycloak lets anyone register with an email address they do not own, and the app accepts it. The app does not check `email_verified` itself. If verified email should be a hard rule for the framework, regardless of how the realm is configured, the app should check the claim as well. That is not built.
 
 ---
@@ -632,7 +673,10 @@ These need extra setup (several organizations, a second admin) or conditions tha
 - Leaving a tenant other than the one your session is on: no cookie change.
 - One of two admins leaves (allowed), then the remaining admin cannot (the departed admin no longer counts).
 - Leaving removes roles in that tenant only.
-- `set-tenant` returns 401 once the original sign-in is older than `AbsoluteSessionLifetimeMinutes`.
+- `set-tenant`, `/auth/refresh` and the callback return `401 REAUTH_REQUIRED` once the original sign-in is older than the absolute session lifetime (System or the tenant's, whichever applies).
+- A token never expires later than the original sign-in plus the absolute lifetime.
+- CSRF on the cookie path: no token, a token without its cookie, or another user's token gets 403; Bearer requests and GETs are never blocked.
+- An ID token with a bad signature is rejected (`ID_TOKEN_INVALID`) and no cookie is written.
 - A configured default tenant that does not exist returns 403 at login.
 - A Keycloak access token sent as a Bearer header is treated as an identity-provider principal, not a GroundUp user.
 
@@ -668,6 +712,11 @@ These need extra setup (several organizations, a second admin) or conditions tha
 | Part 13 with Gmail: the email is not in the inbox | Check spam. Gmail also rewrites the sender to your own address, so look for mail from yourself. Allow a minute |
 | Keycloak's Email settings are empty again | They live in Keycloak's database. A full reset (`down -v`, "Resetting Everything") wipes them. Enter them again |
 | After enabling "Verify email", Alice or Bob is asked to verify at login | They registered while verification was off, so Keycloak recorded them as unverified. Mark them verified in Keycloak admin → Users → the user → Email verified On (Part 13.1 step 3) |
+| A POST from Swagger or a REST client returns 403 `CSRF_VALIDATION_FAILED` | The request used the cookie without a valid CSRF token. In Swagger, hard-refresh the page (Ctrl+F5) so it loads the CSRF interceptor, and retry once (a token from before a sign-in as another user is rejected; the retry fetches a new one). With a REST client, follow "Running requests" at the top, or use a Bearer header |
+| The Swagger page is blank | An old build with the broken CSRF interceptor, or a cached page. Rebuild with the current code and hard-refresh (Ctrl+F5) |
+| An endpoint or the callback returns 401 `REAUTH_REQUIRED` | The session is older than the absolute session lifetime. Run `POST /auth/login?forceLogin=true` and open its `redirectUrl`; Keycloak asks for the password and the session starts again |
+| Callback returns `ID_TOKEN_INVALID` | The ID token from Keycloak did not validate. The app log line "ID token rejected for realm ..." gives the reason. Check that the setup wizard's `publicBaseUrl` and `internalBaseUrl` match the URL Keycloak puts in its tokens (`iss`), and that the app can reach Keycloak at the internal URL |
+| The app logs a warning that the default domain is a single label | `auth.application.default-domain` is `localhost` (or another name without a dot). That is fine on `localhost`, but browsers drop the cookie on subdomain hosts. Part 12 uses `groundup.test` |
 | Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
 
 ---
@@ -739,7 +788,7 @@ COMMIT;
 
 **3. Delete the Keycloak user too**, or Keycloak's registration form will reject the email as already taken. Keycloak admin → **groundup** realm (not master) → **Users** → search the email → **Delete**.
 
-**4. Log out fully** (Recipe 2) so Keycloak shows the forms again, then restart the app. Setting values and permissions are cached in memory, so a running app may remember deleted data for up to 15 minutes.
+**4. Log out fully** (Recipe 2) so Keycloak shows the forms again, then restart the app. Setting values and permissions are cached in memory, so a running app may remember data deleted directly in the database for up to 15 minutes. (Changes made through the API clear the cache immediately on that instance.)
 
 If `default-tenant-slug` points at an organization this deletes, clear it (Recipe 3 with `''`).
 
