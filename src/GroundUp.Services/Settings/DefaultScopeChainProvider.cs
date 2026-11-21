@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace GroundUp.Services.Settings;
 
 /// <summary>
-/// Default implementation of <see cref="IScopeChainProvider"/> that builds a single-entry
-/// scope chain from <see cref="ITenantContext"/>. Queries the database for a "Tenant" level
-/// and returns a scope chain containing that level's ID paired with the current tenant ID.
+/// Default implementation of <see cref="IScopeChainProvider"/>. Builds the chain Tenant, then
+/// System (most specific first) from <see cref="ITenantContext"/>. The Tenant entry is included
+/// only when a tenant context is active; the System entry is always included when the level exists.
 /// <para>
 /// Consuming applications override this for complex hierarchies
 /// (e.g., User → Team → Tenant → System) by registering their own
@@ -36,17 +36,8 @@ public sealed class DefaultScopeChainProvider : IScopeChainProvider
     public async Task<IReadOnlyList<SettingScopeEntry>> GetScopeChainAsync(
         CancellationToken cancellationToken = default)
     {
+        // The chain is ordered most specific first (see IScopeChainProvider): Tenant, then System.
         var chain = new List<SettingScopeEntry>();
-
-        // Always include the System level (scope = null for system-wide settings)
-        var systemLevel = await _dbContext.Set<SettingLevel>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "System", cancellationToken);
-
-        if (systemLevel is not null)
-        {
-            chain.Add(new SettingScopeEntry(systemLevel.Id, null));
-        }
 
         // Include the Tenant level only when a tenant context is active
         if (_tenantContext.TenantId != Guid.Empty)
@@ -59,6 +50,16 @@ public sealed class DefaultScopeChainProvider : IScopeChainProvider
             {
                 chain.Add(new SettingScopeEntry(tenantLevel.Id, _tenantContext.TenantId));
             }
+        }
+
+        // Always include the System level last (scope = null for system-wide settings)
+        var systemLevel = await _dbContext.Set<SettingLevel>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Name == "System", cancellationToken);
+
+        if (systemLevel is not null)
+        {
+            chain.Add(new SettingScopeEntry(systemLevel.Id, null));
         }
 
         return chain;

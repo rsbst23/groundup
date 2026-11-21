@@ -22,6 +22,8 @@ namespace GroundUp.Core.Dtos.Settings;
 /// <param name="IsRequired">Whether a value is required.</param>
 /// <param name="IsSecret">Whether the value is masked in API responses.</param>
 /// <param name="IsEncrypted">Whether the value is encrypted at rest.</param>
+/// <param name="MinValue">Optional minimum for numeric types, enforced when a value is set.</param>
+/// <param name="MaxValue">Optional maximum for numeric types, enforced when a value is set.</param>
 public record EnsureSettingDefinitionRequest(
     string Key,
     SettingDataType DataType,
@@ -36,4 +38,6 @@ public record EnsureSettingDefinitionRequest(
     string? ValidationMessage = null,
     bool IsRequired = false,
     bool IsSecret = false,
-    bool IsEncrypted = false);
+    bool IsEncrypted = false,
+    string? MinValue = null,
+    string? MaxValue = null);

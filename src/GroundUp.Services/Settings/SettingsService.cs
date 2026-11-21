@@ -33,6 +33,7 @@ public sealed class SettingsService : ISettingsService
     private readonly IMemoryCache _cache;
     private readonly SettingsCacheOptions _cacheOptions;
     private readonly SettingsCacheKeyTracker _cacheKeyTracker;
+    private readonly List<ISettingWriteValidator> _writeValidators;
 
     private const string SecretMask = "***REDACTED***";
 
@@ -53,6 +54,9 @@ public sealed class SettingsService : ISettingsService
     /// Optional secret resolver. When null, secretref:// values are returned verbatim.
     /// When registered, secretref:// values are resolved via a single-pass call.
     /// </param>
+    /// <param name="writeValidators">
+    /// Optional cross-value validators run by <c>SetAsync</c> after the built-in checks.
+    /// </param>
     public SettingsService(
         GroundUpDbContext dbContext,
         IEventBus eventBus,
@@ -61,8 +65,10 @@ public sealed class SettingsService : ISettingsService
         IOptions<SettingsCacheOptions> cacheOptions,
         SettingsCacheKeyTracker cacheKeyTracker,
         ISettingEncryptionProvider? encryptionProvider = null,
-        ISecretResolver? secretResolver = null)
+        ISecretResolver? secretResolver = null,
+        IEnumerable<ISettingWriteValidator>? writeValidators = null)
     {
+        _writeValidators = writeValidators?.ToList() ?? [];
         _dbContext = dbContext;
         _eventBus = eventBus;
         _scopeChainProvider = scopeChainProvider;
@@ -180,6 +186,27 @@ public sealed class SettingsService : ISettingsService
                 var message = definition.ValidationMessage
                     ?? $"Value does not match the required pattern for setting '{key}'";
                 return OperationResult<SettingValueDto>.BadRequest(message);
+            }
+        }
+
+        // Validation: registered cross-value validators (for example "tenant value <= System value")
+        if (_writeValidators.Count > 0)
+        {
+            var levelName = await _dbContext.Set<SettingLevel>()
+                .AsNoTracking()
+                .Where(l => l.Id == levelId)
+                .Select(l => l.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var writeContext = new SettingWriteContext(key, value, levelId, levelName, scopeId);
+
+            foreach (var validator in _writeValidators)
+            {
+                var error = await validator.ValidateAsync(writeContext, cancellationToken);
+                if (error is not null)
+                {
+                    return OperationResult<SettingValueDto>.BadRequest(error);
+                }
             }
         }
 
@@ -506,6 +533,8 @@ public sealed class SettingsService : ISettingsService
                 IsRequired = request.IsRequired,
                 IsSecret = request.IsSecret,
                 IsEncrypted = request.IsEncrypted,
+                MinValue = request.MinValue,
+                MaxValue = request.MaxValue,
                 IsVisible = true,
                 IsReadOnly = false,
                 AllowMultiple = false,
