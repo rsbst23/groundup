@@ -159,7 +159,7 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 
 | Setting | Range | Default | Meaning |
 |---|---|---|---|
-| `auth.session.token-lifetime-minutes` | 2 to 120 | 60 | How long a sign-in token is valid. Also the inactivity timeout: a user who makes no request for this long must sign in again. |
+| `auth.session.token-lifetime-minutes` | 2 to 120 | 15 | How long a sign-in token is valid. Also the inactivity timeout: a user who makes no request for this long must sign in again. |
 | `auth.session.absolute-lifetime-minutes` | 10 to 1440 | 480 | The longest a session can last from the user's last real sign-in, however active they are. Must be at least the token lifetime. |
 
 - Both can be set at the **System** level and per **tenant**. A tenant value can only **shorten** the System value: a longer one is rejected when it is written, and if the System value is later lowered below an existing tenant value, the System value applies.
@@ -185,6 +185,14 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 - **Secrets** are masked in every read for every user. There is no way to read a secret value through the API.
 - **Errors.** No user: 401. Not allowed: 403. A caller without rights also gets 403 for an unknown key, so the API does not reveal which keys exist.
 - Object-level security (for example, groups that see only some documents) is a separate, future design in the Security module. `ISettingsAuthorizer` and `ISettingScopeOwnerResolver` are the extension points it can plug into for lower settings levels.
+
+**Revoking access when a membership ends (GU-71).** This is the one place that states the guarantee.
+
+- When a user leaves a tenant, every GroundUp token they hold for that tenant and issued before the leave is rejected: the request is treated as unauthenticated (401 on protected endpoints) and the token cannot be refreshed. Tokens for the user's other tenants keep working. A token issued after the user rejoins works.
+- The user's cached permissions for that tenant are evicted at the same time.
+- **Guarantee:** immediate on the application instance that handled the leave. Other instances accept such a token until it expires, at most the token lifetime (default 15 minutes, maximum 120), until the caching module (Phase 15, GU-47) replaces the in-memory `ITokenRevocationStore` with a shared one. A restart forgets revocations; the same token-lifetime bound applies.
+- **Production guard:** in the Production environment the app refuses to start with the in-memory store unless `GroundUp:Auth:AllowInMemoryTokenRevocationStore` is `true`. Set it only for a single-instance deployment.
+- Every path that ends access goes through `IMembershipService` (`GroundUp.Auth.Services`). Today that is leaving a tenant; admin removal of a member and user deactivation (GU-68) must be added there.
 
 **Keycloak's own limits are the outer boundary.** The realm's **SSO Session Idle** and **SSO Session Max** (Realm settings → Sessions) apply to every user of the shared realm and cannot be set per tenant. They are the system administrator's responsibility in the Keycloak admin console, and they are the values a compliance reviewer will look at alongside the two settings above. `keycloak/realm.json` sets 30 minutes idle and 8 hours maximum for development, equal to the default absolute lifetime; the organization's own session policy decides the final numbers. If `auth.session.absolute-lifetime-minutes` is raised above the realm's SSO Session Max, Keycloak's limit becomes the real one. GroundUp does not read the realm values at startup to warn about this (that would need an admin API call at every start); keep the two in step by policy.
 

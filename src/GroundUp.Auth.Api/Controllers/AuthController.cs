@@ -3,6 +3,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Core;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
@@ -25,7 +26,7 @@ public sealed class AuthController : ControllerBase
     private readonly IUserRepository _userRepository;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
-    private readonly LastAdminGuard _lastAdminGuard;
+    private readonly IMembershipService _membershipService;
     private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly IOptions<AuthOptions> _authOptions;
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
@@ -41,7 +42,7 @@ public sealed class AuthController : ControllerBase
     /// <param name="userRepository">Resolves GroundUp users by external identity provider identifier.</param>
     /// <param name="userTenantRepository">Repository for querying and managing user-tenant memberships.</param>
     /// <param name="tenantRepository">Repository for loading tenant details.</param>
-    /// <param name="lastAdminGuard">Guard for preventing removal of the last TenantAdmin.</param>
+    /// <param name="membershipService">Ends memberships (leave) and revokes the access they gave.</param>
     /// <param name="organizationProvisioningService">Creates organizations for authenticated users.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
@@ -54,7 +55,7 @@ public sealed class AuthController : ControllerBase
         IUserRepository userRepository,
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
-        LastAdminGuard lastAdminGuard,
+        IMembershipService membershipService,
         IOrganizationProvisioningService organizationProvisioningService,
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
@@ -67,7 +68,7 @@ public sealed class AuthController : ControllerBase
         _userRepository = userRepository;
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
-        _lastAdminGuard = lastAdminGuard;
+        _membershipService = membershipService;
         _organizationProvisioningService = organizationProvisioningService;
         _authOptions = authOptions;
         _keycloakOptions = keycloakOptions;
@@ -650,74 +651,47 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var userId = ResolveGroundUpUserId();
-        if (userId is null)
+        // Only a GroundUp token identifies a GroundUp user; an identity-provider token's sub does not
+        if (ResolveGroundUpUserId() is null)
         {
             return Unauthorized();
         }
 
-        // Get all memberships and find the active one for this tenant
-        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId.Value, cancellationToken);
-        if (!membershipsResult.Success || membershipsResult.Data is null)
+        // auth_time is carried into the tenantless token so the absolute session lifetime is not restarted
+        DateTimeOffset? originalAuthTime = null;
+        var authTimeClaim = HttpContext.User.FindFirst("auth_time");
+        if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
         {
-            return NotFound(new { error = "User is not a member of this tenant." });
+            originalAuthTime = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix);
         }
 
-        var membership = membershipsResult.Data.FirstOrDefault(m => m.TenantId == tenantId && m.IsActive);
-        if (membership is null)
+        var result = await _membershipService.LeaveTenantAsync(tenantId, originalAuthTime, cancellationToken);
+        if (!result.Success || result.Data is null)
         {
-            return NotFound(new { error = "User is not a member of this tenant." });
-        }
-
-        // Check last-admin guard: only the last active TenantAdmin is blocked from leaving
-        var guardResult = await _lastAdminGuard.CanLeaveTenantAsync(userId.Value, tenantId, cancellationToken);
-        if (!guardResult.Success)
-        {
-            return StatusCode(403, new { error = guardResult.Message, errorCode = guardResult.ErrorCode });
-        }
-
-        // Deactivate membership. Targets the tenant explicitly: the session may be scoped to a different tenant.
-        var deactivateResult = await _userTenantRepository.DeactivateMembershipAsync(userId.Value, tenantId, cancellationToken);
-        if (!deactivateResult.Success)
-        {
-            return StatusCode(deactivateResult.StatusCode, new { error = deactivateResult.Message });
-        }
-
-        // The tenant the session is scoped to (null for a tenantless session)
-        var options = _authOptions.Value;
-        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        Guid? currentTenantId = !string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out var currentTid)
-            ? currentTid
-            : null;
-
-        if (currentTenantId == tenantId)
-        {
-            // The user left the tenant they were working in. They are not moved into another tenant:
-            // the session becomes tenantless and the client asks them to choose (or create) one.
-            // The old tenant-scoped token must not stay in the cookie, so it is always replaced or cleared.
-            DateTimeOffset? originalAuthTime = null;
-            var authTimeClaim = HttpContext.User.FindFirst("auth_time");
-            if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
+            return result.StatusCode switch
             {
-                originalAuthTime = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix);
-            }
+                401 => Unauthorized(),
+                404 => NotFound(new { error = result.Message }),
+                403 => StatusCode(403, new { error = result.Message, errorCode = result.ErrorCode }),
+                _ => StatusCode(result.StatusCode, new { error = result.Message })
+            };
+        }
 
-            var tenantlessResult = await _authSessionService.IssueTenantlessSessionAsync(userId.Value, originalAuthTime);
-            if (tenantlessResult.Success && !string.IsNullOrEmpty(tenantlessResult.Data))
+        var outcome = result.Data;
+        if (outcome.SessionEnded)
+        {
+            // The old tenant-scoped token must not stay in the cookie: replace it, or clear it
+            if (outcome.SessionToken is not null)
             {
-                await _authCookieWriter.WriteAuthCookieAsync(HttpContext, tenantlessResult.Data);
+                await _authCookieWriter.WriteAuthCookieAsync(HttpContext, outcome.SessionToken);
             }
             else
             {
-                // The membership is already gone; never leave the old tenant-scoped token in place.
                 await _authCookieWriter.ClearAuthCookieAsync(HttpContext);
             }
-
-            return Ok(new { success = true, currentTenantId = (Guid?)null });
         }
 
-        // Left a different tenant (or the session was already tenantless): the session is unchanged.
-        return Ok(new { success = true, currentTenantId });
+        return Ok(new { success = true, currentTenantId = outcome.CurrentTenantId });
     }
 
     /// <summary>

@@ -80,7 +80,7 @@ public sealed class PermissionService : IPermissionService
     public async Task<HashSet<string>> GetUserPermissionsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var tenantId = _tenantContext.TenantId;
-        var cacheKey = $"permissions:{userId}:{tenantId}";
+        var cacheKey = PermissionCacheKeys.For(userId, tenantId);
 
         if (_cache.TryGetValue(cacheKey, out HashSet<string>? cachedPermissions) && cachedPermissions is not null)
         {

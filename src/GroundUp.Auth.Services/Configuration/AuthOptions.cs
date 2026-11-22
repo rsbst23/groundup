@@ -50,9 +50,11 @@ public sealed class AuthOptions
     public string Audience { get; set; } = "GroundUp";
 
     /// <summary>
-    /// Token expiration time in minutes. Default: 60.
+    /// Token expiration time in minutes. Default: 15. Only the fallback when the runtime setting
+    /// <c>auth.session.token-lifetime-minutes</c> cannot be read. Kept short because a token whose access
+    /// was revoked is honored by other instances until it expires (see <c>ITokenRevocationStore</c>).
     /// </summary>
-    public int TokenExpirationMinutes { get; set; } = 60;
+    public int TokenExpirationMinutes { get; set; } = 15;
 
     /// <summary>
     /// The name of the authentication cookie. Default: "AuthToken".
@@ -109,4 +111,15 @@ public sealed class AuthOptions
     /// Must be 0 or greater; validated on startup. 0 = delete immediately after termination.
     /// </summary>
     public int RetentionDays { get; set; } = 7;
+
+    /// <summary>
+    /// Allows the in-memory token revocation store in the Production environment. Default: false.
+    /// <para>
+    /// The in-memory store is per process: with several instances, only the instance that handled a
+    /// leave knows about it, and the others accept the old token until it expires (at most the token
+    /// lifetime). Production refuses to start with that store unless this is set. Set it only for a
+    /// single-instance deployment, until the caching module provides a shared store (Phase 15, GU-47).
+    /// </para>
+    /// </summary>
+    public bool AllowInMemoryTokenRevocationStore { get; set; }
 }

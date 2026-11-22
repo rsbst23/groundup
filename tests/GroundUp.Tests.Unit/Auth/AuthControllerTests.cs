@@ -7,6 +7,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
@@ -24,11 +25,10 @@ public sealed class AuthControllerTests
     private readonly IUserRepository _userRepository;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
-    private readonly LastAdminGuard _lastAdminGuard;
+    private readonly IMembershipService _membershipService = Substitute.For<IMembershipService>();
     private readonly AuthOptions _authOptions;
     private readonly KeycloakOptions _keycloakOptions;
     private readonly IAntiforgery _antiforgery;
-    private readonly IUserRoleRepository _userRoleRepository;
     private readonly IOrganizationProvisioningService _organizationProvisioningService =
         Substitute.For<IOrganizationProvisioningService>();
     private readonly AuthController _sut;
@@ -48,8 +48,6 @@ public sealed class AuthControllerTests
         _userRepository = Substitute.For<IUserRepository>();
         _userTenantRepository = Substitute.For<IUserTenantRepository>();
         _tenantRepository = Substitute.For<ITenantRepository>();
-        _userRoleRepository = Substitute.For<IUserRoleRepository>();
-        _lastAdminGuard = new LastAdminGuard(_userRoleRepository);
 
         _authOptions = new AuthOptions
         {
@@ -1217,341 +1215,161 @@ public sealed class AuthControllerTests
 
     #region POST /auth/tenants/{id}/leave
 
+    // The leave rules (membership, last-admin guard, revocation, tenantless session) are tested in
+    // MembershipServiceTests. These tests cover only the HTTP adapter.
+
     [Fact]
     public async Task LeaveTenant_Unauthenticated_Returns401()
     {
-        // Act
         var result = await _sut.LeaveTenant(TestTenantId);
 
-        // Assert
         result.Should().BeOfType<UnauthorizedResult>();
-    }
-
-    [Fact]
-    public async Task LeaveTenant_UserNotMemberOfTenant_Returns404()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", TestTenantId.ToString())
-        });
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>()));
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var notFoundResult = result.Should().BeOfType<NotFoundObjectResult>().Subject;
-        var body = GetAnonymousObjectProperties(notFoundResult.Value!);
-        body["error"].Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task LeaveTenant_UserIsSoleAdmin_Returns403()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        var membershipId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", targetTenantId.ToString())
-        });
-
-        var memberships = new List<UserTenantDto>
-        {
-            new(membershipId, TestUserId, targetTenantId, "ext-1", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        // LastAdminGuard: only 1 admin exists — block
-        var adminHolders = new List<UserRoleDto>
-        {
-            new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), targetTenantId, "TenantAdmin")
-        };
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
-        objectResult.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task LeaveTenant_SuccessfulLeave_DeactivatesMembershipAndReturnsSuccess()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        var membershipId = Guid.NewGuid();
-        var otherTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", otherTenantId.ToString()) // Viewing a different tenant
-        });
-
-        var memberships = new List<UserTenantDto>
-        {
-            new(membershipId, TestUserId, targetTenantId, "ext-1", true),
-            new(Guid.NewGuid(), TestUserId, otherTenantId, "ext-2", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        // LastAdminGuard: 2 admins exist — allow
-        var adminHolders = new List<UserRoleDto>
-        {
-            new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), targetTenantId, "TenantAdmin"),
-            new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
-        };
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
-
-        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Ok());
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var body = GetAnonymousObjectProperties(okResult.Value!);
-        body["success"].Should().Be(true);
-
-        // Verify membership was deactivated
-        await _userTenantRepository.Received(1).DeactivateMembershipAsync(
-            TestUserId, targetTenantId, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task LeaveTenant_DeactivationFails_ReturnsErrorInsteadOfSuccess()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", Guid.NewGuid().ToString())
-        });
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
-            {
-                new(Guid.NewGuid(), TestUserId, targetTenantId, "ext-1", true)
-            }));
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(new List<UserRoleDto>()));
-        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Fail("A conflict occurred while leaving the tenant.", 409));
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
-        objectResult.StatusCode.Should().Be(409);
-    }
-
-    [Fact]
-    public async Task LeaveTenant_RegularMemberOfTenantWithOneAdmin_DeactivatesMembershipAndReturnsSuccess()
-    {
-        // Arrange — the leaving user is not an admin; the tenant has exactly one other admin
-        var targetTenantId = Guid.NewGuid();
-        var membershipId = Guid.NewGuid();
-        var otherTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", otherTenantId.ToString())
-        });
-
-        var memberships = new List<UserTenantDto>
-        {
-            new(membershipId, TestUserId, targetTenantId, "ext-1", true),
-            new(Guid.NewGuid(), TestUserId, otherTenantId, "ext-2", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        var adminHolders = new List<UserRoleDto>
-        {
-            new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
-        };
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(adminHolders));
-
-        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Ok());
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        result.Should().BeOfType<OkObjectResult>();
-        await _userTenantRepository.Received(1).DeactivateMembershipAsync(
-            TestUserId, targetTenantId, Arg.Any<CancellationToken>());
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(3)]
-    public async Task LeaveTenant_LeavingCurrentTenant_BecomesTenantlessAndNeverSwitchesToAnotherTenant(int otherMemberships)
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        var authTime = DateTimeOffset.UtcNow.AddHours(-1);
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", targetTenantId.ToString()), // Currently working in the tenant being left
-            new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString())
-        });
-        SetupLeavableMemberships(targetTenantId, otherMemberships);
-        _authSessionService.IssueTenantlessSessionAsync(TestUserId, Arg.Any<DateTimeOffset?>())
-            .Returns(OperationResult<string>.Ok("tenantless-token"));
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert — tenantless token written, auth_time preserved, no other tenant selected
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var body = GetAnonymousObjectProperties(okResult.Value!);
-        body["success"].Should().Be(true);
-        body["currentTenantId"].Should().BeNull();
-        body.Should().NotContainKey("noTenants");
-
-        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), "tenantless-token");
-        await _authSessionService.Received(1).IssueTenantlessSessionAsync(
-            TestUserId,
-            Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()));
-        await _authSessionService.DidNotReceive().SetTenantAsync(
-            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
-    }
-
-    [Fact]
-    public async Task LeaveTenant_LeavingCurrentTenant_TenantlessTokenFails_ClearsCookieSoOldTokenIsNotKept()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", targetTenantId.ToString())
-        });
-        SetupLeavableMemberships(targetTenantId, otherMemberships: 1);
-        _authSessionService.IssueTenantlessSessionAsync(TestUserId, Arg.Any<DateTimeOffset?>())
-            .Returns(OperationResult<string>.NotFound("User not found"));
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        GetAnonymousObjectProperties(okResult.Value!)["currentTenantId"].Should().BeNull();
-        _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
-        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task LeaveTenant_LeavingDifferentTenant_SessionUnchangedAndCurrentTenantReported()
-    {
-        // Arrange
-        var targetTenantId = Guid.NewGuid();
-        var currentTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", currentTenantId.ToString())
-        });
-        SetupLeavableMemberships(targetTenantId, otherMemberships: 0);
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var body = GetAnonymousObjectProperties(okResult.Value!);
-        body["success"].Should().Be(true);
-        body["currentTenantId"].Should().Be(currentTenantId);
-        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
-        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
-        await _authSessionService.DidNotReceive().IssueTenantlessSessionAsync(
-            Arg.Any<Guid>(), Arg.Any<DateTimeOffset?>());
-    }
-
-    [Fact]
-    public async Task LeaveTenant_FromTenantlessSession_SessionUnchangedAndNoCurrentTenantReported()
-    {
-        // Arrange — tenantless GroundUp token (no tid)
-        var targetTenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
-        SetupLeavableMemberships(targetTenantId, otherMemberships: 1);
-
-        // Act
-        var result = await _sut.LeaveTenant(targetTenantId);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var body = GetAnonymousObjectProperties(okResult.Value!);
-        body["success"].Should().Be(true);
-        body["currentTenantId"].Should().BeNull();
-        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
-        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
+        await _membershipService.DidNotReceiveWithAnyArgs().LeaveTenantAsync(default, default, default);
     }
 
     [Fact]
     public async Task LeaveTenant_IdentityProviderPrincipal_Returns401()
     {
-        // Arrange — the sub of an identity-provider token is not a GroundUp user id, even when it parses as a GUID
+        // The sub of an identity-provider token is not a GroundUp user id, even when it parses as a GUID
         SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", TestUserId.ToString()) });
 
-        // Act
         var result = await _sut.LeaveTenant(Guid.NewGuid());
 
-        // Assert
         result.Should().BeOfType<UnauthorizedResult>();
-        await _userTenantRepository.DidNotReceive().DeactivateMembershipAsync(
-            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _membershipService.DidNotReceiveWithAnyArgs().LeaveTenantAsync(default, default, default);
     }
 
-    /// <summary>
-    /// The user holds an active membership in <paramref name="targetTenantId"/> plus
-    /// <paramref name="otherMemberships"/> others, and may leave (a second admin exists).
-    /// </summary>
-    private void SetupLeavableMemberships(Guid targetTenantId, int otherMemberships)
+    [Fact]
+    public async Task LeaveTenant_PassesTenantAndAuthTimeToService()
     {
-        var memberships = new List<UserTenantDto>
+        var authTime = DateTimeOffset.UtcNow.AddHours(-1);
+        SetGroundUpUser(withAuthTime: authTime);
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Ok(new LeaveTenantResult(TestTenantId, false, null)));
+        var targetTenantId = Guid.NewGuid();
+
+        await _sut.LeaveTenant(targetTenantId);
+
+        await _membershipService.Received(1).LeaveTenantAsync(
+            targetTenantId,
+            Arg.Is<DateTimeOffset?>(d => d.HasValue && d.Value.ToUnixTimeSeconds() == authTime.ToUnixTimeSeconds()),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_ServiceUnauthorized_Returns401()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Unauthorized());
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        result.Should().BeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task LeaveTenant_NotAMember_Returns404WithError()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.NotFound("User is not a member of this tenant."));
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        GetAnonymousObjectProperties(notFound.Value!)["error"].Should().Be("User is not a member of this tenant.");
+    }
+
+    [Fact]
+    public async Task LeaveTenant_LastAdmin_Returns403WithErrorCode()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Fail("Last admin", 403, "LAST_ADMIN"));
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(403);
+        var body = GetAnonymousObjectProperties(objectResult.Value!);
+        body["error"].Should().Be("Last admin");
+        body["errorCode"].Should().Be("LAST_ADMIN");
+    }
+
+    [Fact]
+    public async Task LeaveTenant_SaveConflict_Returns409()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Fail("A conflict occurred while leaving the tenant.", 409));
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(409);
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_SessionEndedWithToken_WritesTenantlessCookieAndReportsNoTenant()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Ok(new LeaveTenantResult(null, true, "tenantless-token")));
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        var body = GetAnonymousObjectProperties(result.Should().BeOfType<OkObjectResult>().Subject.Value!);
+        body["success"].Should().Be(true);
+        body["currentTenantId"].Should().BeNull();
+        body.Should().NotContainKey("noTenants");
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), "tenantless-token");
+        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_SessionEndedWithoutToken_ClearsCookieSoOldTokenIsNotKept()
+    {
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Ok(new LeaveTenantResult(null, true, null)));
+
+        var result = await _sut.LeaveTenant(TestTenantId);
+
+        GetAnonymousObjectProperties(result.Should().BeOfType<OkObjectResult>().Subject.Value!)["currentTenantId"]
+            .Should().BeNull();
+        _authCookieWriter.Received(1).ClearAuthCookieAsync(Arg.Any<HttpContext>());
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task LeaveTenant_SessionUnchanged_LeavesCookieAloneAndReportsCurrentTenant()
+    {
+        var currentTenantId = Guid.NewGuid();
+        SetGroundUpUser();
+        GivenLeaveResult(OperationResult<LeaveTenantResult>.Ok(new LeaveTenantResult(currentTenantId, false, null)));
+
+        var result = await _sut.LeaveTenant(Guid.NewGuid());
+
+        var body = GetAnonymousObjectProperties(result.Should().BeOfType<OkObjectResult>().Subject.Value!);
+        body["success"].Should().Be(true);
+        body["currentTenantId"].Should().Be(currentTenantId);
+        _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
+        _authCookieWriter.DidNotReceive().ClearAuthCookieAsync(Arg.Any<HttpContext>());
+    }
+
+    private void SetGroundUpUser(DateTimeOffset? withAuthTime = null)
+    {
+        var claims = new List<Claim>
         {
-            new(Guid.NewGuid(), TestUserId, targetTenantId, "ext-target", true)
+            new("sub", TestUserId.ToString()),
+            new("tid", TestTenantId.ToString())
         };
-        for (var i = 0; i < otherMemberships; i++)
+        if (withAuthTime is { } authTime)
         {
-            memberships.Add(new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), $"ext-other-{i}", true));
+            claims.Add(new Claim("auth_time", authTime.ToUnixTimeSeconds().ToString()));
         }
 
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        // LastAdminGuard: two admins, so leaving is allowed
-        _userRoleRepository.GetTenantAdminHoldersAsync(targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserRoleDto>>.Ok(new List<UserRoleDto>
-            {
-                new(Guid.NewGuid(), TestUserId, Guid.NewGuid(), targetTenantId, "TenantAdmin"),
-                new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), targetTenantId, "TenantAdmin")
-            }));
-
-        _userTenantRepository.DeactivateMembershipAsync(TestUserId, targetTenantId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult.Ok());
+        SetAuthenticatedUser(claims.ToArray());
     }
+
+    private void GivenLeaveResult(OperationResult<LeaveTenantResult> result)
+        => _membershipService.LeaveTenantAsync(Arg.Any<Guid>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
+            .Returns(result);
 
     #endregion
 
@@ -1666,7 +1484,7 @@ public sealed class AuthControllerTests
             _userRepository,
             _userTenantRepository,
             _tenantRepository,
-            _lastAdminGuard,
+            _membershipService,
             _organizationProvisioningService,
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),

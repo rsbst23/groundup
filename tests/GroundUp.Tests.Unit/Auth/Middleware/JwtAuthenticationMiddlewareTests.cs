@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GroundUp.Auth.Api.Middleware;
+using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
@@ -18,6 +19,7 @@ public sealed class JwtAuthenticationMiddlewareTests
     private readonly ITokenService _tokenService;
     private readonly IIdentityProviderService _idpService;
     private readonly AuthOptions _options;
+    private readonly ITokenRevocationStore _store = Substitute.For<ITokenRevocationStore>();
 
     public JwtAuthenticationMiddlewareTests()
     {
@@ -104,9 +106,9 @@ public sealed class JwtAuthenticationMiddlewareTests
     public async Task InvokeAsync_CookieTakesPrecedenceOverHeader()
     {
         // Arrange
-        var cookiePrincipal = CreateAuthenticatedPrincipal("cookie-user");
+        var cookiePrincipal = CreateAuthenticatedPrincipal(CookieUserId);
         _tokenService.ValidateTokenAsync("cookie-token").Returns(cookiePrincipal);
-        _tokenService.ValidateTokenAsync("bearer-token").Returns(CreateAuthenticatedPrincipal("header-user"));
+        _tokenService.ValidateTokenAsync("bearer-token").Returns(CreateAuthenticatedPrincipal(HeaderUserId));
 
         var (context, nextCalled) = CreateContext(_options);
         context.Request.Headers.Cookie = $"{CookieName}=cookie-token";
@@ -122,7 +124,7 @@ public sealed class JwtAuthenticationMiddlewareTests
 
         // Assert
         Assert.Equal("cookie", context.Items["AuthSource"]);
-        Assert.Equal("cookie-user", context.User.FindFirst("sub")?.Value);
+        Assert.Equal(CookieUserId, context.User.FindFirst("sub")?.Value);
     }
 
     [Fact]
@@ -389,6 +391,92 @@ public sealed class JwtAuthenticationMiddlewareTests
         Assert.Null(context.User.FindFirst(_options.DisplayNameClaimType));
     }
 
+    // --- Token revocation (GU-71) ---
+
+    private async Task<(DefaultHttpContext Context, bool NextCalled)> RunWithBearerAsync(ClaimsPrincipal principal)
+    {
+        _tokenService.ValidateTokenAsync("bearer-token").Returns(principal);
+        var (context, nextCalled) = CreateContext(_options);
+        context.Request.Headers.Authorization = "Bearer bearer-token";
+        var middleware = new JwtAuthenticationMiddleware(_ =>
+        {
+            nextCalled.Value = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(context);
+        return (context, nextCalled.Value);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_RevokedToken_ProceedsAnonymousWithoutIdpFallback()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var iat = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds();
+        _store.IsRevokedAsync(userId, tenantId, DateTimeOffset.FromUnixTimeSeconds(iat), Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        var (context, nextCalled) = await RunWithBearerAsync(
+            CreateAuthenticatedPrincipal(userId.ToString(), tenantId, iat: iat.ToString()));
+
+        Assert.True(nextCalled);
+        Assert.False(context.User.Identity?.IsAuthenticated ?? false);
+        await _idpService.DidNotReceiveWithAnyArgs().ValidateTokenAsync(default!);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_NotRevoked_AuthenticatesAndPassesUserTenantAndIat()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        var (context, _) = await RunWithBearerAsync(
+            CreateAuthenticatedPrincipal(userId.ToString(), tenantId, iat: iat.ToString()));
+
+        Assert.True(context.User.Identity?.IsAuthenticated);
+        await _store.Received(1).IsRevokedAsync(
+            userId, tenantId, DateTimeOffset.FromUnixTimeSeconds(iat), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_TenantlessToken_ChecksWithNullTenant()
+    {
+        var userId = Guid.NewGuid();
+
+        var (context, _) = await RunWithBearerAsync(CreateAuthenticatedPrincipal(userId.ToString(), withTenant: false));
+
+        Assert.True(context.User.Identity?.IsAuthenticated);
+        await _store.Received(1).IsRevokedAsync(userId, null, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_StoreThrows_FailsClosed()
+    {
+        _store.IsRevokedAsync(default, default, default, default)
+            .ReturnsForAnyArgs<Task<bool>>(_ => throw new InvalidOperationException("store down"));
+
+        var (context, nextCalled) = await RunWithBearerAsync(CreateAuthenticatedPrincipal());
+
+        Assert.True(nextCalled);
+        Assert.False(context.User.Identity?.IsAuthenticated ?? false);
+        await _idpService.DidNotReceiveWithAnyArgs().ValidateTokenAsync(default!);
+    }
+
+    [Theory]
+    [InlineData("not-a-guid", "1700000000")]
+    [InlineData(null, "not-a-number")]
+    public async Task InvokeAsync_MissingUserIdOrIat_FailsClosed(string? sub, string iat)
+    {
+        var principal = CreateAuthenticatedPrincipal(sub, iat: iat);
+
+        var (context, _) = await RunWithBearerAsync(principal);
+
+        Assert.False(context.User.Identity?.IsAuthenticated ?? false);
+        await _store.DidNotReceiveWithAnyArgs().IsRevokedAsync(default, default, default, default);
+    }
+
     // --- Helper methods ---
 
     private (DefaultHttpContext Context, StrongBox<bool> NextCalled) CreateContext(AuthOptions options)
@@ -397,6 +485,7 @@ public sealed class JwtAuthenticationMiddlewareTests
         services.AddSingleton(Options.Create(options));
         services.AddSingleton(_tokenService);
         services.AddSingleton(_idpService);
+        services.AddSingleton(_store);
         var sp = services.BuildServiceProvider();
 
         var context = new DefaultHttpContext { RequestServices = sp };
@@ -408,6 +497,7 @@ public sealed class JwtAuthenticationMiddlewareTests
         var services = new ServiceCollection();
         services.AddSingleton(Options.Create(options));
         services.AddSingleton(_tokenService);
+        services.AddSingleton(_store);
         // Intentionally NOT registering IIdentityProviderService
         var sp = services.BuildServiceProvider();
 
@@ -415,14 +505,23 @@ public sealed class JwtAuthenticationMiddlewareTests
         return (context, new StrongBox<bool>(false));
     }
 
-    private static ClaimsPrincipal CreateAuthenticatedPrincipal(string sub = "test-user")
+    private static readonly string CookieUserId = Guid.NewGuid().ToString();
+    private static readonly string HeaderUserId = Guid.NewGuid().ToString();
+
+    /// <summary>A GroundUp principal as <see cref="ITokenService.ValidateTokenAsync"/> returns it.</summary>
+    private static ClaimsPrincipal CreateAuthenticatedPrincipal(
+        string? sub = null, Guid? tenantId = null, bool withTenant = true, string? iat = null)
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim("sub", sub),
-            new Claim("email", "test@test.com"),
-            new Claim("tid", Guid.NewGuid().ToString())
+            new("sub", sub ?? Guid.NewGuid().ToString()),
+            new("email", "test@test.com"),
+            new("iat", iat ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
         };
+        if (withTenant)
+        {
+            claims.Add(new Claim("tid", (tenantId ?? Guid.NewGuid()).ToString()));
+        }
         var identity = new ClaimsIdentity(claims, "GroundUp");
         return new ClaimsPrincipal(identity);
     }

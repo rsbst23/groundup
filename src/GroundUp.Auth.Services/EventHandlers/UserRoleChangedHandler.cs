@@ -36,7 +36,7 @@ public sealed class UserRoleChangedHandler :
     public Task HandleAsync(EntityCreatedEvent<UserRoleDto> @event, CancellationToken cancellationToken = default)
     {
         var dto = @event.Entity;
-        var cacheKey = $"permissions:{dto.UserId}:{dto.TenantId}";
+        var cacheKey = PermissionCacheKeys.For(dto.UserId, dto.TenantId);
 
         _cache.Remove(cacheKey);
         _logger.LogDebug("Evicted permission cache for key {CacheKey} due to UserRole creation", cacheKey);
@@ -60,7 +60,7 @@ public sealed class UserRoleChangedHandler :
             return Task.CompletedTask;
         }
 
-        var cacheKey = $"permissions:{@event.UserId}:{@event.TenantId}";
+        var cacheKey = PermissionCacheKeys.For(@event.UserId.Value, @event.TenantId.Value);
 
         _cache.Remove(cacheKey);
         _logger.LogDebug("Evicted permission cache for key {CacheKey} due to UserRole deletion", cacheKey);

@@ -108,6 +108,32 @@ The in-memory store is per process. With several application instances, only the
 2. Integration tests SHALL cover, over HTTP: a token held before a leave is rejected with 401 afterwards; the same for admin removal; leave, rejoin and new sign-in succeeds; a token for another tenant of the same user keeps working after a leave from the first; a failed leave (last admin) leaves the token valid; a revoked token cannot be refreshed.
 3. MANUAL_TESTING.md SHALL gain a step that saves a Bearer token, leaves the tenant, and confirms the saved token is rejected.
 
+### Requirement 7: Leaving a tenant is a service operation
+
+**User story:** As a framework consumer using GroundUp as an SDK, leaving a tenant revokes access the same way it does through the API.
+
+#### Acceptance Criteria
+
+1. The leave logic (membership lookup, last-admin guard, deactivation, cutoff, permission cache eviction, and the decision whether the session becomes tenantless) SHALL live in a service in `GroundUp.Auth.Services`. `AuthController.LeaveTenant` SHALL only call it and translate the result into HTTP (status, body, cookie), with no repository access.
+2. Future paths that end access (admin removal of a member and user deactivation, expected in 10d, GU-68) SHALL go through the same service so they record a cutoff and evict the cache.
+3. Existing leave behavior and responses SHALL not change (200 with `currentTenantId`, 401, 403 last-admin, 404 not a member).
+
+### Requirement 8: The in-memory store is not used in production by accident
+
+#### Acceptance Criteria
+
+1. WHEN the environment is Production AND the in-memory revocation store is registered THEN the application SHALL refuse to start, unless the option `GroundUp:Auth:AllowInMemoryTokenRevocationStore` is `true`.
+2. The error message SHALL explain the multi-instance limitation and name the option.
+3. Other environments SHALL start and log nothing extra.
+4. An application that registers its own store (for example an `ICache`-backed one after Phase 15) SHALL not be affected.
+
+## Changes Since the Requirements Were Written (backlog review, GU-71)
+
+- **Membership-ending paths today:** only `POST /auth/tenants/{id}/leave`. There is no admin-removal endpoint and no user-deactivation path yet. Requirement 2.2 and 2.3 are met by the store API and the service (Requirement 7) now; their callers arrive with GU-68. The user-wide cutoff is tested at the store level.
+- **Permission cache:** keyed `permissions:{userId}:{tenantId}`. `DeactivateMembershipAsync` removes role rows directly without events, so nothing evicts the entry today. Eviction is per user and tenant (answers Requirement 4.2).
+- **Existing databases:** GroundUp has never been deployed, so changing the seeded default from 60 to 15 needs no migration.
+- **Revoked token response:** the middleware treats the request as anonymous, the same as an expired token, so protected endpoints return a plain 401 with no special error code. The identity-provider fallback SHALL NOT be tried for a revoked GroundUp token.
+
 ## Decisions Made for the Design
 
 1. **Clock precision.** `iat` has whole-second precision. The cutoff time is rounded up to the next whole second and a token is revoked when `iat < cutoff`. A token issued in the same second as the leave is revoked, which is the safe direction. A rejoin followed by a new sign-in goes through Keycloak and takes longer than a second, so legitimate tokens are not affected.
