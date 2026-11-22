@@ -20,7 +20,8 @@ Baselines: unit 1623 pass / 12 known failures (+1 flaky property test, GU-73); i
   - [x] 3.2 Defaults 60 → 15 (`SessionSettingKeys`, `AuthOptions`, sample appsettings)
   - [x] 3.3 Unit tests (6 middleware, 1 TokenService principal exposes `sub`/`iat`; issued-token `iat` was already asserted), updated tests that assumed 60 (session policy, seeder, GU-77 integration tests now write tenant value 10). Unit 1663 / 12 known + flaky; integration 357 / 48; sample 22/22
 
-- [ ] 4. Integration tests and documentation
-  - [ ] 4.1 HTTP integration tests (design section 9)
-  - [ ] 4.2 ARCHITECTURE.md revocation guarantee; BUILD_PHASES.md Phase 15 wording; MANUAL_TESTING.md Part 7 step
-  - [ ] 4.3 Jira
+- [x] 4. Integration tests and documentation
+  - [x] 4.1 `TokenRevocationIntegrationTests` (7): Bearer and cookie tokens held before a leave get 401; the token for the user's other tenant keeps working; a last-admin blocked leave keeps the token valid; a revoked token cannot be refreshed; leave, rejoin and a new token works (the old one stays revoked); leave evicts the app's cached permissions. Admin removal is not tested: the path does not exist yet (GU-68)
+  - [x] 4.2 ARCHITECTURE.md revocation guarantee and default 15; BUILD_PHASES.md Phase 15 wording; MANUAL_TESTING.md Part 7 (save a token in 7.1, check 401 in 7.4), Part 11 default, "not yet built" list
+  - [x] 4.3 Jira
+  - Results: unit 1664 / 12 known; integration 364 / 48 known; sample 22/22

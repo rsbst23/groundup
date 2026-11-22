@@ -335,8 +335,13 @@ What should happen:
 - The response is `{ "success": true, "currentTenantId": ... }`, where `currentTenantId` is `null` when you have no current tenant.
 
 ### 7.1 Leave
-1. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
-2. `POST /auth/tenants/<id>/leave`.
+1. **Save a copy of Bob's current token** (for 7.4). DevTools → Application → Cookies → copy the `AuthToken` value. Check it works from a terminal, outside the browser, so no cookie is sent:
+   ```
+   curl.exe -i http://localhost:<port>/auth/me -H "Authorization: Bearer <saved token>"
+   ```
+   Expected: `HTTP/1.1 200`.
+2. `GET /auth/me/tenants` → note the `id` of `My Test Org`.
+3. `POST /auth/tenants/<id>/leave`.
 
 Expected: **200** `{ "success": true, "currentTenantId": null }`. Bob can leave because `My Test Org` still has an active admin (Alice).
 
@@ -361,6 +366,13 @@ JOIN "AuthUsers" u ON u."Id" = ur."UserId"
 WHERE lower(u."Email") = 'member@example.com';
 ```
 Expected: `0`.
+
+### 7.4 The saved token no longer works
+Run the same `curl.exe` command as in 7.1 step 1, with the token saved **before** leaving.
+
+Expected: `HTTP/1.1 401`. Leaving revoked every token Bob held for `My Test Org`, not only the browser cookie. His current (tenantless) session in the browser is not affected. A token issued after rejoining (Part 8) works again.
+
+> Revocation is kept in memory by the app instance that handled the leave. With one instance (this guide) it is immediate. With several instances, the others accept the old token until it expires (at most the token lifetime, default 15 minutes) until the caching module provides a shared store. Restarting the app forgets revocations, so run 7.4 without a restart in between.
 
 ---
 
@@ -432,7 +444,7 @@ Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user 
 
 ## Part 11 (Optional): Token Refresh and Session Timeout Settings
 
-The timeouts are runtime settings, changed through the settings API with no restart: `auth.session.token-lifetime-minutes` (2 to 120, default 60; also the inactivity timeout) and `auth.session.absolute-lifetime-minutes` (10 to 1440, default 480). Each can be set at the System level and, shorter only, per tenant. `appsettings` values are only a fallback when settings cannot be read.
+The timeouts are runtime settings, changed through the settings API with no restart: `auth.session.token-lifetime-minutes` (2 to 120, default 15; also the inactivity timeout) and `auth.session.absolute-lifetime-minutes` (10 to 1440, default 480). Each can be set at the System level and, shorter only, per tenant. `appsettings` values are only a fallback when settings cannot be read.
 
 **Who may change settings (GU-77):**
 
@@ -819,4 +831,4 @@ These flows are planned for future phases and are not implemented yet:
 - **Invitation flow** (Phase 10E)
 - **Join links** (Phase 10F)
 - **Admin management UI** (Phase 10G)
-- **Revoking an old token after leaving** (`phase-10c-token-revocation`): a copy of a tenant-scoped token you held before leaving keeps working until it expires
+- **Revocation across several app instances** (Phase 15, caching module): today an old token is rejected only by the instance that handled the leave (7.4)
