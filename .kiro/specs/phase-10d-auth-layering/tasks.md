@@ -16,12 +16,12 @@ Baselines: unit 1664 pass / 12 known failures (+1 flaky property test, GU-73); i
   - [x] 2.4 Thin `AuthController` (no repository dependencies) and `HostTokenReconciliationMiddleware`; `Auth.Api` allowlist pairs removed and the architecture test passes
   - [x] 2.5 Unit tests: logic tests moved to the services (membership list and member check, external-user set-tenant, organization creation, validator); controller tests assert the unchanged JSON property names. Unit 1688 / 12 known; integration 365 / 48; sample 22/22
 
-- [ ] 3. Services do not use the database
-  - [ ] 3.1 `IUniqueConstraintDetector` (Data.Abstractions) and `PostgresUniqueConstraintDetector` (Data.Postgres)
-  - [ ] 3.2 `IIdentityBootstrapRepository` (Auth.Data.Abstractions), `IdentityBootstrapRepository` (Auth.Repositories), registration
-  - [ ] 3.3 `IdentityBootstrapService` on the repository; remove the dead message check in `NewOrganizationFlowHandler`
-  - [ ] 3.4 Remove `Auth.Services` → `Auth.Data.Postgres`; remove the `Auth.Services` allowlist pairs
-  - [ ] 3.5 Unit tests; the integration test from 1.2 passes unchanged
+- [x] 3. Services do not use the database
+  - [x] 3.1 `IUniqueConstraintDetector` (Data.Abstractions, takes `Exception` so the abstraction has no EF dependency) and `PostgresUniqueConstraintDetector` (Data.Postgres, over `PostgresErrorHelper`)
+  - [x] 3.2 `IIdentityBootstrapRepository` (Auth.Data.Abstractions), `SuperAdminRecord` (Auth.Core), `IdentityBootstrapRepository` (Auth.Repositories), registration in `AddGroundUpAuthPostgres`
+  - [x] 3.3 `IdentityBootstrapService` on the repository (decisions and log messages unchanged); dead message check removed from `NewOrganizationFlowHandler` (its collision test now returns the 409 result the repository really produces)
+  - [x] 3.4 `Auth.Services` → `Auth.Data.Postgres` reference removed; `Auth.Services` allowlist pairs removed. The whole solution builds. Allowlist now holds only GU-82's three pairs
+  - [x] 3.5 Unit tests (service decisions incl. missing role and concurrent conflict, Postgres detector); the integration test from 1.2 passes with only `CreateService` changed. Unit 1698 / 12 known; integration 365 / 48; sample 22/22
 
 - [ ] 4. Documentation and Jira
   - [ ] 4.1 CLAUDE.md anti-patterns and steering rules name the architecture tests; ARCHITECTURE.md layer section

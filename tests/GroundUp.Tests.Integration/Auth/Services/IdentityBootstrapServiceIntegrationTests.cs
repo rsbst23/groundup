@@ -29,7 +29,9 @@ public sealed class IdentityBootstrapServiceIntegrationTests
 
     /// <summary>Builds the service under test. The only part of this class allowed to change in GU-81.</summary>
     private IIdentityBootstrapService CreateService(AuthDbContext context)
-        => new IdentityBootstrapService(context, NullLogger<IdentityBootstrapService>.Instance);
+        => new IdentityBootstrapService(
+            new GroundUp.Auth.Repositories.IdentityBootstrapRepository(context, new GroundUp.Data.Postgres.PostgresUniqueConstraintDetector()),
+            NullLogger<IdentityBootstrapService>.Instance);
 
     [Fact]
     public async Task FirstAdminProvisioning_FullLifecycle()

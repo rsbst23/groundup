@@ -9,11 +9,6 @@ internal static class LayerRulesAllowlist
 {
     public static readonly IReadOnlyList<(string Assembly, string UsedAssembly, string Reason)> Entries =
     [
-        // GU-81 task group 3: IdentityBootstrapService uses AuthDbContext and Postgres error codes
-        ("GroundUp.Auth.Services", "GroundUp.Auth.Data.Postgres", "GU-81"),
-        ("GroundUp.Auth.Services", "Microsoft.EntityFrameworkCore", "GU-81"),
-        ("GroundUp.Auth.Services", "Npgsql", "GU-81"),
-
         // GU-82: settings, bootstrap and setup services use GroundUpDbContext directly
         ("GroundUp.Services", "GroundUp.Data.Postgres", "GU-82"),
         ("GroundUp.Services", "Microsoft.EntityFrameworkCore", "GU-82"),

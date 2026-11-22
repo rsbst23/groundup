@@ -181,21 +181,15 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
             DisplayName: userInfo.DisplayName ?? userInfo.Email,
             IsActive: true);
 
-        try
+        // AddAsync returns a failed result (409) on a unique-constraint violation instead of throwing
+        var createResult = await _userRepository.AddAsync(newUserDto, ct);
+        if (createResult.Success && createResult.Data is not null)
         {
-            var createResult = await _userRepository.AddAsync(newUserDto, ct);
-            if (createResult.Success && createResult.Data is not null)
-            {
-                return createResult.Data.Id;
-            }
-        }
-        catch (Exception ex) when (IsUniqueConstraintViolation(ex))
-        {
-            // Concurrent creation — re-read the existing user
-            _logger.LogDebug("User ExternalUserId collision detected, re-reading existing user");
+            return createResult.Data.Id;
         }
 
-        // Re-read the existing user after collision
+        // Concurrent creation (another request created the same ExternalUserId): re-read the existing user
+        _logger.LogDebug("User creation failed ({StatusCode}); re-reading by ExternalUserId", createResult.StatusCode);
         var rereadResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId, ct);
         if (rereadResult.Success && rereadResult.Data is not null)
         {
@@ -206,25 +200,4 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
             $"Failed to resolve or create user with ExternalUserId '{userInfo.ExternalUserId}'");
     }
 
-    /// <summary>
-    /// Checks if an exception represents a unique constraint violation (Postgres 23505).
-    /// </summary>
-    private static bool IsUniqueConstraintViolation(Exception ex)
-    {
-        // Walk the exception chain looking for Postgres error code 23505
-        var current = ex;
-        while (current is not null)
-        {
-            if (current.Message.Contains("23505") ||
-                current.Message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) ||
-                current.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            current = current.InnerException;
-        }
-
-        return false;
-    }
 }

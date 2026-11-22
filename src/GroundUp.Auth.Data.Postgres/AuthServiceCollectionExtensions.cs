@@ -3,6 +3,7 @@ using GroundUp.Auth.Data.Postgres.Seeders;
 using GroundUp.Auth.Repositories;
 using GroundUp.Core.Abstractions;
 using GroundUp.Data.Abstractions;
+using GroundUp.Data.Postgres;
 using GroundUp.Data.Postgres.Interceptors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,6 +81,15 @@ public static class AuthServiceCollectionExtensions
 
         // Unit of Work for transactional operations (e.g., NewOrganizationFlowHandler)
         services.AddScoped<IUnitOfWork, AuthDbContextUnitOfWork>();
+
+        // Provider-specific error detection, used by repositories that react to duplicates
+        services.TryAddSingleton<IUniqueConstraintDetector, PostgresUniqueConstraintDetector>();
+
+        // First-run setup (system-level reads and the first SuperAdmin), used by IdentityBootstrapService
+        services.AddScoped<IIdentityBootstrapRepository>(sp =>
+            new IdentityBootstrapRepository(
+                sp.GetRequiredService<AuthDbContext>(),
+                sp.GetRequiredService<IUniqueConstraintDetector>()));
 
         // Auth data seeders — discovered and run by DataSeederRunner on startup
         services.AddScoped<IDataSeeder, DefaultPermissionSeeder>();
