@@ -1,8 +1,10 @@
+using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 
@@ -12,6 +14,11 @@ namespace GroundUp.Auth.Api.Middleware;
 /// Validates GroundUp-issued JWT tokens from cookies or Authorization headers.
 /// Cookie takes precedence over the Authorization header when both are present.
 /// Falls back to <see cref="IIdentityProviderService"/> validation if registered.
+/// <para>
+/// A valid GroundUp token is then checked against <see cref="ITokenRevocationStore"/>: a token issued
+/// before the user's access to its tenant ended is not honored, and the request continues anonymous
+/// (protected endpoints return 401, and the token cannot be refreshed).
+/// </para>
 /// <para>
 /// If <see cref="AuthOptions.JwtSigningKey"/> is not configured, all validation
 /// is skipped and requests proceed with an anonymous identity.
@@ -61,7 +68,14 @@ public class JwtAuthenticationMiddleware
 
             if (principal is not null)
             {
-                context.User = principal;
+                // A valid GroundUp token whose access was revoked (the user left the tenant) is treated
+                // like an expired one: the request continues anonymous, and the identity-provider
+                // fallback is not tried, because the token was ours and is no longer honored.
+                if (!await IsRevokedAsync(context, principal, options))
+                {
+                    context.User = principal;
+                }
+
                 await _next(context);
                 return;
             }
@@ -86,6 +100,47 @@ public class JwtAuthenticationMiddleware
 
         // No token or all validation failed — proceed with anonymous identity
         await _next(context);
+    }
+
+    /// <summary>
+    /// Asks <see cref="ITokenRevocationStore"/> whether the token's access was revoked, by user
+    /// (<c>sub</c>), tenant (<c>tid</c>, absent for a tenantless token) and issue time (<c>iat</c>).
+    /// Fails closed: a token without a parsable <c>sub</c> or <c>iat</c> (<see cref="ITokenService"/>
+    /// always writes both), or a store error, counts as revoked. Never logs the token.
+    /// </summary>
+    private static async Task<bool> IsRevokedAsync(HttpContext context, ClaimsPrincipal principal, AuthOptions options)
+    {
+        var logger = context.RequestServices.GetService<ILoggerFactory>()?.CreateLogger<JwtAuthenticationMiddleware>();
+
+        if (!Guid.TryParse(principal.FindFirst(options.UserIdClaimType)?.Value, out var userId)
+            || !long.TryParse(principal.FindFirst("iat")?.Value, out var iatUnix))
+        {
+            logger?.LogWarning("Rejected a GroundUp token without a valid user id or issue time");
+            return true;
+        }
+
+        Guid? tenantId = Guid.TryParse(principal.FindFirst(options.TenantIdClaimType)?.Value, out var tid) ? tid : null;
+
+        try
+        {
+            var store = context.RequestServices.GetRequiredService<ITokenRevocationStore>();
+            var revoked = await store.IsRevokedAsync(
+                userId, tenantId, DateTimeOffset.FromUnixTimeSeconds(iatUnix), context.RequestAborted);
+
+            if (revoked)
+            {
+                logger?.LogInformation(
+                    "Rejected a revoked token for user {UserId} in tenant {TenantId}", userId, tenantId);
+            }
+
+            return revoked;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogError(ex,
+                "Token revocation check failed for user {UserId}; the request continues unauthenticated", userId);
+            return true;
+        }
     }
 
     private static (string? Token, string? Source) ExtractToken(HttpContext context, AuthOptions options)

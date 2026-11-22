@@ -72,7 +72,7 @@ public sealed class SessionPolicyProviderTests : IDisposable
     {
         var policy = await CreateSut().GetSystemPolicyAsync();
 
-        policy.TokenLifetime.Should().Be(TimeSpan.FromMinutes(60));
+        policy.TokenLifetime.Should().Be(TimeSpan.FromMinutes(SessionSettingKeys.TokenLifetimeDefault));
         policy.AbsoluteLifetime.Should().Be(TimeSpan.FromMinutes(480));
     }
 
@@ -139,7 +139,7 @@ public sealed class SessionPolicyProviderTests : IDisposable
 
         var policyB = await CreateSut().GetPolicyForTenantAsync(tenantB);
 
-        policyB.TokenLifetime.Should().Be(TimeSpan.FromMinutes(60));
+        policyB.TokenLifetime.Should().Be(TimeSpan.FromMinutes(SessionSettingKeys.TokenLifetimeDefault));
     }
 
     [Fact]

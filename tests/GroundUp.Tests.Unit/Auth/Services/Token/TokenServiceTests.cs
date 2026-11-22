@@ -634,6 +634,23 @@ public sealed class TokenServiceTests
     // --- iat (the revocation spec compares against it) ---
 
     [Fact]
+    public async Task ValidateTokenAsync_GeneratedToken_PrincipalExposesSubAndIatForRevocation()
+    {
+        // JwtAuthenticationMiddleware reads "sub" and "iat" from the validated principal to check
+        // token revocation (GU-71). If either went missing, every token would be rejected.
+        SetupUser(_userId, "user@test.com", "Test User");
+        SetupTenantRoles();
+        SetupSystemRoles();
+        var token = await _sut.GenerateTokenAsync(_userId, _tenantId);
+
+        var principal = await _sut.ValidateTokenAsync(token);
+
+        Assert.NotNull(principal);
+        Assert.Equal(_userId.ToString(), principal!.FindFirst("sub")?.Value);
+        Assert.True(long.TryParse(principal.FindFirst("iat")?.Value, out _));
+    }
+
+    [Fact]
     public async Task GenerateTokenAsync_ValidUser_TokenCarriesIatClaim()
     {
         // Arrange

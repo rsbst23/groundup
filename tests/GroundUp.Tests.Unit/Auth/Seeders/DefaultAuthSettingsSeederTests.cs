@@ -54,7 +54,7 @@ public sealed class DefaultAuthSettingsSeederTests
             Arg.Is<EnsureSettingDefinitionRequest>(r =>
                 r.Key == "auth.session.token-lifetime-minutes"
                 && r.DataType == GroundUp.Core.Enums.SettingDataType.Int
-                && r.DefaultValue == "60"
+                && r.DefaultValue == "15"
                 && r.MinValue == "2"
                 && r.MaxValue == "120"
                 && r.GroupDisplayName == "Security > Sessions"

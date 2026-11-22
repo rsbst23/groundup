@@ -50,9 +50,11 @@ public sealed class AuthOptions
     public string Audience { get; set; } = "GroundUp";
 
     /// <summary>
-    /// Token expiration time in minutes. Default: 60.
+    /// Token expiration time in minutes. Default: 15. Only the fallback when the runtime setting
+    /// <c>auth.session.token-lifetime-minutes</c> cannot be read. Kept short because a token whose access
+    /// was revoked is honored by other instances until it expires (see <c>ITokenRevocationStore</c>).
     /// </summary>
-    public int TokenExpirationMinutes { get; set; } = 60;
+    public int TokenExpirationMinutes { get; set; } = 15;
 
     /// <summary>
     /// The name of the authentication cookie. Default: "AuthToken".

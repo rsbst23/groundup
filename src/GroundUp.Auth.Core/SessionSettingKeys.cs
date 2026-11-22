@@ -19,8 +19,11 @@ public static class SessionSettingKeys
     /// <summary>Maximum token lifetime in minutes.</summary>
     public const int TokenLifetimeMax = 120;
 
-    /// <summary>Default token lifetime in minutes.</summary>
-    public const int TokenLifetimeDefault = 60;
+    /// <summary>
+    /// Default token lifetime in minutes. Short because, until the caching module provides a shared
+    /// revocation store, a revoked token is honored by other instances until it expires (GU-71).
+    /// </summary>
+    public const int TokenLifetimeDefault = 15;
 
     /// <summary>Minimum absolute session lifetime in minutes.</summary>
     public const int AbsoluteLifetimeMin = 10;

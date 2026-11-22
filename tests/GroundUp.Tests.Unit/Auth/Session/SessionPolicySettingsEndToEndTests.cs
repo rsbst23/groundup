@@ -75,7 +75,7 @@ public sealed class SessionPolicySettingsEndToEndTests : IDisposable
     {
         var policy = await Provider.GetSystemPolicyAsync();
 
-        policy.TokenLifetime.Should().Be(TimeSpan.FromMinutes(60));
+        policy.TokenLifetime.Should().Be(TimeSpan.FromMinutes(SessionSettingKeys.TokenLifetimeDefault));
         policy.AbsoluteLifetime.Should().Be(TimeSpan.FromMinutes(480));
     }
 
@@ -146,8 +146,8 @@ public sealed class SessionPolicySettingsEndToEndTests : IDisposable
     [Fact]
     public async Task SetAsync_AbsoluteBelowToken_IsRejected()
     {
-        // Defaults are token 60, absolute 480.
-        var set = await Settings.SetAsync(SessionSettingKeys.AbsoluteLifetimeMinutes, "30", _systemLevelId, null);
+        // Defaults are token 15, absolute 480. 10 is the absolute minimum and still shorter than the token.
+        var set = await Settings.SetAsync(SessionSettingKeys.AbsoluteLifetimeMinutes, "10", _systemLevelId, null);
 
         set.Success.Should().BeFalse();
         set.Message.Should().Contain("shorter than the token lifetime");

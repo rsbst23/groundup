@@ -78,7 +78,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var tenantId = await SeedTenantAsync("SA anon", Slug("anon"));
 
-        var response = await Client.SendAsync(Put(token: null, _tenantLevelId, tenantId, "30"));
+        var response = await Client.SendAsync(Put(token: null, _tenantLevelId, tenantId, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -88,7 +88,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var (token, tenantId) = await SeedMemberAsync("plain");
 
-        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "30"));
+        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -98,7 +98,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var (token, tenantId) = await SeedTenantAdminAsync("own");
 
-        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "30"));
+        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         _writtenValueIds.Add(await ReadValueIdAsync(response));
@@ -110,7 +110,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
         var (token, _) = await SeedTenantAdminAsync("a");
         var otherTenantId = await SeedTenantAsync("SA other", Slug("other"));
 
-        var response = await Client.SendAsync(Put(token, _tenantLevelId, otherTenantId, "30"));
+        var response = await Client.SendAsync(Put(token, _tenantLevelId, otherTenantId, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await CountValuesAsync(otherTenantId)).Should().Be(0);
@@ -121,7 +121,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var (token, _) = await SeedTenantAdminAsync("sys");
 
-        var response = await Client.SendAsync(Put(token, _systemLevelId, scopeId: null, "30"));
+        var response = await Client.SendAsync(Put(token, _systemLevelId, scopeId: null, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -131,8 +131,8 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var token = await SeedSuperAdminAsync();
 
-        // 60 is the default, so other tests in the collection are not affected even before cleanup
-        var response = await Client.SendAsync(Put(token, _systemLevelId, scopeId: null, "60"));
+        // The default value, so other tests in the collection are not affected even before cleanup
+        var response = await Client.SendAsync(Put(token, _systemLevelId, scopeId: null, SessionSettingKeys.TokenLifetimeDefault.ToString()));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         _writtenValueIds.Add(await ReadValueIdAsync(response));
@@ -144,7 +144,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
         var token = await SeedSuperAdminAsync();
         var tenantId = await SeedTenantAsync("SA any", Slug("any"));
 
-        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "30"));
+        var response = await Client.SendAsync(Put(token, _tenantLevelId, tenantId, "10"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         _writtenValueIds.Add(await ReadValueIdAsync(response));
@@ -156,7 +156,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     public async Task DeleteValue_TenantAdminOwnTenant_Succeeds()
     {
         var (token, tenantId) = await SeedTenantAdminAsync("del");
-        var valueId = await WriteUnrestrictedAsync(_tenantLevelId, tenantId, "30");
+        var valueId = await WriteUnrestrictedAsync(_tenantLevelId, tenantId, "10");
 
         var response = await Client.SendAsync(Bearer(HttpMethod.Delete, $"/api/settings/values/{valueId}", token));
 
@@ -169,7 +169,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
     {
         var (token, _) = await SeedTenantAdminAsync("delother");
         var otherTenantId = await SeedTenantAsync("SA delother", Slug("delother"));
-        var valueId = await WriteUnrestrictedAsync(_tenantLevelId, otherTenantId, "30");
+        var valueId = await WriteUnrestrictedAsync(_tenantLevelId, otherTenantId, "10");
 
         var response = await Client.SendAsync(Bearer(HttpMethod.Delete, $"/api/settings/values/{valueId}", token));
 
