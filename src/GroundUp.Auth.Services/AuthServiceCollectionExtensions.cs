@@ -8,6 +8,7 @@ using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
 using GroundUp.Auth.Services.Session;
+using GroundUp.Auth.Services.Settings;
 using GroundUp.Auth.Services.Token;
 using GroundUp.Core.Abstractions;
 using GroundUp.Events;
@@ -132,6 +133,11 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<ISessionPolicyProvider, SessionPolicyProvider>();
         services.AddScoped<ISettingWriteValidator, SessionPolicyWriteValidator>();
         services.AddScoped<CallbackSessionGuard>();
+
+        // Settings authorization. Replaces the allow-all default registered by AddGroundUpSettings(),
+        // whatever the call order. An application or module that wants its own authorizer registers
+        // it after this call.
+        services.Replace(ServiceDescriptor.Scoped<ISettingsAuthorizer, SettingsAuthorizer>());
 
         // Auth dispatcher services (Phase 10C)
         services.AddScoped<IAuthCookieWriter, AuthCookieWriter>();

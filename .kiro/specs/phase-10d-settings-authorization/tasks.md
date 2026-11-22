@@ -8,9 +8,9 @@ Execute one top-level task at a time. After each: build, run tests against the b
   - [x] 1.3 Add `settings.manage.tenant`; remove `settings.write` and `settings.delete`
   - [x] 1.4 Unit tests for the allowlist, the default authorizer and the permission keys (commit cca8156; unit 1560 pass / 12 known failures, integration 340 / 48)
 
-- [ ] 2. Real authorizer
-  - [ ] 2.1 `SettingsAuthorizer` in `GroundUp.Auth.Services` and its registration (replaces the default)
-  - [ ] 2.2 Unit tests for every rule in requirements 1 and 3
+- [x] 2. Real authorizer
+  - [x] 2.1 `SettingsAuthorizer` in `GroundUp.Auth.Services` and its registration (`services.Replace` in `AddGroundUpAuth`, so call order does not matter)
+  - [x] 2.2 Unit tests for every rule in requirements 1 and 3 (31 tests; unit 1591 pass / 12 known failures, integration 340 / 48, sample 22/22)
 
 - [ ] 3. Wire into services
   - [ ] 3.1 `SettingsService.SetAsync` and `DeleteValueAsync` call the authorizer
