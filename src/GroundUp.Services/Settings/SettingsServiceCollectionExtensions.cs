@@ -41,6 +41,9 @@ public static class SettingsServiceCollectionExtensions
         // Phase 6C: scope chain provider (overridable via TryAddScoped)
         services.TryAddScoped<IScopeChainProvider, DefaultScopeChainProvider>();
 
+        // Settings authorization: allow-all default, replaced by the auth module when it is registered
+        services.TryAddScoped<ISettingsAuthorizer, AllowAllSettingsAuthorizer>();
+
         // Phase 6C: admin service
         services.AddScoped<ISettingsAdminService, SettingsAdminService>();
 
