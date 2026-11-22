@@ -47,11 +47,11 @@ Remove the `catch (Exception) when (IsUniqueConstraintViolation(ex))` block and 
 
 ## 4. Architecture tests
 
-- **Library:** `TngTech.ArchUnitNET.xUnit` (Apache 2.0, maintained by TNG). It reads the compiled IL, so dependencies inside method bodies (for example `GetRequiredService<IUserTenantRepository>()`) are found. Version pinned when added.
-- **Location:** `tests/GroundUp.Tests.Unit/Architecture/LayerRulesTests.cs`. Loads every `GroundUp.*` assembly that the unit test project references.
-- **Rules:** as Requirement 3.1. "Repository interface" = interface whose name ends in `Repository` in a `*.Data.Abstractions` assembly.
-- **Allowlist** (`LayerRulesAllowlist`): the 7 `GroundUp.Services` types for GU-82, each with a comment. A test also fails if an allowlisted type no longer violates any rule, so GU-82 must shrink the list.
-- If ArchUnitNET cannot express a rule cleanly, the fallback is a small Mono.Cecil scan written in the test project (same rules, same allowlist).
+- **No package (decided).** The compiler writes an assembly reference only for assemblies whose types the code uses, including inside method bodies, so `Assembly.GetReferencedAssemblies()` sees the middleware's `GetRequiredService<IUserTenantRepository>()`. Verified on today's build: `GroundUp.Auth.Api` lists `GroundUp.Auth.Data.Abstractions` and `GroundUp.Data.Abstractions` (only `AuthController` and `HostTokenReconciliationMiddleware` use them); `GroundUp.Auth.Services` lists `GroundUp.Auth.Data.Postgres`, `Microsoft.EntityFrameworkCore` and `Npgsql` (only `IdentityBootstrapService`); `GroundUp.Services` lists `GroundUp.Data.Postgres` and EF Core (GU-82).
+- **Trade-off:** a failure names the assembly, not the class. The message says which assembly uses which; the developer searches for the type.
+- **Location:** `tests/GroundUp.Tests.Unit/Architecture/LayerRulesTests.cs`. Assemblies are loaded through a type from each (`typeof(AuthController).Assembly` and so on), so every `GroundUp.*` production assembly the unit tests reference is covered. A test fails if a `GroundUp.*` assembly in `src` is missing from that list, so a new module is not silently skipped.
+- **Rules:** as Requirement 3.1, one `[Theory]` row per (layer, forbidden pattern).
+- **Allowlist** (`LayerRulesAllowlist`): (assembly, used assembly) pairs. After this story only GU-82's remain: `GroundUp.Services` → `GroundUp.Data.Postgres`, `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Relational`. A separate test fails when an allowlisted pair no longer occurs.
 
 ## 5. Risks
 
@@ -60,11 +60,11 @@ Remove the `catch (Exception) when (IsUniqueConstraintViolation(ex))` block and 
 | Changing the `me/tenants` JSON by accident | Controller tests assert the exact property names for both shapes; existing integration tests stay green |
 | First-admin provisioning regresses (no real test today) | New Postgres integration test (Requirement 4.2) before and after the move; run first against the current code to prove it covers today's behavior |
 | Removing the project reference breaks a consumer | The sample and tests reference `Auth.Data.Postgres` directly; build the whole solution |
-| ArchUnitNET false positives (for example generated code) | Restrict to `GroundUp.*` namespaces; ignore compiler-generated types |
+| An assembly reference without a real dependency (for example only a type forwarded through an attribute) | Not seen today; if it happens, the allowlist entry names it with a reason |
 
 ## 6. Task groups
 
-1. **Architecture tests first.** Add ArchUnitNET, the rules and an allowlist that also lists today's auth violations (so the suite is green), and the integration test for first-admin provisioning against the current code. Commit. This proves the tests catch today's state before anything moves.
+1. **Architecture tests first.** The rules and an allowlist that also lists today's auth violations (so the suite is green), and the integration test for first-admin provisioning against the current code. Commit. This proves the tests catch today's state before anything moves.
 2. **Controller and middleware.** Move the four operations (section 1), the validator, `MyTenantDto`; thin controller and middleware; remove the auth entries from the allowlist. Unit tests.
 3. **Services and data.** `IIdentityBootstrapRepository`, `IUniqueConstraintDetector`, service rewrite, `NewOrganizationFlowHandler` cleanup, remove the project reference and the last auth allowlist entries. The integration test from group 1 must pass unchanged.
 4. **Docs and Jira.** CLAUDE.md and steering mention the architecture tests; ARCHITECTURE.md layer section; GU-82 references the allowlist.

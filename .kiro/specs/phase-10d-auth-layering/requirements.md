@@ -32,12 +32,13 @@ The framework rules say controllers and middleware call services only, services 
 
 ### Requirement 3: Architecture tests
 
-1. Tests SHALL fail when:
-   - a type in any `*.Api` assembly depends on a repository interface (`I*Repository`), a `DbContext`, or `IUnitOfWork`;
-   - a type in any `*.Services` assembly depends on a type in a `*.Data.Postgres` assembly or on a `DbContext`;
-   - a type in any `*.Repositories` or `*.Services` assembly depends on `Npgsql`.
-2. The tests SHALL inspect method bodies, not only signatures (the middleware resolves a repository with `GetRequiredService<T>()`).
-3. Known exceptions SHALL be listed by type name in one allowlist, each with a comment naming GU-82. A new violation, or an allowlisted type that no longer violates, SHALL fail the test (so the list shrinks as GU-82 lands).
+1. Tests SHALL check the assemblies each compiled `GroundUp.*` assembly actually uses (`Assembly.GetReferencedAssemblies()`; the compiler records an assembly only when code uses one of its types, method bodies included). They SHALL fail when:
+   - a `*.Api` assembly uses a `*.Data.Abstractions` or `*.Data.Postgres` assembly, EF Core (`Microsoft.EntityFrameworkCore*`) or `Npgsql`;
+   - a `*.Services` assembly uses a `*.Data.Postgres` assembly, EF Core or `Npgsql`;
+   - a `*.Repositories` assembly uses a `*.Data.Postgres` assembly or `Npgsql`;
+   - `GroundUp.Core` uses any other `GroundUp.*` assembly; `GroundUp.Events` uses any `GroundUp.*` assembly other than `GroundUp.Core`.
+2. No third-party package is added for these tests (decided).
+3. Known exceptions SHALL be listed as (assembly, used assembly) pairs in one allowlist, each with a comment naming GU-82. A new violation, or an allowlisted pair that no longer occurs, SHALL fail the test (so the list shrinks as GU-82 lands). A failure message names both assemblies.
 4. The tests run with the unit tests, no database needed.
 
 ### Requirement 4: Tests and documentation
