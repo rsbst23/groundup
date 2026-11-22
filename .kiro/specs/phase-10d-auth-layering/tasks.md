@@ -23,6 +23,6 @@ Baselines: unit 1664 pass / 12 known failures (+1 flaky property test, GU-73); i
   - [x] 3.4 `Auth.Services` → `Auth.Data.Postgres` reference removed; `Auth.Services` allowlist pairs removed. The whole solution builds. Allowlist now holds only GU-82's three pairs
   - [x] 3.5 Unit tests (service decisions incl. missing role and concurrent conflict, Postgres detector); the integration test from 1.2 passes with only `CreateService` changed. Unit 1698 / 12 known; integration 365 / 48; sample 22/22
 
-- [ ] 4. Documentation and Jira
-  - [ ] 4.1 CLAUDE.md anti-patterns and steering rules name the architecture tests; ARCHITECTURE.md layer section
-  - [ ] 4.2 Jira: GU-81 summary; GU-82 points at the allowlist
+- [x] 4. Documentation and Jira
+  - [x] 4.1 CLAUDE.md anti-patterns and steering rules name the architecture tests; ARCHITECTURE.md layer section gains the checked rules and the open GU-82 exception, and decision 6 is corrected (it claimed project references alone prevent a controller from reaching a repository)
+  - [x] 4.2 Jira: GU-81 summary; GU-82 points at the allowlist
