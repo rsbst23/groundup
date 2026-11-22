@@ -9,11 +9,11 @@ Baselines: unit 1623 pass / 12 known failures (+1 flaky property test, GU-73); i
   - [x] 1.2 `AuthOptions.AllowInMemoryTokenRevocationStore`, `TokenRevocationStartupValidator`, registration in `AddGroundUpAuth`
   - [x] 1.3 Unit tests (21 new; unit 1644 pass / 12 known + flaky; integration 357 / 48; sample 22/22)
 
-- [ ] 2. Membership service and thin controller
-  - [ ] 2.1 `LeaveTenantResult`, `IMembershipService`, `MembershipService`
-  - [ ] 2.2 Shared permission cache key helper used by `PermissionService`, `UserRoleChangedHandler`, `MembershipService`
-  - [ ] 2.3 `AuthController.LeaveTenant` calls the service only; existing responses unchanged
-  - [ ] 2.4 Unit tests; existing leave tests still pass
+- [x] 2. Membership service and thin controller
+  - [x] 2.1 `LeaveTenantResult`, `IMembershipService`, `MembershipService`
+  - [x] 2.2 Shared permission cache key helper (`PermissionCacheKeys`) used by `PermissionService`, `UserRoleChangedHandler`, `MembershipService`
+  - [x] 2.3 `AuthController.LeaveTenant` calls the service only; existing responses unchanged
+  - [x] 2.4 Unit tests: leave rules moved from `AuthControllerTests` to `MembershipServiceTests` (16) plus revocation and eviction; controller tests now cover only the HTTP mapping (10). Existing `LeaveTenantTests` (integration) pass unchanged. Unit 1657 / 12 known; integration 357 / 48; sample 22/22
 
 - [ ] 3. Reject revoked tokens and shorten the lifetime
   - [ ] 3.1 Revocation check in `JwtAuthenticationMiddleware` (no IdP fallback, fail closed)

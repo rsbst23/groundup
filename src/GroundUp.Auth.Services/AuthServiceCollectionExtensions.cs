@@ -7,6 +7,7 @@ using GroundUp.Auth.Services.Bootstrap;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Auth.Services.Revocation;
 using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Settings;
@@ -150,6 +151,7 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IFlowHandler, LoginFlowHandler>();
         services.AddScoped<IFlowHandler, SimpleSignupFlowHandler>();
         services.AddScoped<LastAdminGuard>();
+        services.AddScoped<IMembershipService, MembershipService>();
         services.AddScoped<IOrganizationProvisioningService, OrganizationProvisioningService>();
 
         // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
