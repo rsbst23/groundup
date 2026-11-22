@@ -61,7 +61,7 @@ public sealed class SessionPolicyIntegrationTests : AuthFlowTestBase, IAsyncLife
     public async Task DisposeAsync()
     {
         using var scope = Fixture.Services.CreateScope();
-        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+        var settings = CreateUnrestrictedSettings(scope.ServiceProvider);
 
         // Delete in reverse order so tenant values go before the System values they depend on.
         foreach (var id in Enumerable.Reverse(_writtenValueIds).Distinct())
@@ -111,7 +111,7 @@ public sealed class SessionPolicyIntegrationTests : AuthFlowTestBase, IAsyncLife
         // Arrange
         await SetAsync(SessionSettingKeys.TokenLifetimeMinutes, "30", _systemLevelId, null);
         using var scope = Fixture.Services.CreateScope();
-        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+        var settings = CreateUnrestrictedSettings(scope.ServiceProvider);
 
         // Act
         var result = await settings.SetAsync(SessionSettingKeys.TokenLifetimeMinutes, "45", _tenantLevelId, Guid.NewGuid());
@@ -177,10 +177,18 @@ public sealed class SessionPolicyIntegrationTests : AuthFlowTestBase, IAsyncLife
     // Helpers
     // ────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// These tests cover session policy, not settings authorization, and run without a signed-in user.
+    /// They use the concrete service with the allow-all authorizer. Authorization is covered by
+    /// <c>SettingsAuthorizationIntegrationTests</c>.
+    /// </summary>
+    private static ISettingsService CreateUnrestrictedSettings(IServiceProvider provider)
+        => ActivatorUtilities.CreateInstance<SettingsService>(provider, new AllowAllSettingsAuthorizer());
+
     private async Task SetAsync(string key, string value, Guid levelId, Guid? scopeId)
     {
         using var scope = Fixture.Services.CreateScope();
-        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+        var settings = CreateUnrestrictedSettings(scope.ServiceProvider);
         var result = await settings.SetAsync(key, value, levelId, scopeId);
         result.Success.Should().BeTrue($"setting {key}={value} should succeed: {result.Message}");
         _writtenValueIds.Add(result.Data!.Id);

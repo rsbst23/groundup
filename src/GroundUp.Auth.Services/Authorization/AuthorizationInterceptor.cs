@@ -117,8 +117,7 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
         // Check [RequiresPermission] — AND semantics
         if (requiresPermission is not null)
         {
-            var userPermissions = await _permissionService.GetUserPermissionsAsync(userId);
-            var allSatisfied = requiresPermission.Permissions.All(p => userPermissions.Contains(p));
+            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
             if (!allSatisfied)
             {
                 return OperationResult<T>.Forbidden();
@@ -163,8 +162,7 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
         // Check [RequiresPermission] — AND semantics
         if (requiresPermission is not null)
         {
-            var userPermissions = await _permissionService.GetUserPermissionsAsync(userId);
-            var allSatisfied = requiresPermission.Permissions.All(p => userPermissions.Contains(p));
+            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
             if (!allSatisfied)
             {
                 return OperationResult.Forbidden();
@@ -232,8 +230,7 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
 
         if (requiresPermission is not null)
         {
-            var userPermissions = _permissionService.GetUserPermissionsAsync(userId).GetAwaiter().GetResult();
-            var allSatisfied = requiresPermission.Permissions.All(p => userPermissions.Contains(p));
+            var allSatisfied = HasAllPermissionsAsync(userId, requiresPermission.Permissions).GetAwaiter().GetResult();
             if (!allSatisfied)
             {
                 throw new ForbiddenAccessException();
@@ -279,6 +276,23 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
     }
 
     /// <summary>
+    /// AND check over the required permissions. Uses <see cref="IPermissionService.HasPermissionAsync"/>
+    /// so the SuperAdmin and TenantAdmin bypass applies, the same as everywhere else in the framework.
+    /// </summary>
+    private async Task<bool> HasAllPermissionsAsync(Guid userId, IEnumerable<string> permissions)
+    {
+        foreach (var permission in permissions)
+        {
+            if (!await _permissionService.HasPermissionAsync(userId, permission))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Performs authorization checks and throws <see cref="ForbiddenAccessException"/> on failure.
     /// Shared by all exception-based authorization paths.
     /// </summary>
@@ -304,8 +318,7 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
 
         if (requiresPermission is not null)
         {
-            var userPermissions = await _permissionService.GetUserPermissionsAsync(userId);
-            var allSatisfied = requiresPermission.Permissions.All(p => userPermissions.Contains(p));
+            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
             if (!allSatisfied)
             {
                 throw new ForbiddenAccessException();

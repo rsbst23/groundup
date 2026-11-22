@@ -166,7 +166,25 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 - A change applies from the next token issue or refresh. Existing tokens keep their expiry, but the absolute limit is checked against the current value at every refresh and tenant switch, so shortening it takes effect without waiting.
 - The session is counted from the identity provider's `auth_time` (when the user really authenticated), so a silent single sign-on does not restart it. Every login request carries `max_age` with the absolute lifetime, so Keycloak asks for credentials when its own session is older. When a session has reached the limit the API returns `401` with `errorCode: REAUTH_REQUIRED`; the client then starts `POST /auth/login?forceLogin=true`.
 - No token expires later than the user's last sign-in plus the absolute lifetime.
-- Until settings authorization exists (GU-77), the settings API does not restrict who can change these values.
+- Only a SuperAdmin can change the System values. A TenantAdmin (or a user with `settings.manage.tenant`) can change their own current tenant's values. See **Settings authorization** below.
+
+**Settings authorization (GU-77).** Enforced in the settings services, so it applies to the API and to SDK callers alike.
+
+| Operation | Rule | Mechanism |
+|---|---|---|
+| Write or delete a value at the System level (or any level above Tenant) | SuperAdmin | `ISettingsAuthorizer`, called inside `SettingsService` |
+| Write or delete a value at the Tenant level | SuperAdmin, or `settings.manage.tenant` in that tenant while it is the current tenant (TenantAdmin passes through the permission bypass) | `ISettingsAuthorizer` |
+| Write or delete a value at a level below Tenant (Group, Case, User) | SuperAdmin, or the Tenant rule for the tenant an `ISettingScopeOwnerResolver` reports; with no resolver, SuperAdmin only | `ISettingsAuthorizer` |
+| Create, update, delete levels, groups, definitions | SuperAdmin | `[RequiresRole]` on `ISettingsAdminService` |
+| List settings, groups, definitions | `settings.read` | `[RequiresPermission]` on the interfaces |
+| Read one effective value, list levels, ensure a definition | open (login, seeders and the app read these with no user) | none |
+
+- **Why two mechanisms.** The value rules depend on the call's arguments (level and scope), which an attribute cannot see. The static rules use the framework's usual attributes and the `AddAuthorized` proxy.
+- **Registration.** Applications register both services with `AddAuthorized<ISettingsService, SettingsService>()` and `AddAuthorized<ISettingsAdminService, SettingsAdminService>()`. With the auth module registered, the app refuses to start if either is missing. Without the auth module, settings are not restricted (there are no users to check).
+- **First-run setup.** While setup is incomplete, the wizard's keys (`SettingsSetupAllowlist`) can be written at the System level with no user. After setup completes this no longer applies.
+- **Secrets** are masked in every read for every user. There is no way to read a secret value through the API.
+- **Errors.** No user: 401. Not allowed: 403. A caller without rights also gets 403 for an unknown key, so the API does not reveal which keys exist.
+- Object-level security (for example, groups that see only some documents) is a separate, future design in the Security module. `ISettingsAuthorizer` and `ISettingScopeOwnerResolver` are the extension points it can plug into for lower settings levels.
 
 **Keycloak's own limits are the outer boundary.** The realm's **SSO Session Idle** and **SSO Session Max** (Realm settings → Sessions) apply to every user of the shared realm and cannot be set per tenant. They are the system administrator's responsibility in the Keycloak admin console, and they are the values a compliance reviewer will look at alongside the two settings above. `keycloak/realm.json` sets 30 minutes idle and 8 hours maximum for development, equal to the default absolute lifetime; the organization's own session policy decides the final numbers. If `auth.session.absolute-lifetime-minutes` is raised above the realm's SSO Session Max, Keycloak's limit becomes the real one. GroundUp does not read the realm values at startup to warn about this (that would need an admin API call at every start); keep the two in step by policy.
 

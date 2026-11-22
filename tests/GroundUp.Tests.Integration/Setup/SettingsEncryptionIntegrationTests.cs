@@ -206,6 +206,7 @@ public sealed class SettingsEncryptionIntegrationTests : IAsyncLifetime
             cache,
             cacheOptions,
             cacheKeyTracker,
+            new AllowAllSettingsAuthorizer(),
             encryptionProvider);
 
         return (service, level.Id);

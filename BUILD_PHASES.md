@@ -737,6 +737,7 @@ Phase 10 is split into six sub-phases with separate specs and PRs. Each sub-phas
 | 10c | Auth dispatcher, host resolver, cookie writer, basic flows | GU-67 |
 | 10d | Invitations, Join Links, `IUserRoleService` | GU-68 |
 | 10e | Enterprise flows: realm provisioning, first admin, SSO auto-join | GU-69 |
+| 10d-settings | Settings authorization (spec `phase-10d-settings-authorization`) | GU-77 |
 
 #### Phase 10a — Keycloak infra, IdP admin contract, AuthFlowState (GU-37)
 
@@ -905,6 +906,8 @@ Build the resource-level ACL system.
 - IResourceAccessService (grant, revoke, check, list)
 - Query filter integration
 - Events published on access changes
+- Group grants: a group of users sees one subset of documents, another group a different subset (raised during GU-77). Needs its own design discussion before the spec.
+- Settings below the Tenant level (Group, Case, User) can then be authorized by grants: GU-77 left `ISettingScopeOwnerResolver` and `ISettingsAuthorizer` (both in `GroundUp.Core`) as the extension points. Settings code does not need to change.
 
 ### Manual Verification
 1. Create a secured entity (e.g., Document)

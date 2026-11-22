@@ -194,6 +194,7 @@ public sealed class SecretResolverPropertyTests : IDisposable
             _fixture.MemoryCache,
             _fixture.CacheOptions,
             _fixture.CacheKeyTracker,
+            _fixture.Authorizer,
             encryptionProvider: null,
             secretResolver: secretResolver);
     }

@@ -33,8 +33,7 @@ public static class PermissionKeysAuth
 
     // --- Settings ---
     public const string SettingsRead = "settings.read";
-    public const string SettingsWrite = "settings.write";
-    public const string SettingsDelete = "settings.delete";
+    public const string SettingsManageTenant = "settings.manage.tenant";
 
     /// <summary>
     /// All built-in permission definitions with metadata for seeding.
@@ -58,8 +57,7 @@ public static class PermissionKeysAuth
         (PermissionsRead, "Read Permissions", "View permission definitions", "auth"),
         (PermissionsWrite, "Write Permissions", "Assign and revoke permissions from policies", "auth"),
 
-        (SettingsRead, "Read Settings", "View application settings", "settings"),
-        (SettingsWrite, "Write Settings", "Create and update application settings", "settings"),
-        (SettingsDelete, "Delete Settings", "Remove setting definitions", "settings"),
+        (SettingsRead, "Read Settings", "View settings, their definitions and effective values (secret values stay masked)", "settings"),
+        (SettingsManageTenant, "Manage Tenant Settings", "Create, change and delete setting values for the current tenant", "settings"),
     };
 }

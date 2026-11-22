@@ -51,6 +51,7 @@ public sealed class SessionPolicySettingsEndToEndTests : IDisposable
         services.AddScoped<IScopeChainProvider>(_ => Substitute.For<IScopeChainProvider>());
         services.AddScoped<IEventBus, InvalidatingEventBus>();
         services.AddScoped<SettingsCacheInvalidationHandler>();
+        services.AddScoped<ISettingsAuthorizer, AllowAllSettingsAuthorizer>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<ISettingsAdminService, SettingsAdminService>();
         services.AddScoped<ISessionPolicyProvider, SessionPolicyProvider>();

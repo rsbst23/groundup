@@ -31,12 +31,84 @@ public sealed class AuthorizationInterceptorTests
             _currentUser);
     }
 
+    /// <summary>
+    /// The proxy asks IPermissionService.HasPermissionAsync (which includes the admin bypass),
+    /// so the substitute answers true exactly for the permissions the user holds.
+    /// </summary>
+    private void GivenPermissions(params string[] held)
+    {
+        var set = new HashSet<string>(held, StringComparer.Ordinal);
+        _permissionService.HasPermissionAsync(_userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => set.Contains(call.ArgAt<string>(1)));
+    }
+
+    [Fact]
+    public async Task PermissionProtectedMethod_AdminBypassGrantsEveryPermission_InvokesMethod()
+    {
+        // Arrange - HasPermissionAsync is true for SuperAdmin and for TenantAdmin of the current tenant,
+        // even though neither holds the permission explicitly. The proxy must honour that.
+        _permissionService.HasPermissionAsync(_userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _implementation.GetProtectedDataAsync()
+            .Returns(OperationResult<string>.Ok("success"));
+
+        // Act
+        var result = await _proxy.GetProtectedDataAsync();
+
+        // Assert
+        Assert.True(result.Success);
+        await _implementation.Received(1).GetProtectedDataAsync();
+        await _permissionService.DidNotReceive().GetUserPermissionsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NonOperationResultMethod_AdminBypass_InvokesMethod()
+    {
+        _permissionService.HasPermissionAsync(_userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _implementation.GetNonResultProtectedAsync().Returns("hello");
+
+        var result = await _proxy.GetNonResultProtectedAsync();
+
+        Assert.Equal("hello", result);
+    }
+
+    [Fact]
+    public async Task NonGenericOperationResult_AdminBypass_InvokesMethod()
+    {
+        _permissionService.HasPermissionAsync(_userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _implementation.DeleteProtectedAsync().Returns(OperationResult.Ok());
+
+        var result = await _proxy.DeleteProtectedAsync();
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public void SyncMethod_AdminBypass_InvokesMethod()
+    {
+        _permissionService.HasPermissionAsync(_userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        _implementation.GetSyncProtected().Returns("sync");
+
+        var result = _proxy.GetSyncProtected();
+
+        Assert.Equal("sync", result);
+    }
+
+    [Fact]
+    public void SyncMethod_NoPermission_ThrowsForbiddenAccessException()
+    {
+        GivenPermissions();
+
+        Assert.Throws<ForbiddenAccessException>(() => _proxy.GetSyncProtected());
+    }
     [Fact]
     public async Task PermissionProtectedMethod_UserLacksPermission_ReturnsForbidden()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>());
+        GivenPermissions();
 
         // Act
         var result = await _proxy.GetProtectedDataAsync();
@@ -50,8 +122,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task PermissionProtectedMethod_UserHasPermissions_InvokesMethod()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string> { "data.read", "data.write" });
+        GivenPermissions("data.read", "data.write");
         _implementation.GetProtectedDataAsync()
             .Returns(OperationResult<string>.Ok("success"));
 
@@ -117,8 +188,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task NonOperationResultMethod_UserLacksPermission_ThrowsForbiddenAccessException()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>());
+        GivenPermissions();
 
         // Act & Assert
         await Assert.ThrowsAsync<ForbiddenAccessException>(
@@ -129,8 +199,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task NonOperationResultMethod_UserHasPermission_InvokesMethod()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string> { "data.read" });
+        GivenPermissions("data.read");
         _implementation.GetNonResultProtectedAsync()
             .Returns("hello");
 
@@ -184,8 +253,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task NonGenericOperationResult_UserLacksPermission_ReturnsForbidden()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>());
+        GivenPermissions();
 
         // Act
         var result = await _proxy.DeleteProtectedAsync();
@@ -199,8 +267,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task NonGenericOperationResult_UserHasPermission_InvokesMethod()
     {
         // Arrange
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string> { "data.delete" });
+        GivenPermissions("data.delete");
         _implementation.DeleteProtectedAsync()
             .Returns(OperationResult.Ok());
 
@@ -218,8 +285,7 @@ public sealed class AuthorizationInterceptorTests
         // Arrange — user has the required role but NOT the required permission
         _permissionService.HasAnySystemRoleAsync(_userId, Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string>()); // no permissions
+        GivenPermissions(); // no permissions
 
         // Act
         var result = await _proxy.GetDualProtectedAsync();
@@ -250,8 +316,7 @@ public sealed class AuthorizationInterceptorTests
         // Arrange — user has both the required role AND the required permission
         _permissionService.HasAnySystemRoleAsync(_userId, Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(true);
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string> { "admin.execute" });
+        GivenPermissions("admin.execute");
         _implementation.GetDualProtectedAsync()
             .Returns(OperationResult<string>.Ok("dual protected data"));
 
@@ -268,8 +333,7 @@ public sealed class AuthorizationInterceptorTests
     public async Task PermissionProtectedMethod_UserHasPartialPermissions_ReturnsForbidden()
     {
         // Arrange — method requires "data.read" AND "data.write", user only has "data.read"
-        _permissionService.GetUserPermissionsAsync(_userId, Arg.Any<CancellationToken>())
-            .Returns(new HashSet<string> { "data.read" }); // missing "data.write"
+        GivenPermissions("data.read"); // missing "data.write"
 
         // Act
         var result = await _proxy.GetProtectedDataAsync();
@@ -294,6 +358,9 @@ public sealed class AuthorizationInterceptorTests
 
         [RequiresPermission("data.read")]
         Task<string> GetNonResultProtectedAsync();
+
+        [RequiresPermission("data.read")]
+        string GetSyncProtected();
 
         [RequiresPermission("data.delete")]
         Task<OperationResult> DeleteProtectedAsync();

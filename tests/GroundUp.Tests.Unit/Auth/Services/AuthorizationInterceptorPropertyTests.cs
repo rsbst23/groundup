@@ -37,8 +37,9 @@ public sealed class AuthorizationInterceptorPropertyTests
                 var implementation = Substitute.For<IPermissionTestService>();
 
                 currentUser.UserId.Returns(userId);
-                permissionService.GetUserPermissionsAsync(userId, Arg.Any<CancellationToken>())
-                    .Returns(new HashSet<string>(scenario.UserPermissions, StringComparer.Ordinal));
+                var held = new HashSet<string>(scenario.UserPermissions, StringComparer.Ordinal);
+                permissionService.HasPermissionAsync(userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(call => held.Contains(call.ArgAt<string>(1)));
 
                 implementation.RequiresAllAsync()
                     .Returns(OperationResult<string>.Ok("success"));
@@ -202,8 +203,8 @@ public sealed class AuthorizationInterceptorPropertyTests
                 var userPermissions = new HashSet<string>(
                     randomPerms.Get.Where(s => s != null),
                     StringComparer.Ordinal);
-                permissionService.GetUserPermissionsAsync(userId, Arg.Any<CancellationToken>())
-                    .Returns(userPermissions);
+                permissionService.HasPermissionAsync(userId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(call => userPermissions.Contains(call.ArgAt<string>(1)));
 
                 implementation.UndecoratedMethodAsync()
                     .Returns(OperationResult<string>.Ok("pass-through"));

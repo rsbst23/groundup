@@ -26,6 +26,7 @@ public sealed class SettingsTestFixture : IDisposable
     public IMemoryCache MemoryCache { get; }
     public IOptions<SettingsCacheOptions> CacheOptions { get; }
     public SettingsCacheKeyTracker CacheKeyTracker { get; }
+    public ISettingsAuthorizer Authorizer { get; } = new AllowAllSettingsAuthorizer();
 
     public SettingsTestFixture()
     {
@@ -71,6 +72,7 @@ public sealed class SettingsTestFixture : IDisposable
             MemoryCache,
             CacheOptions,
             CacheKeyTracker,
+            Authorizer,
             encryptionProvider);
     }
 
@@ -88,6 +90,7 @@ public sealed class SettingsTestFixture : IDisposable
             MemoryCache,
             CacheOptions,
             CacheKeyTracker,
+            Authorizer,
             writeValidators: validators);
     }
 
@@ -103,6 +106,7 @@ public sealed class SettingsTestFixture : IDisposable
             MemoryCache,
             CacheOptions,
             CacheKeyTracker,
+            Authorizer,
             EncryptionProvider);
     }
 
