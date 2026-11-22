@@ -1,3 +1,4 @@
+using GroundUp.Core.Attributes;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Results;
 
@@ -27,6 +28,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The level creation data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the created level.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingLevelDto>> CreateLevelAsync(
         CreateSettingLevelDto dto,
         CancellationToken cancellationToken = default);
@@ -38,6 +40,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The level update data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the updated level.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingLevelDto>> UpdateLevelAsync(
         Guid id,
         UpdateSettingLevelDto dto,
@@ -50,6 +53,7 @@ public interface ISettingsAdminService
     /// <param name="id">The unique identifier of the level to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult"/> indicating success or failure.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult> DeleteLevelAsync(
         Guid id,
         CancellationToken cancellationToken = default);
@@ -63,6 +67,7 @@ public interface ISettingsAdminService
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing all setting groups.</returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<SettingGroupDto>>> GetAllGroupsAsync(
         CancellationToken cancellationToken = default);
 
@@ -72,6 +77,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The group creation data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the created group.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingGroupDto>> CreateGroupAsync(
         CreateSettingGroupDto dto,
         CancellationToken cancellationToken = default);
@@ -83,6 +89,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The group update data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the updated group.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingGroupDto>> UpdateGroupAsync(
         Guid id,
         UpdateSettingGroupDto dto,
@@ -95,6 +102,7 @@ public interface ISettingsAdminService
     /// <param name="id">The unique identifier of the group to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult"/> indicating success or failure.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult> DeleteGroupAsync(
         Guid id,
         CancellationToken cancellationToken = default);
@@ -108,6 +116,7 @@ public interface ISettingsAdminService
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing all setting definitions.</returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<SettingDefinitionDto>>> GetAllDefinitionsAsync(
         CancellationToken cancellationToken = default);
 
@@ -118,6 +127,7 @@ public interface ISettingsAdminService
     /// <param name="id">The unique identifier of the definition.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the definition, or NotFound.</returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<SettingDefinitionDto>> GetDefinitionByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);
@@ -128,6 +138,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The definition creation data including options and allowed level IDs.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the created definition.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingDefinitionDto>> CreateDefinitionAsync(
         CreateSettingDefinitionDto dto,
         CancellationToken cancellationToken = default);
@@ -140,6 +151,7 @@ public interface ISettingsAdminService
     /// <param name="dto">The definition update data including options and allowed level IDs.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult{T}"/> containing the updated definition.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult<SettingDefinitionDto>> UpdateDefinitionAsync(
         Guid id,
         UpdateSettingDefinitionDto dto,
@@ -152,6 +164,7 @@ public interface ISettingsAdminService
     /// <param name="id">The unique identifier of the definition to delete.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An <see cref="OperationResult"/> indicating success or failure.</returns>
+    [RequiresRole("SuperAdmin")]
     Task<OperationResult> DeleteDefinitionAsync(
         Guid id,
         CancellationToken cancellationToken = default);

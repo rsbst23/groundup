@@ -12,14 +12,14 @@ Execute one top-level task at a time. After each: build, run tests against the b
   - [x] 2.1 `SettingsAuthorizer` in `GroundUp.Auth.Services` and its registration (`services.Replace` in `AddGroundUpAuth`, so call order does not matter)
   - [x] 2.2 Unit tests for every rule in requirements 1 and 3 (31 tests; unit 1591 pass / 12 known failures, integration 340 / 48, sample 22/22)
 
-- [ ] 3. Wire into services
-  - [ ] 3.1 `SettingsService.SetAsync` and `DeleteValueAsync` call the authorizer
-  - [ ] 3.2 Attributes on `ISettingsService` and `ISettingsAdminService`
-  - [ ] 3.3 Fix `AuthorizationInterceptor` so `[RequiresPermission]` uses `HasPermissionAsync` (bypass applies), with tests (decided: inside GU-77)
-  - [ ] 3.4 `SettingsAuthorizationStartupValidator`; sample `Program.cs` registers both services with `AddAuthorized`
-  - [ ] 3.5 Unit tests
+- [x] 3. Wire into services
+  - [x] 3.1 `SettingsService.SetAsync` and `DeleteValueAsync` call the authorizer (`ISettingsAuthorizer` is now a required constructor dependency)
+  - [x] 3.2 Attributes on `ISettingsService` and `ISettingsAdminService`
+  - [x] 3.3 Fix `AuthorizationInterceptor` so `[RequiresPermission]` uses `HasPermissionAsync` (bypass applies), with tests (decided: inside GU-77)
+  - [x] 3.4 `SettingsAuthorizationStartupValidator`; sample `Program.cs` registers both services with `AddAuthorized`
+  - [x] 3.5 Unit tests. Existing integration tests that call settings anonymously now run as a test SuperAdmin (`SettingsApiFactory`) or with the allow-all authorizer (`SessionPolicyIntegrationTests`), so the baseline holds (unit 1623 pass / 12 known + 1 flaky; integration 340 / 48; sample 22/22)
 
 - [ ] 4. Integration tests and documentation
   - [ ] 4.1 Integration tests (tenant isolation, TenantAdmin vs System value, plain user 403, login and wizard still work, startup validator failure)
-  - [ ] 4.2 Fix `SessionPolicyIntegrationTests` to run as SuperAdmin
+  - [x] 4.2 Fix `SessionPolicyIntegrationTests` (done in task group 3 to keep the baseline)
   - [ ] 4.3 Update `MANUAL_TESTING.md`, `ARCHITECTURE.md`, `BUILD_PHASES.md`, Jira

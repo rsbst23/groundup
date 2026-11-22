@@ -410,6 +410,7 @@ public sealed class SettingsServiceSecretResolverTests : IDisposable
             _fixture.MemoryCache,
             _fixture.CacheOptions,
             _fixture.CacheKeyTracker,
+            _fixture.Authorizer,
             encryptionProvider: null,
             secretResolver: secretResolver);
     }
@@ -425,6 +426,7 @@ public sealed class SettingsServiceSecretResolverTests : IDisposable
             _fixture.MemoryCache,
             _fixture.CacheOptions,
             _fixture.CacheKeyTracker,
+            _fixture.Authorizer,
             encryptionProvider: _fixture.EncryptionProvider,
             secretResolver: secretResolver);
     }

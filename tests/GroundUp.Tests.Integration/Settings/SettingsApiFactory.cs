@@ -29,6 +29,13 @@ public sealed class SettingsApiFactory : GroundUpWebApplicationFactory<Program, 
         services.RemoveAll<IScopeChainProvider>();
         services.AddScoped<IScopeChainProvider, TestScopeChainProvider>();
 
+        // Settings authorization is on (GU-77). These tests cover settings behavior, so every
+        // request runs as a SuperAdmin.
+        services.RemoveAll<ICurrentUser>();
+        services.AddScoped<ICurrentUser, SettingsTestIdentity>();
+        services.RemoveAll<GroundUp.Auth.Services.IPermissionService>();
+        services.AddScoped<GroundUp.Auth.Services.IPermissionService, SettingsTestGrantAllPermissions>();
+
         // Disable caching for integration tests to avoid stale cache issues
         // (the event-based invalidation requires scoped handler resolution which
         // doesn't work with the singleton event bus in test environments)

@@ -3,6 +3,7 @@ using GroundUp.Auth.Api;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Authorization;
+using GroundUp.Core.Abstractions;
 using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres;
 using GroundUp.Events;
@@ -32,6 +33,12 @@ builder.Services.AddGroundUpAuthPostgres(connectionString);
 builder.Services.AddGroundUpAuth(builder.Configuration);
 builder.Services.AddGroundUpAuthApi();
 builder.Services.AddGroundUpAuthKeycloak();
+
+// Settings authorization: wrap the settings services so their [RequiresPermission] and [RequiresRole]
+// attributes are enforced (listing reads need settings.read, admin writes need SuperAdmin).
+// Startup fails if this is missing while the auth module is registered.
+builder.Services.AddAuthorized<ISettingsService, SettingsService>();
+builder.Services.AddAuthorized<ISettingsAdminService, SettingsAdminService>();
 
 // Settings seeder
 builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();

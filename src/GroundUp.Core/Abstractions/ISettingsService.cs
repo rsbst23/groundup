@@ -1,3 +1,4 @@
+using GroundUp.Core.Attributes;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
@@ -65,6 +66,7 @@ public interface ISettingsService
     /// An <see cref="OperationResult{T}"/> containing a list of
     /// <see cref="ResolvedSettingDto"/> ordered by display order.
     /// </returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetAllForScopeAsync(
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken = default);
@@ -82,6 +84,7 @@ public interface ISettingsService
     /// An <see cref="OperationResult{T}"/> containing a list of
     /// <see cref="ResolvedSettingDto"/> for the group, ordered by display order.
     /// </returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
         string groupKey,
         IReadOnlyList<SettingScopeEntry> scopeChain,
@@ -127,6 +130,7 @@ public interface ISettingsService
     /// An <see cref="OperationResult{T}"/> containing a list of
     /// <see cref="ResolvedSettingDto"/> ordered by display order.
     /// </returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetAllForScopeAsync(
         CancellationToken cancellationToken = default);
 
@@ -141,6 +145,7 @@ public interface ISettingsService
     /// An <see cref="OperationResult{T}"/> containing a list of
     /// <see cref="ResolvedSettingDto"/> for the group, ordered by display order.
     /// </returns>
+    [RequiresPermission("settings.read")]
     Task<OperationResult<IReadOnlyList<ResolvedSettingDto>>> GetGroupAsync(
         string groupKey,
         CancellationToken cancellationToken = default);

@@ -34,6 +34,7 @@ public sealed class SettingsService : ISettingsService
     private readonly SettingsCacheOptions _cacheOptions;
     private readonly SettingsCacheKeyTracker _cacheKeyTracker;
     private readonly List<ISettingWriteValidator> _writeValidators;
+    private readonly ISettingsAuthorizer _authorizer;
 
     private const string SecretMask = "***REDACTED***";
 
@@ -46,6 +47,7 @@ public sealed class SettingsService : ISettingsService
     /// <param name="cache">The in-memory cache for caching resolved settings.</param>
     /// <param name="cacheOptions">Configuration options for cache TTL.</param>
     /// <param name="cacheKeyTracker">Shared tracker for active cache keys.</param>
+    /// <param name="authorizer">Decides whether the caller may write or delete a value.</param>
     /// <param name="encryptionProvider">
     /// Optional encryption provider. When null, the service works for non-encrypted settings
     /// and fails with a clear error only when an encrypted setting is actually accessed.
@@ -64,6 +66,7 @@ public sealed class SettingsService : ISettingsService
         IMemoryCache cache,
         IOptions<SettingsCacheOptions> cacheOptions,
         SettingsCacheKeyTracker cacheKeyTracker,
+        ISettingsAuthorizer authorizer,
         ISettingEncryptionProvider? encryptionProvider = null,
         ISecretResolver? secretResolver = null,
         IEnumerable<ISettingWriteValidator>? writeValidators = null)
@@ -75,6 +78,7 @@ public sealed class SettingsService : ISettingsService
         _cache = cache;
         _cacheOptions = cacheOptions.Value;
         _cacheKeyTracker = cacheKeyTracker;
+        _authorizer = authorizer;
         _encryptionProvider = encryptionProvider;
         _secretResolver = secretResolver;
     }
@@ -122,6 +126,13 @@ public sealed class SettingsService : ISettingsService
         Guid? scopeId,
         CancellationToken cancellationToken = default)
     {
+        // Authorization first, so a caller without rights learns nothing about the key or its rules.
+        var denied = await AuthorizeAsync<SettingValueDto>(write: true, key, levelId, scopeId, cancellationToken);
+        if (denied is not null)
+        {
+            return denied;
+        }
+
         var definition = await _dbContext.Set<SettingDefinition>()
             .Include(d => d.AllowedLevels)
             .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
@@ -303,6 +314,14 @@ public sealed class SettingsService : ISettingsService
         var settingKey = settingValue.SettingDefinition.Key;
         var levelId = settingValue.LevelId;
         var scopeId = settingValue.ScopeId;
+
+        var deniedDelete = await AuthorizeAsync<object>(write: false, settingKey, levelId, scopeId, cancellationToken);
+        if (deniedDelete is not null)
+        {
+            return deniedDelete.StatusCode == 401
+                ? OperationResult.Unauthorized(deniedDelete.Message)
+                : OperationResult.Forbidden(deniedDelete.Message);
+        }
         var oldValue = settingValue.Value;
 
         _dbContext.Set<SettingValue>().Remove(settingValue);
@@ -326,6 +345,31 @@ public sealed class SettingsService : ISettingsService
         }
 
         return OperationResult.Ok();
+    }
+
+    /// <summary>
+    /// Runs the registered <see cref="ISettingsAuthorizer"/>. Returns <c>null</c> when the operation is allowed,
+    /// otherwise a Forbidden or Unauthorized result to return to the caller. Nothing is written or published on denial.
+    /// </summary>
+    private async Task<OperationResult<T>?> AuthorizeAsync<T>(
+        bool write, string key, Guid levelId, Guid? scopeId, CancellationToken cancellationToken)
+    {
+        var levelName = await _dbContext.Set<SettingLevel>()
+            .AsNoTracking()
+            .Where(l => l.Id == levelId)
+            .Select(l => l.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var decision = write
+            ? await _authorizer.AuthorizeWriteAsync(key, levelId, levelName, scopeId, cancellationToken)
+            : await _authorizer.AuthorizeDeleteAsync(key, levelId, levelName, scopeId, cancellationToken);
+
+        return decision switch
+        {
+            SettingsAuthorizationResult.Allowed => null,
+            SettingsAuthorizationResult.Unauthenticated => OperationResult<T>.Unauthorized(),
+            _ => OperationResult<T>.Forbidden()
+        };
     }
 
     /// <inheritdoc />

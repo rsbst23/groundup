@@ -29,7 +29,7 @@ Listing reads and admin writes use the existing attributes (D1, Option B). They 
 `SetAsync`: load definition, then run the authorizer, then the existing validations, then save.
 `DeleteValueAsync`: load the value with its definition and level, then run the authorizer, then delete.
 
-Authorizing right after the definition lookup keeps the order stable: a caller without rights learns nothing about validation rules. A missing definition still returns 404 before the check (the key is not a secret).
+Changed in task group 3: `SetAsync` authorizes before the definition lookup, so a caller without rights gets 403 (or 401) for an unknown key as well as a known one, and cannot use the 404 to find out which keys exist. A caller with rights still gets 404 for an unknown key. `DeleteValueAsync` must load the stored value to learn its level and scope, so an unknown value id returns 404 before the check (the id is a random UUID v7 and reveals nothing).
 
 `SettingsAuthorizer.AuthorizeWriteAsync`:
 

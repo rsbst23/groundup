@@ -129,7 +129,8 @@ public sealed class SettingsCacheTests : IDisposable
             _fixture.ScopeChainProvider,
             throwingCache,
             _fixture.CacheOptions,
-            _fixture.CacheKeyTracker);
+            _fixture.CacheKeyTracker,
+            _fixture.Authorizer);
 
         var scopeChain = Array.Empty<SettingScopeEntry>();
 

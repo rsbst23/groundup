@@ -154,6 +154,9 @@ public static class AuthServiceCollectionExtensions
         // Startup checks on cookie settings (CookieSecure outside Development, single-label domain)
         services.AddHostedService<AuthCookieStartupValidator>();
 
+        // Stops startup when ISettingsService or ISettingsAdminService is not wrapped by AddAuthorized
+        services.AddHostedService<SettingsAuthorizationStartupValidator>();
+
         // Cleanup sweeper (hosted service)
         services.AddHostedService<AuthFlowStateCleanupSweeper>();
     }
