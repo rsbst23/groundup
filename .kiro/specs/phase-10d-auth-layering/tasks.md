@@ -4,9 +4,10 @@ Execute one top-level task at a time. After each: build, run tests against the b
 
 Baselines: unit 1664 pass / 12 known failures (+1 flaky property test, GU-73); integration 364 pass / 48 known failures; sample 22/22.
 
-- [ ] 1. Tests that pin today's state
-  - [ ] 1.1 `LayerRulesTests` and `LayerRulesAllowlist` (design section 4); allowlist includes today's auth pairs (`Auth.Api` → `Auth.Data.Abstractions`, `Data.Abstractions`; `Auth.Services` → `Auth.Data.Postgres`, EF Core, `Npgsql`) and GU-82's pairs
-  - [ ] 1.2 Postgres integration test for first-admin provisioning through the real `IdentityBootstrapService` (requirements 4.2), green against today's code
+- [x] 1. Tests that pin today's state
+  - [x] 1.1 `LayerRulesTests` and `LayerRulesAllowlist` (design section 4); allowlist includes today's auth pairs (`Auth.Api` → `Auth.Data.Abstractions`, `Data.Abstractions`; `Auth.Services` → `Auth.Data.Postgres`, EF Core, `Npgsql`) and GU-82's pairs. The allowlist matched the actual violations exactly; removing one entry made the test fail with "GroundUp.Auth.Api uses GroundUp.Auth.Data.Abstractions"
+  - [x] 1.2 `IdentityBootstrapServiceIntegrationTests` (own Postgres container): one ordered scenario covering the four queries before and after, first provisioning (user, membership, SuperAdmin role rows), idempotent repeat with no duplicates, and 409 on a different display name. Green against today's code. Only `CreateService` may change in task group 3
+  - Results: unit 1667 / 12 known; integration 365 / 48 known; sample 22/22
 
 - [ ] 2. Controller and middleware call services only
   - [ ] 2.1 `MyTenantDto`, `IMembershipService.GetMyTenantsAsync` and `IsActiveMemberAsync`

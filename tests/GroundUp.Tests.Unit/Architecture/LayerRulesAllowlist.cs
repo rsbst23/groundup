@@ -1,0 +1,26 @@
+namespace GroundUp.Tests.Unit.Architecture;
+
+/// <summary>
+/// Known violations of the layer rules, as (assembly, used assembly) pairs. Every entry names the
+/// story that removes it. <see cref="LayerRulesTests"/> fails on a violation that is not listed here,
+/// and also on an entry that no longer occurs, so this list can only shrink.
+/// </summary>
+internal static class LayerRulesAllowlist
+{
+    public static readonly IReadOnlyList<(string Assembly, string UsedAssembly, string Reason)> Entries =
+    [
+        // GU-81 task group 2: AuthController and HostTokenReconciliationMiddleware call repositories
+        ("GroundUp.Auth.Api", "GroundUp.Auth.Data.Abstractions", "GU-81"),
+        ("GroundUp.Auth.Api", "GroundUp.Data.Abstractions", "GU-81"),
+
+        // GU-81 task group 3: IdentityBootstrapService uses AuthDbContext and Postgres error codes
+        ("GroundUp.Auth.Services", "GroundUp.Auth.Data.Postgres", "GU-81"),
+        ("GroundUp.Auth.Services", "Microsoft.EntityFrameworkCore", "GU-81"),
+        ("GroundUp.Auth.Services", "Npgsql", "GU-81"),
+
+        // GU-82: settings, bootstrap and setup services use GroundUpDbContext directly
+        ("GroundUp.Services", "GroundUp.Data.Postgres", "GU-82"),
+        ("GroundUp.Services", "Microsoft.EntityFrameworkCore", "GU-82"),
+        ("GroundUp.Services", "Microsoft.EntityFrameworkCore.Relational", "GU-82"),
+    ];
+}
