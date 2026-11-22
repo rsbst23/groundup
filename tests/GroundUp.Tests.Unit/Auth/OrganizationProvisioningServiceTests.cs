@@ -2,9 +2,11 @@ using FluentAssertions;
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
+using GroundUp.Auth.Core.Validators;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Core;
+using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -22,6 +24,8 @@ public sealed class OrganizationProvisioningServiceTests
     private readonly TenantContext _tenantContext = new();
     private readonly ILogger<OrganizationProvisioningService> _logger =
         Substitute.For<ILogger<OrganizationProvisioningService>>();
+    private readonly ICurrentUser _currentUser = Substitute.For<ICurrentUser>();
+    private readonly IUserRepository _userRepository = Substitute.For<IUserRepository>();
     private readonly OrganizationProvisioningService _sut;
 
     private const string TestOrgName = "Acme Corp";
@@ -40,7 +44,10 @@ public sealed class OrganizationProvisioningServiceTests
             _userRoleRepository,
             _unitOfWork,
             _tenantContext,
-            _logger);
+            _logger,
+            _currentUser,
+            _userRepository,
+            new CreateOrganizationRequestDtoValidator());
 
         SetupSuccessfulRepositories();
         SetupUnitOfWorkThatRunsDelegate();
@@ -399,6 +406,97 @@ public sealed class OrganizationProvisioningServiceTests
         // Assert — a non-slug failure must not be misreported as a slug collision
         await _unitOfWork.Received(1).ExecuteInTransactionAsync(
             Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>());
+    }
+
+    #endregion
+
+    #region CreateForCurrentUserAsync (POST /auth/organizations)
+
+    private void GivenCurrentUser(bool exists = true, bool active = true)
+    {
+        _currentUser.UserId.Returns(TestUserId);
+        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(exists
+                ? OperationResult<UserDto>.Ok(new UserDto(TestUserId, TestExternalUserId, "creator@example.com", "Creator", active))
+                : OperationResult<UserDto>.NotFound());
+    }
+
+    private async Task AssertNothingCreatedAsync()
+        => await _tenantRepository.DidNotReceiveWithAnyArgs().AddAsync(default!, default);
+
+    [Fact]
+    public async Task CreateForCurrentUserAsync_NoUser_Unauthorized()
+    {
+        _currentUser.UserId.Returns(Guid.Empty);
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto(TestOrgName));
+
+        result.StatusCode.Should().Be(401);
+        await AssertNothingCreatedAsync();
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task CreateForCurrentUserAsync_UserMissingOrInactive_Unauthorized(bool exists, bool active)
+    {
+        GivenCurrentUser(exists, active);
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto(TestOrgName));
+
+        result.StatusCode.Should().Be(401);
+        await AssertNothingCreatedAsync();
+    }
+
+    [Theory]
+    [InlineData(null, "Organization name is required.")]
+    [InlineData("   ", "Organization name is required.")]
+    public async Task CreateForCurrentUserAsync_InvalidName_BadRequestWithMessage(string? name, string message)
+    {
+        GivenCurrentUser();
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto(name));
+
+        result.StatusCode.Should().Be(400);
+        result.Message.Should().Be(message);
+        await AssertNothingCreatedAsync();
+    }
+
+    [Fact]
+    public async Task CreateForCurrentUserAsync_NameTooLong_BadRequest()
+    {
+        GivenCurrentUser();
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto(new string('a', 201)));
+
+        result.StatusCode.Should().Be(400);
+        result.Message.Should().Be("Organization name must not exceed 200 characters.");
+    }
+
+    [Fact]
+    public async Task CreateForCurrentUserAsync_UnauthenticatedWithInvalidName_UnauthorizedNotBadRequest()
+    {
+        _currentUser.UserId.Returns(Guid.Empty);
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto(null));
+
+        result.StatusCode.Should().Be(401);
+    }
+
+    [Fact]
+    public async Task CreateForCurrentUserAsync_Valid_ProvisionsForUserWithTrimmedNameAndExternalId()
+    {
+        GivenCurrentUser();
+
+        var result = await _sut.CreateForCurrentUserAsync(new CreateOrganizationRequestDto("  Acme Corp  "));
+
+        result.Success.Should().BeTrue();
+        result.Data!.Name.Should().Be("Acme Corp");
+        await _tenantRepository.Received(1).AddAsync(
+            Arg.Is<TenantDto>(t => t.Name == "Acme Corp" && t.Slug == "acme-corp"), Arg.Any<CancellationToken>());
+        await _userTenantRepository.Received(1).AddAsync(
+            Arg.Is<UserTenantDto>(m => m.UserId == TestUserId && m.ExternalUserId == TestExternalUserId),
+            Arg.Any<CancellationToken>());
     }
 
     #endregion

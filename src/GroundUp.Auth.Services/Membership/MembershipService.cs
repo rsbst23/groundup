@@ -22,6 +22,7 @@ public sealed class MembershipService : IMembershipService
     private readonly ITokenRevocationStore _revocationStore;
     private readonly IMemoryCache _cache;
     private readonly IAuthSessionService _authSessionService;
+    private readonly ITenantRepository _tenantRepository;
     private readonly ILogger<MembershipService> _logger;
 
     /// <summary>
@@ -34,6 +35,7 @@ public sealed class MembershipService : IMembershipService
     /// <param name="revocationStore">Records token revocation cutoffs.</param>
     /// <param name="cache">The cache holding resolved permissions.</param>
     /// <param name="authSessionService">Issues the tenantless session token.</param>
+    /// <param name="tenantRepository">Loads tenant details for the tenant list.</param>
     /// <param name="logger">Logger.</param>
     public MembershipService(
         ICurrentUser currentUser,
@@ -43,8 +45,10 @@ public sealed class MembershipService : IMembershipService
         ITokenRevocationStore revocationStore,
         IMemoryCache cache,
         IAuthSessionService authSessionService,
+        ITenantRepository tenantRepository,
         ILogger<MembershipService> logger)
     {
+        _tenantRepository = tenantRepository;
         _currentUser = currentUser;
         _tenantContext = tenantContext;
         _userTenantRepository = userTenantRepository;
@@ -68,11 +72,7 @@ public sealed class MembershipService : IMembershipService
         }
 
         // 1. The user must have an active membership in the tenant
-        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId, cancellationToken);
-        var isMember = membershipsResult.Success
-            && membershipsResult.Data is not null
-            && membershipsResult.Data.Any(m => m.TenantId == tenantId && m.IsActive);
-        if (!isMember)
+        if (!await IsActiveMemberAsync(userId, tenantId, cancellationToken))
         {
             return OperationResult<LeaveTenantResult>.NotFound("User is not a member of this tenant.");
         }
@@ -111,6 +111,55 @@ public sealed class MembershipService : IMembershipService
             : null;
 
         return OperationResult<LeaveTenantResult>.Ok(new LeaveTenantResult(null, SessionEnded: true, sessionToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsActiveMemberAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId, cancellationToken);
+        return membershipsResult.Success
+            && membershipsResult.Data is not null
+            && membershipsResult.Data.Any(m => m.TenantId == tenantId && m.IsActive);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<IReadOnlyList<MyTenantDto>>> GetMyTenantsAsync(CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == Guid.Empty)
+        {
+            return OperationResult<IReadOnlyList<MyTenantDto>>.Unauthorized();
+        }
+
+        IReadOnlyList<MyTenantDto> none = [];
+
+        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId, cancellationToken);
+        if (!membershipsResult.Success || membershipsResult.Data is null)
+        {
+            return OperationResult<IReadOnlyList<MyTenantDto>>.Ok(none);
+        }
+
+        var tenantIds = membershipsResult.Data.Where(m => m.IsActive).Select(m => m.TenantId).ToList();
+        if (tenantIds.Count == 0)
+        {
+            return OperationResult<IReadOnlyList<MyTenantDto>>.Ok(none);
+        }
+
+        // System-level read: the user's tenants span tenant boundaries
+        var tenantsResult = await _tenantRepository.GetByIdsBypassFilterAsync(tenantIds, cancellationToken);
+        if (!tenantsResult.Success || tenantsResult.Data is null)
+        {
+            return OperationResult<IReadOnlyList<MyTenantDto>>.Ok(none);
+        }
+
+        var currentTenantId = _tenantContext.TenantId;
+        IReadOnlyList<MyTenantDto> tenants = tenantsResult.Data
+            .Select(t => string.IsNullOrEmpty(t.RealmName)
+                ? new MyTenantDto(t.Id, t.Name, t.Slug, "standard", Switchable: true, Current: t.Id == currentTenantId, Subdomain: null)
+                : new MyTenantDto(t.Id, t.Name, t.Slug, "enterprise", Switchable: false, Current: null, Subdomain: t.Slug))
+            .ToList();
+
+        return OperationResult<IReadOnlyList<MyTenantDto>>.Ok(tenants);
     }
 
     /// <summary>

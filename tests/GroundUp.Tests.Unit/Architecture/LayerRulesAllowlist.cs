@@ -9,10 +9,6 @@ internal static class LayerRulesAllowlist
 {
     public static readonly IReadOnlyList<(string Assembly, string UsedAssembly, string Reason)> Entries =
     [
-        // GU-81 task group 2: AuthController and HostTokenReconciliationMiddleware call repositories
-        ("GroundUp.Auth.Api", "GroundUp.Auth.Data.Abstractions", "GU-81"),
-        ("GroundUp.Auth.Api", "GroundUp.Data.Abstractions", "GU-81"),
-
         // GU-81 task group 3: IdentityBootstrapService uses AuthDbContext and Postgres error codes
         ("GroundUp.Auth.Services", "GroundUp.Auth.Data.Postgres", "GU-81"),
         ("GroundUp.Auth.Services", "Microsoft.EntityFrameworkCore", "GU-81"),

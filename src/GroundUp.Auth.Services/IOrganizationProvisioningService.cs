@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Dtos;
 using GroundUp.Core.Results;
 
 namespace GroundUp.Auth.Services;
@@ -32,5 +33,21 @@ public interface IOrganizationProvisioningService
     /// </remarks>
     Task<OperationResult<OrganizationProvisioningResult>> ProvisionAsync(
         OrganizationProvisioningRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates an additional organization for the signed-in user (<c>ICurrentUser</c>), who becomes its
+    /// TenantAdmin. Validates the request, loads the user, then calls <see cref="ProvisionAsync"/> with
+    /// the trimmed name.
+    /// </summary>
+    /// <param name="request">The organization name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// The provisioning result; 400 when the name is missing, blank or longer than 200 characters;
+    /// 401 when there is no signed-in user or the user does not exist or is inactive;
+    /// 409 <c>SLUG_COLLISION</c> as for <see cref="ProvisionAsync"/>.
+    /// </returns>
+    Task<OperationResult<OrganizationProvisioningResult>> CreateForCurrentUserAsync(
+        CreateOrganizationRequestDto request,
         CancellationToken cancellationToken = default);
 }

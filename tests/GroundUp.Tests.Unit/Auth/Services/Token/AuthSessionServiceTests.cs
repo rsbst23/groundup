@@ -23,6 +23,8 @@ public sealed class AuthSessionServiceTests
     private readonly Guid _tenantId2 = Guid.NewGuid();
     private readonly DateTimeOffset _originalAuthTime = DateTimeOffset.UtcNow.AddMinutes(-30);
 
+    private readonly IUserRepository _userRepository = Substitute.For<IUserRepository>();
+
     public AuthSessionServiceTests()
     {
         _userTenantRepository = Substitute.For<IUserTenantRepository>();
@@ -38,11 +40,41 @@ public sealed class AuthSessionServiceTests
             _userTenantRepository,
             _tenantRepository,
             _tokenService,
-            _sessionPolicyProvider);
+            _sessionPolicyProvider,
+            _userRepository);
 
         // Default token generation returns a token
         _tokenService.GenerateTokenAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
             .Returns(callInfo => $"token-for-{callInfo.ArgAt<Guid>(0)}-{callInfo.ArgAt<Guid>(1)}");
+    }
+
+    // --- SetTenantForExternalUserAsync ---
+
+    [Fact]
+    public async Task SetTenantForExternalUserAsync_UnknownSubject_404WithUserNotFoundCode()
+    {
+        _userRepository.GetByExternalUserIdAsync("kc|unknown", Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.NotFound());
+
+        var result = await _sut.SetTenantForExternalUserAsync("kc|unknown", null);
+
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(ErrorCodes.UserNotFound, result.ErrorCode);
+        Assert.Equal("User not found.", result.Message);
+    }
+
+    [Fact]
+    public async Task SetTenantForExternalUserAsync_KnownSubject_SelectsTenantForThatUser()
+    {
+        _userRepository.GetByExternalUserIdAsync("kc|known", Arg.Any<CancellationToken>())
+            .Returns(OperationResult<UserDto>.Ok(new UserDto(_userId, "kc|known", "u@example.com", "U", true)));
+        var tenantId = Guid.NewGuid();
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, tenantId, "kc|known", true) });
+
+        var result = await _sut.SetTenantForExternalUserAsync("kc|known", tenantId);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal($"token-for-{_userId}-{tenantId}", result.Data!.Token);
     }
 
     // --- SetTenantAsync: No memberships ---

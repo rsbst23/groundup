@@ -38,6 +38,11 @@ public static class ErrorCodes
     public const string ReauthRequired = "REAUTH_REQUIRED";
 
     /// <summary>
+    /// The caller is authenticated by the identity provider but has no GroundUp user account.
+    /// </summary>
+    public const string UserNotFound = "USER_NOT_FOUND";
+
+    /// <summary>
     /// The request conflicts with the current state of the resource.
     /// </summary>
     public const string Conflict = "CONFLICT";

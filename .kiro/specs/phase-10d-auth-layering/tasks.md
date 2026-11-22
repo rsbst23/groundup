@@ -9,12 +9,12 @@ Baselines: unit 1664 pass / 12 known failures (+1 flaky property test, GU-73); i
   - [x] 1.2 `IdentityBootstrapServiceIntegrationTests` (own Postgres container): one ordered scenario covering the four queries before and after, first provisioning (user, membership, SuperAdmin role rows), idempotent repeat with no duplicates, and 409 on a different display name. Green against today's code. Only `CreateService` may change in task group 3
   - Results: unit 1667 / 12 known; integration 365 / 48 known; sample 22/22
 
-- [ ] 2. Controller and middleware call services only
-  - [ ] 2.1 `MyTenantDto`, `IMembershipService.GetMyTenantsAsync` and `IsActiveMemberAsync`
-  - [ ] 2.2 `IAuthSessionService.SetTenantForExternalUserAsync`
-  - [ ] 2.3 `CreateOrganizationRequestDtoValidator`, `IOrganizationProvisioningService.CreateForCurrentUserAsync`
-  - [ ] 2.4 Thin `AuthController` and `HostTokenReconciliationMiddleware`; remove the `Auth.Api` allowlist pairs
-  - [ ] 2.5 Unit tests; controller tests assert the unchanged JSON shapes
+- [x] 2. Controller and middleware call services only
+  - [x] 2.1 `MyTenantDto`, `IMembershipService.GetMyTenantsAsync` and `IsActiveMemberAsync`
+  - [x] 2.2 `IAuthSessionService.SetTenantForExternalUserAsync` (returns 404 with new `ErrorCodes.UserNotFound`, so the controller maps only that case to the old `{ error }` body; other 404s from `SetTenantAsync` keep `{ error, errorCode }`)
+  - [x] 2.3 `CreateOrganizationRequestDtoValidator`, `IOrganizationProvisioningService.CreateForCurrentUserAsync` (order kept: 401 before 400)
+  - [x] 2.4 Thin `AuthController` (no repository dependencies) and `HostTokenReconciliationMiddleware`; `Auth.Api` allowlist pairs removed and the architecture test passes
+  - [x] 2.5 Unit tests: logic tests moved to the services (membership list and member check, external-user set-tenant, organization creation, validator); controller tests assert the unchanged JSON property names. Unit 1688 / 12 known; integration 365 / 48; sample 22/22
 
 - [ ] 3. Services do not use the database
   - [ ] 3.1 `IUniqueConstraintDetector` (Data.Abstractions) and `PostgresUniqueConstraintDetector` (Data.Postgres)

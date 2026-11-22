@@ -24,6 +24,7 @@ public sealed class MembershipServiceTests
     private readonly ITokenRevocationStore _store = Substitute.For<ITokenRevocationStore>();
     private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
     private readonly IAuthSessionService _sessions = Substitute.For<IAuthSessionService>();
+    private readonly ITenantRepository _tenants = Substitute.For<ITenantRepository>();
     private readonly MembershipService _sut;
 
     private readonly Guid _target = Guid.NewGuid();
@@ -35,7 +36,7 @@ public sealed class MembershipServiceTests
 
         _sut = new MembershipService(
             _currentUser, _tenantContext, _userTenants, new LastAdminGuard(_userRoles),
-            _store, _cache, _sessions, NullLogger<MembershipService>.Instance);
+            _store, _cache, _sessions, _tenants, NullLogger<MembershipService>.Instance);
     }
 
     // ── Arrange helpers ───────────────────────────────────────────
@@ -251,6 +252,113 @@ public sealed class MembershipServiceTests
 
         result.Data.Should().Be(new LeaveTenantResult(null, false, null));
         await _sessions.DidNotReceiveWithAnyArgs().IssueTenantlessSessionAsync(default, default);
+    }
+
+    // ── IsActiveMemberAsync ───────────────────────────────────────
+
+    [Fact]
+    public async Task IsActiveMemberAsync_ActiveMembership_True()
+    {
+        GivenMemberships((_target, true));
+
+        (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsActiveMemberAsync_InactiveOrOtherTenantOrLookupFails_False()
+    {
+        GivenMemberships((_target, false), (Guid.NewGuid(), true));
+        (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+
+        _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Fail("db", 500));
+        (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+    }
+
+    // ── GetMyTenantsAsync ─────────────────────────────────────────
+
+    private void GivenTenants(params TenantDto[] tenants)
+        => _tenants.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<TenantDto>>.Ok(tenants.ToList()));
+
+    private static TenantDto Standard(Guid id, string name)
+        => new(id, name, name.ToLowerInvariant(), GroundUp.Auth.Core.Enums.TenantType.Standard,
+            GroundUp.Auth.Core.Enums.OnboardingMode.InviteOnly, null, null, true);
+
+    [Fact]
+    public async Task GetMyTenantsAsync_NoUser_Unauthorized()
+    {
+        _currentUser.UserId.Returns(Guid.Empty);
+
+        (await _sut.GetMyTenantsAsync()).StatusCode.Should().Be(401);
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_StandardTenants_FlagsTheCurrentOne()
+    {
+        var other = Guid.NewGuid();
+        _tenantContext.TenantId.Returns(_target);
+        GivenMemberships((_target, true), (other, true));
+        GivenTenants(Standard(_target, "One"), Standard(other, "Two"));
+
+        var result = await _sut.GetMyTenantsAsync();
+
+        result.Data.Should().BeEquivalentTo(new[]
+        {
+            new MyTenantDto(_target, "One", "one", "standard", true, true, null),
+            new MyTenantDto(other, "Two", "two", "standard", true, false, null)
+        }, o => o.WithStrictOrdering());
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_EnterpriseTenant_NotSwitchableWithSubdomain()
+    {
+        GivenMemberships((_target, true));
+        GivenTenants(new TenantDto(_target, "Enterprise Co", "enterprise-co", GroundUp.Auth.Core.Enums.TenantType.Enterprise,
+            GroundUp.Auth.Core.Enums.OnboardingMode.InviteOnly, null, "enterprise-realm", true));
+
+        var result = await _sut.GetMyTenantsAsync();
+
+        result.Data.Should().ContainSingle()
+            .Which.Should().Be(new MyTenantDto(_target, "Enterprise Co", "enterprise-co", "enterprise", false, null, "enterprise-co"));
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_OnlyActiveMembershipsAreLookedUp()
+    {
+        var inactive = Guid.NewGuid();
+        GivenMemberships((_target, true), (inactive, false));
+        GivenTenants(Standard(_target, "One"));
+
+        await _sut.GetMyTenantsAsync();
+
+        await _tenants.Received(1).GetByIdsBypassFilterAsync(
+            Arg.Is<IEnumerable<Guid>>(ids => ids.SequenceEqual(new[] { _target })), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_NoActiveMembership_EmptyWithoutTenantLookup()
+    {
+        GivenMemberships((_target, false));
+
+        var result = await _sut.GetMyTenantsAsync();
+
+        result.Success.Should().BeTrue();
+        result.Data.Should().BeEmpty();
+        await _tenants.DidNotReceiveWithAnyArgs().GetByIdsBypassFilterAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_LookupsFail_EmptyList()
+    {
+        _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Fail("db", 500));
+        (await _sut.GetMyTenantsAsync()).Data.Should().BeEmpty();
+
+        GivenMemberships((_target, true));
+        _tenants.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<TenantDto>>.Fail("db", 500));
+        (await _sut.GetMyTenantsAsync()).Data.Should().BeEmpty();
     }
 
     [Fact]

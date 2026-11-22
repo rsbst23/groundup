@@ -32,4 +32,26 @@ public interface IMembershipService
         Guid tenantId,
         DateTimeOffset? originalAuthTime,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The tenants the current user is an active member of. Standard tenants are switchable and
+    /// flag the session's current tenant; enterprise tenants (with their own realm) are not switchable
+    /// and carry the subdomain to sign in at.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// The list (empty when the user has no active membership, or when memberships or tenants cannot be
+    /// read); Unauthorized with no signed-in user.
+    /// </returns>
+    Task<OperationResult<IReadOnlyList<MyTenantDto>>> GetMyTenantsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="userId"/> has an active membership in <paramref name="tenantId"/>.
+    /// A failed lookup counts as not a member.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True for an active member.</returns>
+    Task<bool> IsActiveMemberAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken = default);
 }
