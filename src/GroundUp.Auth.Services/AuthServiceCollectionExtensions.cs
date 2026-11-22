@@ -7,6 +7,7 @@ using GroundUp.Auth.Services.Bootstrap;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Revocation;
 using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Settings;
 using GroundUp.Auth.Services.Token;
@@ -150,6 +151,12 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IFlowHandler, SimpleSignupFlowHandler>();
         services.AddScoped<LastAdminGuard>();
         services.AddScoped<IOrganizationProvisioningService, OrganizationProvisioningService>();
+
+        // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
+        // TimeProvider.System on purpose: the cutoff must use the clock that stamps iat on tokens, not
+        // whatever TimeProvider the container holds. TryAdd so an application can register a shared store.
+        services.TryAddSingleton<ITokenRevocationStore>(_ => new InMemoryTokenRevocationStore(TimeProvider.System));
+        services.AddHostedService<TokenRevocationStartupValidator>();
 
         // Startup checks on cookie settings (CookieSecure outside Development, single-label domain)
         services.AddHostedService<AuthCookieStartupValidator>();

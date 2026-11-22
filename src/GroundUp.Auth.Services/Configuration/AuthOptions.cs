@@ -109,4 +109,15 @@ public sealed class AuthOptions
     /// Must be 0 or greater; validated on startup. 0 = delete immediately after termination.
     /// </summary>
     public int RetentionDays { get; set; } = 7;
+
+    /// <summary>
+    /// Allows the in-memory token revocation store in the Production environment. Default: false.
+    /// <para>
+    /// The in-memory store is per process: with several instances, only the instance that handled a
+    /// leave knows about it, and the others accept the old token until it expires (at most the token
+    /// lifetime). Production refuses to start with that store unless this is set. Set it only for a
+    /// single-instance deployment, until the caching module provides a shared store (Phase 15, GU-47).
+    /// </para>
+    /// </summary>
+    public bool AllowInMemoryTokenRevocationStore { get; set; }
 }

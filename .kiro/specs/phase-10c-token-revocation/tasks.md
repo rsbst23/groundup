@@ -4,10 +4,10 @@ Execute one top-level task at a time. After each: build, run tests against the b
 
 Baselines: unit 1623 pass / 12 known failures (+1 flaky property test, GU-73); integration 357 pass / 48 known failures; sample 22/22.
 
-- [ ] 1. Store and production guard
-  - [ ] 1.1 `ITokenRevocationStore` (Auth.Core) and `InMemoryTokenRevocationStore` (Auth.Services), Phase 15 comment
-  - [ ] 1.2 `AuthOptions.AllowInMemoryTokenRevocationStore`, `TokenRevocationStartupValidator`, registration in `AddGroundUpAuth`
-  - [ ] 1.3 Unit tests (design section 9)
+- [x] 1. Store and production guard
+  - [x] 1.1 `ITokenRevocationStore` (Auth.Core) and `InMemoryTokenRevocationStore` (Auth.Services), Phase 15 comment
+  - [x] 1.2 `AuthOptions.AllowInMemoryTokenRevocationStore`, `TokenRevocationStartupValidator`, registration in `AddGroundUpAuth`
+  - [x] 1.3 Unit tests (21 new; unit 1644 pass / 12 known + flaky; integration 357 / 48; sample 22/22)
 
 - [ ] 2. Membership service and thin controller
   - [ ] 2.1 `LeaveTenantResult`, `IMembershipService`, `MembershipService`
