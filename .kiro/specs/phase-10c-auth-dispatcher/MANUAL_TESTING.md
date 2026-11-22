@@ -8,10 +8,11 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 
 ## How to Use This Guide
 
-### The two test users
+### The test users
 
 | Name | Email | Password | Role in this script |
 |---|---|---|---|
+| **Sam** | `admin@example.com` | `Admin123!` | The system administrator (SuperAdmin), created by the setup wizard's first-admin step (1.3). Only needed for the optional parts that change System-level settings (11, 14.4). If your setup used a different first admin, use that account. |
 | **Alice** | `testuser@example.com` | `Test123!` | Founds `My Test Org`, creates `Second Org`. The only TenantAdmin of both. |
 | **Bob** | `member@example.com` | `Test123!` | A regular member (no admin role) who joins through the default tenant, then leaves and rejoins. |
 
@@ -59,7 +60,7 @@ Calling `POST /auth/logout` without opening `logoutUrl` clears only the GroundUp
 
 **Recipe 3 — Set or clear the default tenant**
 
-There is no API for settings yet, so use the database (pgAdmin/DBeaver, `groundup` database). Replace `'my-test-org'` with `''` to clear it.
+This is a System-level setting, which only a SuperAdmin may change through the settings API (see Part 11). To keep the main script to Alice and Bob, use the database (pgAdmin/DBeaver, `groundup` database). Replace `'my-test-org'` with `''` to clear it.
 
 ```sql
 -- 1. Is there already a system-level value row?
@@ -154,6 +155,9 @@ POST /setup/identity-provider
 
 POST /setup/keycloak-bootstrap
 { "adminClientId": "groundup-admin", "adminClientSecret": "<secret from 1.2 step 5>" }
+
+POST /setup/first-admin
+{ "email": "admin@example.com", "displayName": "Sam Admin", "password": "Admin123!" }
 
 POST /setup/complete
 ```
@@ -428,18 +432,29 @@ Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user 
 
 ## Part 11 (Optional): Token Refresh and Session Timeout Settings
 
-Run it as Alice: log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4).
+The timeouts are runtime settings, changed through the settings API with no restart: `auth.session.token-lifetime-minutes` (2 to 120, default 60; also the inactivity timeout) and `auth.session.absolute-lifetime-minutes` (10 to 1440, default 480). Each can be set at the System level and, shorter only, per tenant. `appsettings` values are only a fallback when settings cannot be read.
 
-The timeouts are runtime settings, changed through the settings API with no restart: `auth.session.token-lifetime-minutes` (2 to 120, default 60; also the inactivity timeout) and `auth.session.absolute-lifetime-minutes` (10 to 1440, default 480). Each can be set at the System level and, shorter only, per tenant. `appsettings` values are only a fallback when settings cannot be read. The settings API has no authorization yet (GU-77), so any caller can change them.
+**Who may change settings (GU-77):**
+
+| Change | Allowed for | Others get |
+|---|---|---|
+| A System value | SuperAdmin (Sam) | **403** |
+| A tenant's value | SuperAdmin, or a TenantAdmin (or a user with `settings.manage.tenant`) **of that tenant**, while it is their current tenant | **403** |
+| Levels, groups, definitions (create, update, delete) | SuperAdmin | **403** |
+| List settings, groups, definitions (`GET /api/settings`, `GET /api/settings/groups`, `GET /api/settings/definitions`) | `settings.read` (SuperAdmin and TenantAdmin have it) | **403** |
+| One effective value (`GET /api/settings/{key}`), the levels (`GET /api/settings/levels`) | anyone (the app itself reads these during login) | — |
+
+With no sign-in, a change returns **401**. Secret values are always masked, for every user.
 
 1. **Find the level ids.** `GET /api/settings/levels` → note the `id` of `System` and of `Tenant`.
-2. **Shorten the token lifetime.** `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`. Expected: **200**; note `data.id` for step 6. Then `POST /auth/refresh`: the new `AuthToken` expires in 2 minutes (DevTools → Application → Cookies, **Expires**).
-3. **Refresh.** Refresh only happens in a window: the token must be **more than half its lifetime old but not yet expired**, so **between 1 and 2 minutes** after it was issued. Wait about 70 seconds, then `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`).
+2. **Alice cannot change the System value.** Log out fully, log in as Alice (Recipe 1), then `POST /auth/set-tenant` to `My Test Org` (as in 4.4). `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`. Expected: **403**.
+3. **Sam shortens the token lifetime.** Log out fully, log in as Sam (Recipe 1). Same `PUT` as in step 2. Expected: **200**; note `data.id` for step 7. Log out fully and log in as Alice again, scoped to `My Test Org`. Then `POST /auth/refresh`: the new `AuthToken` expires in 2 minutes (DevTools → Application → Cookies, **Expires**).
+4. **Refresh.** Refresh only happens in a window: the token must be **more than half its lifetime old but not yet expired**, so **between 1 and 2 minutes** after it was issued. Wait about 70 seconds, then `GET /auth/me`. Expected: **200** and a **new** `AuthToken` cookie in the response headers (Network → Response Headers → `Set-Cookie`).
 
    If you wait **past 2 minutes** the token has expired and cannot be refreshed: `GET /auth/me` returns **401** and you log in again (Recipe 1). That is correct; you missed the window.
-4. **A tenant can only shorten.** Using `My Test Org`'s id from `GET /auth/me/tenants`: `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "5", "levelId": "<Tenant id>", "scopeId": "<My Test Org id>" }`. Expected: **400**, the tenant value cannot be longer than the System value (2). With `"value": "2"` it is accepted (**200**; note `data.id`).
-5. **Bounds and the cross-field rule.** `"value": "1"` at the System level → **400** (minimum 2). `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "1", ... }` → **400** (minimum 10).
-6. **Put it back.** `DELETE /api/settings/values/<id>` for each id you noted. The defaults apply again on the next token.
+5. **A tenant can only shorten.** Still as Alice in `My Test Org`, using its id from `GET /auth/me/tenants`: `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "5", "levelId": "<Tenant id>", "scopeId": "<My Test Org id>" }`. Expected: **400**, the tenant value cannot be longer than the System value (2). With `"value": "2"` it is accepted (**200**; note `data.id`).
+6. **Only the current tenant, and the bounds.** Same `PUT` with `"value": "2"` and the `scopeId` of `Second Org` (Alice is its TenantAdmin too, but it is not her current tenant). Expected: **403**. With `My Test Org` again: `"value": "1"` → **400** (minimum 2), and `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "1", "levelId": "<Tenant id>", "scopeId": "<My Test Org id>" }` → **400** (minimum 10).
+7. **Put it back.** As Alice: `DELETE /api/settings/values/<id>` for the tenant value. Then as Sam: the same for the System value (as Alice it returns **403**). The defaults apply again on the next token.
 
 ---
 
@@ -651,11 +666,11 @@ Checks that the session is counted from when the user really typed their passwor
 ### 14.4 `max_age` makes an old session ask for the password
 Uses the shortest allowed absolute lifetime (10 minutes), so it takes about 11 minutes.
 
-1. Set the System values through the settings API (Part 11 shows how to get the System level id): `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`, then `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "10", "levelId": "<System id>" }`. Note each response's `data.id`. No restart is needed.
-2. Log in with the password (`POST /auth/login?forceLogin=true`, Recipe 1 step 2). `POST /auth/login` now returns `max_age=600`.
+1. Log in as Sam (System values need a SuperAdmin; see Part 11) and set the System values through the settings API (Part 11 shows how to get the System level id): `PUT /api/settings/auth.session.token-lifetime-minutes` with `{ "value": "2", "levelId": "<System id>" }`, then `PUT /api/settings/auth.session.absolute-lifetime-minutes` with `{ "value": "10", "levelId": "<System id>" }`. Note each response's `data.id`. No restart is needed.
+2. Log out fully, then log in as Alice with the password (`POST /auth/login?forceLogin=true`, Recipe 1 step 2). `POST /auth/login` now returns `max_age=600`.
 3. Wait 11 minutes. Run Recipe 1 (`POST /auth/login`, no `forceLogin`).
 4. **Expected:** Keycloak shows the **login form**, even though its own SSO session (30 minutes idle, 8 hours maximum) is still alive, because the last sign-in is older than `max_age`. After you sign in, `auth_time` is now.
-5. **Put it back:** `DELETE /api/settings/values/<id>` for both ids from step 1.
+5. **Put it back:** as Sam, `DELETE /api/settings/values/<id>` for both ids from step 1.
 
 > If a stale session ever reaches the callback anyway (for example a clock difference), the callback returns `401 { "errorCode": "REAUTH_REQUIRED" }` and writes no cookie. The automated tests cover that path.
 
@@ -688,6 +703,8 @@ These need extra setup (several organizations, a second admin) or conditions tha
 |---|---|
 | `relation "SettingDefinitions" does not exist` | Run the EF migrations (Before You Start) |
 | App starts with Keycloak validation errors | Run the setup wizard (Part 1) |
+| `PUT` or `DELETE` on `/api/settings/...` returns 403 | System values need a SuperAdmin (Sam). A tenant value needs a TenantAdmin of that tenant, and it must be your current tenant (`POST /auth/set-tenant`). See the table in Part 11 |
+| App refuses to start: `ISettingsService is registered without authorization` | The app registers the auth module but not `AddAuthorized<ISettingsService, SettingsService>()` / `AddAuthorized<ISettingsAdminService, SettingsAdminService>()`. The sample's `Program.cs` shows both |
 | `POST /auth/login` returns 500 | Check that Keycloak is running: `docker compose ps` |
 | `POST /auth/signup` returns 500 | Same as above; also check setup was completed |
 | `redirectUrl` gives "Invalid redirect_uri" in Keycloak | Keycloak 26 ignores port wildcards. Add the explicit URL (for example `http://localhost:5000/auth/callback`) to the `groundup-app` client's Valid redirect URIs (Part 1.2) |
