@@ -54,8 +54,8 @@ The setup check uses `IBootstrapStateService.IsCompleteAsync()` (cached 60 secon
 `AddAuthorized` registers the concrete class as well as the interface, which does not conflict with `AddGroundUpSettings()` because the interface registration is replaced by the later call.
 
 **Known gap in the proxy, handled here:** `AuthorizationInterceptor` checks `[RequiresPermission]` against the permission set and skips the SuperAdmin and TenantAdmin bypass. A TenantAdmin without an explicit `settings.read` would be denied.
-- Fix in this spec: the seeded TenantAdmin role template and SuperAdmin already receive all seeded permissions, so `settings.read` and `settings.manage.tenant` are granted by the permission seeder to them. Task group 1 verifies this with a test and adds the grant if missing.
-- The wider interceptor bypass fix is filed as a separate Jira bug and is not part of GU-77.
+- Correction found in task group 1: the TenantAdmin role is created with no policies (`OrganizationProvisioningService`), so it relies on the bypass alone. SuperAdmin's `FullAccess` policy links every seeded permission, so it is covered.
+- Decision (approved): fix `AuthorizationInterceptor` inside GU-77 (task 3.3). Every `[RequiresPermission]` check, in all three code paths (OperationResult, non-generic, exception), SHALL use `IPermissionService.HasPermissionAsync` per permission (AND semantics kept), so the SuperAdmin and TenantAdmin bypass applies. `[RequiresRole]` is unchanged. Tests cover SuperAdmin, TenantAdmin of the current tenant, TenantAdmin of another tenant (denied), a user with the explicit permission, and a user with none. The change affects every service registered with `AddAuthorized`, so the existing `AuthorizationProxyIntegrationTests` and unit tests must still pass.
 
 The proxy returns 403 for an unauthenticated caller on attributed methods. The authorizer path returns 401. This difference is accepted and documented.
 
