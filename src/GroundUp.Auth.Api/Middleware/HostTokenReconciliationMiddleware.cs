@@ -1,6 +1,6 @@
-using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -109,13 +109,8 @@ public sealed class HostTokenReconciliationMiddleware
             return;
         }
 
-        var userTenantRepository = context.RequestServices.GetRequiredService<IUserTenantRepository>();
-        var membershipsResult = await userTenantRepository.GetAllMembershipsForUserAsync(userId);
-
-        var isMember = membershipsResult.Success
-                       && membershipsResult.Data is not null
-                       && membershipsResult.Data.Any(m =>
-                           m.TenantId == hostResolvedTenant.Tenant.Id && m.IsActive);
+        var membershipService = context.RequestServices.GetRequiredService<IMembershipService>();
+        var isMember = await membershipService.IsActiveMemberAsync(userId, hostResolvedTenant.Tenant.Id, context.RequestAborted);
 
         if (isMember)
         {

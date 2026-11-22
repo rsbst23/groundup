@@ -998,7 +998,7 @@ Every .csproj for a NuGet package must include:
 - **Never** use `int` for entity IDs — always UUID v7 (`Guid`)
 - **Never** use AutoMapper — use Mapperly
 - **Never** throw exceptions for business logic errors — return OperationResult.Fail
-- **Never** access repositories directly from controllers — always go through services
+- **Never** access repositories directly from controllers or middleware — always go through services. The layer rules are enforced by `LayerRulesTests` (`tests/GroundUp.Tests.Unit/Architecture`); a known exception goes in `LayerRulesAllowlist` only with a Jira story that removes it
 - **Never** put security/authorization logic in controllers — service layer is the security boundary
 - **Never** hardcode connection strings, secrets, or environment-specific values in framework code
 - **Never** hardcode user-facing strings — use resource strings for localization support

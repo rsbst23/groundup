@@ -22,9 +22,6 @@ public sealed class AuthControllerTests
     private readonly IAuthFlowService _authFlowService;
     private readonly IAuthSessionService _authSessionService;
     private readonly IAuthCookieWriter _authCookieWriter;
-    private readonly IUserRepository _userRepository;
-    private readonly IUserTenantRepository _userTenantRepository;
-    private readonly ITenantRepository _tenantRepository;
     private readonly IMembershipService _membershipService = Substitute.For<IMembershipService>();
     private readonly AuthOptions _authOptions;
     private readonly KeycloakOptions _keycloakOptions;
@@ -45,9 +42,6 @@ public sealed class AuthControllerTests
         _authFlowService = Substitute.For<IAuthFlowService>();
         _authSessionService = Substitute.For<IAuthSessionService>();
         _authCookieWriter = Substitute.For<IAuthCookieWriter>();
-        _userRepository = Substitute.For<IUserRepository>();
-        _userTenantRepository = Substitute.For<IUserTenantRepository>();
-        _tenantRepository = Substitute.For<ITenantRepository>();
 
         _authOptions = new AuthOptions
         {
@@ -495,12 +489,8 @@ public sealed class AuthControllerTests
         };
         SetAuthenticatedExternalIdpUser(claims);
 
-        var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
-        _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.Ok(user));
-
         var response = new SetTenantResponseDto(false, null, TestToken);
-        _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
+        _authSessionService.SetTenantForExternalUserAsync(externalSub, TestTenantId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<SetTenantResponseDto>.Ok(response));
 
         var request = new SetTenantRequestDto(TestTenantId);
@@ -508,9 +498,26 @@ public sealed class AuthControllerTests
         // Act
         var result = await _sut.SetTenant(request);
 
-        // Assert
-        await _userRepository.Received(1).GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>());
+        // Assert — the service resolves the user by external id; the controller does not
+        await _authSessionService.Received(1).SetTenantForExternalUserAsync(externalSub, TestTenantId, Arg.Any<CancellationToken>());
+        await _authSessionService.DidNotReceive().SetTenantAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
         result.Should().BeOfType<OkResult>();
+        _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestToken);
+    }
+
+    [Fact]
+    public async Task SetTenant_KeycloakPrincipalWithoutGroundUpUser_Returns404WithError()
+    {
+        SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", "keycloak|unknown") });
+        _authSessionService.SetTenantForExternalUserAsync("keycloak|unknown", TestTenantId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<SetTenantResponseDto>.Fail("User not found.", 404, GroundUp.Core.ErrorCodes.UserNotFound));
+
+        var result = await _sut.SetTenant(new SetTenantRequestDto(TestTenantId));
+
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        var body = GetAnonymousObjectProperties(notFound.Value!);
+        body.Keys.Should().BeEquivalentTo("error");
+        body["error"].Should().Be("User not found.");
     }
 
     [Fact]
@@ -524,11 +531,7 @@ public sealed class AuthControllerTests
         };
         SetAuthenticatedExternalIdpUser(claims);
 
-        var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
-        _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.Ok(user));
-
-        _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
+        _authSessionService.SetTenantForExternalUserAsync(externalSub, TestTenantId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<SetTenantResponseDto>.Forbidden("User does not belong to the specified tenant"));
 
         var request = new SetTenantRequestDto(TestTenantId);
@@ -576,30 +579,14 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public async Task SetTenant_Success_WritesCookie()
+    public async Task SetTenant_GroundUpToken_Success_WritesCookie()
     {
-        // Arrange — Keycloak-token principal (has sub, no tid)
-        var externalSub = "keycloak|user-789";
-        var claims = new[]
-        {
-            new Claim("sub", externalSub)
-        };
-        SetAuthenticatedExternalIdpUser(claims);
-
-        var user = new UserDto(TestUserId, externalSub, "user@example.com", "Test User", true);
-        _userRepository.GetByExternalUserIdAsync(externalSub, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.Ok(user));
-
-        var response = new SetTenantResponseDto(false, null, TestToken);
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
         _authSessionService.SetTenantAsync(TestUserId, TestTenantId, Arg.Any<DateTimeOffset?>())
-            .Returns(OperationResult<SetTenantResponseDto>.Ok(response));
+            .Returns(OperationResult<SetTenantResponseDto>.Ok(new SetTenantResponseDto(false, null, TestToken)));
 
-        var request = new SetTenantRequestDto(TestTenantId);
+        await _sut.SetTenant(new SetTenantRequestDto(TestTenantId));
 
-        // Act
-        await _sut.SetTenant(request);
-
-        // Assert
         _authCookieWriter.Received(1).WriteAuthCookieAsync(Arg.Any<HttpContext>(), TestToken);
     }
 
@@ -787,74 +774,54 @@ public sealed class AuthControllerTests
 
     #region GET /auth/me/tenants
 
+    // The list rules (active memberships, standard vs enterprise, current tenant) are tested in
+    // MembershipServiceTests. These tests cover the HTTP adapter and the unchanged JSON shapes.
+
     [Fact]
     public async Task GetMyTenants_Unauthenticated_Returns401()
     {
-        // Act
         var result = await _sut.GetMyTenants();
 
-        // Assert
+        result.Should().BeOfType<UnauthorizedResult>();
+        await _membershipService.DidNotReceiveWithAnyArgs().GetMyTenantsAsync(default);
+    }
+
+    [Fact]
+    public async Task GetMyTenants_ServiceReturnsEmpty_ReturnsEmptyList()
+    {
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", TestTenantId.ToString()) });
+        GivenMyTenants();
+
+        var result = await _sut.GetMyTenants();
+
+        var list = result.Should().BeOfType<OkObjectResult>().Subject.Value as IList<object>;
+        list.Should().NotBeNull().And.BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetMyTenants_ServiceUnauthorized_Returns401()
+    {
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        _membershipService.GetMyTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(OperationResult<IReadOnlyList<MyTenantDto>>.Unauthorized());
+
+        var result = await _sut.GetMyTenants();
+
         result.Should().BeOfType<UnauthorizedResult>();
     }
 
     [Fact]
-    public async Task GetMyTenants_AuthenticatedUserWithNoMemberships_ReturnsEmptyList()
+    public async Task GetMyTenants_StandardTenant_HasUnchangedShape()
     {
-        // Arrange
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", TestTenantId.ToString())
-        });
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>()));
-
-        // Act
-        var result = await _sut.GetMyTenants();
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var list = okResult.Value as Array;
-        list.Should().NotBeNull();
-        list!.Length.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task GetMyTenants_AuthenticatedUserWithOneStandardTenant_ReturnsCorrectShape()
-    {
-        // Arrange
         var tenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", tenantId.ToString())
-        });
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", tenantId.ToString()) });
+        GivenMyTenants(new MyTenantDto(tenantId, "Acme Corp", "acme-corp", "standard", true, true, null));
 
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), TestUserId, tenantId, "ext-1", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        var tenants = new List<TenantDto>
-        {
-            new(tenantId, "Acme Corp", "acme-corp", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true)
-        };
-        _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<TenantDto>>.Ok(tenants));
-
-        // Act
         var result = await _sut.GetMyTenants();
 
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var list = okResult.Value as IList<object>;
-        list.Should().NotBeNull();
-        list!.Count.Should().Be(1);
-
-        var item = GetAnonymousObjectProperties(list[0]);
+        var list = (IList<object>)result.Should().BeOfType<OkObjectResult>().Subject.Value!;
+        var item = GetAnonymousObjectProperties(list.Single());
+        item.Keys.Should().BeEquivalentTo("id", "name", "slug", "type", "switchable", "current");
         item["id"].Should().Be(tenantId);
         item["name"].Should().Be("Acme Corp");
         item["slug"].Should().Be("acme-corp");
@@ -864,352 +831,173 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public async Task GetMyTenants_AuthenticatedUserWithMultipleTenants_ReturnsCorrectListWithCurrentFlag()
+    public async Task GetMyTenants_EnterpriseTenant_HasUnchangedShape()
     {
-        // Arrange
-        var tenantId1 = Guid.NewGuid();
-        var tenantId2 = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", tenantId1.ToString())
-        });
-
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), TestUserId, tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), TestUserId, tenantId2, "ext-2", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        var tenants = new List<TenantDto>
-        {
-            new(tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true),
-            new(tenantId2, "Tenant Two", "tenant-two", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true)
-        };
-        _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<TenantDto>>.Ok(tenants));
-
-        // Act
-        var result = await _sut.GetMyTenants();
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var list = okResult.Value as IList<object>;
-        list.Should().NotBeNull();
-        list!.Count.Should().Be(2);
-
-        var first = GetAnonymousObjectProperties(list[0]);
-        first["id"].Should().Be(tenantId1);
-        first["current"].Should().Be(true);
-
-        var second = GetAnonymousObjectProperties(list[1]);
-        second["id"].Should().Be(tenantId2);
-        second["current"].Should().Be(false);
-    }
-
-    [Fact]
-    public async Task GetMyTenants_EnterpriseTenant_MarkedAsSwitchableFalse()
-    {
-        // Arrange
         var tenantId = Guid.NewGuid();
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", TestTenantId.ToString())
-        });
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", TestTenantId.ToString()) });
+        GivenMyTenants(new MyTenantDto(tenantId, "Enterprise Co", "enterprise-co", "enterprise", false, null, "enterprise-co"));
 
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), TestUserId, tenantId, "ext-1", true)
-        };
-        _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
-
-        // Enterprise tenant has a non-null RealmName
-        var tenants = new List<TenantDto>
-        {
-            new(tenantId, "Enterprise Co", "enterprise-co", TenantType.Enterprise, OnboardingMode.InviteOnly, null, "enterprise-realm", true)
-        };
-        _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<TenantDto>>.Ok(tenants));
-
-        // Act
         var result = await _sut.GetMyTenants();
 
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var list = okResult.Value as IList<object>;
-        list.Should().NotBeNull();
-        list!.Count.Should().Be(1);
-
-        var item = GetAnonymousObjectProperties(list[0]);
-        item["id"].Should().Be(tenantId);
-        item["name"].Should().Be("Enterprise Co");
-        item["slug"].Should().Be("enterprise-co");
+        var list = (IList<object>)result.Should().BeOfType<OkObjectResult>().Subject.Value!;
+        var item = GetAnonymousObjectProperties(list.Single());
+        item.Keys.Should().BeEquivalentTo("id", "name", "slug", "type", "switchable", "subdomain");
         item["type"].Should().Be("enterprise");
         item["switchable"].Should().Be(false);
         item["subdomain"].Should().Be("enterprise-co");
     }
 
+    [Fact]
+    public async Task GetMyTenants_KeepsServiceOrder()
+    {
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        GivenMyTenants(
+            new MyTenantDto(first, "One", "one", "standard", true, false, null),
+            new MyTenantDto(second, "Two", "two", "standard", true, false, null));
+
+        var result = await _sut.GetMyTenants();
+
+        var list = (IList<object>)result.Should().BeOfType<OkObjectResult>().Subject.Value!;
+        list.Select(o => GetAnonymousObjectProperties(o)["id"]).Should().Equal(first, second);
+    }
+
+    private void GivenMyTenants(params MyTenantDto[] tenants)
+        => _membershipService.GetMyTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(OperationResult<IReadOnlyList<MyTenantDto>>.Ok(tenants));
+
     #endregion
 
     #region POST /auth/organizations
 
-    private const string TestExternalUserId = "keycloak-sub-org-creator";
+    // Validation, the user check and provisioning are tested in OrganizationProvisioningServiceTests.
+    // These tests cover the HTTP adapter.
 
     [Fact]
     public async Task CreateOrganization_Unauthenticated_Returns401()
     {
-        // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
 
-        // Assert
         result.Should().BeOfType<UnauthorizedResult>();
-        await AssertNotProvisionedAsync();
+        await AssertNotCalledAsync();
     }
 
     [Fact]
     public async Task CreateOrganization_IdentityProviderPrincipal_Returns401()
     {
-        // Arrange — a raw identity-provider token has no GroundUp user id, even if its sub looks like a GUID
+        // A raw identity-provider token has no GroundUp user id, even if its sub looks like a GUID
         SetAuthenticatedExternalIdpUser(new[] { new Claim("sub", TestUserId.ToString()) });
 
-        // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
 
-        // Assert
         result.Should().BeOfType<UnauthorizedResult>();
-        await AssertNotProvisionedAsync();
+        await AssertNotCalledAsync();
     }
 
     [Fact]
     public async Task CreateOrganization_SubIsNotAGuid_Returns401()
     {
-        // Arrange
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", "not-a-guid"),
-            new Claim("tid", TestTenantId.ToString())
-        });
+        SetAuthenticatedUser(new[] { new Claim("sub", "not-a-guid"), new Claim("tid", TestTenantId.ToString()) });
 
-        // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
 
-        // Assert
         result.Should().BeOfType<UnauthorizedResult>();
-        await AssertNotProvisionedAsync();
+        await AssertNotCalledAsync();
     }
 
     [Fact]
-    public async Task CreateOrganization_UserNotFound_Returns401()
+    public async Task CreateOrganization_PassesRequestToService()
     {
-        // Arrange
         SetAuthenticatedOrgCreator();
-        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.NotFound());
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.Ok(new OrganizationProvisioningResult(Guid.NewGuid(), "Acme", "acme")));
+        var request = new CreateOrganizationRequestDto("  Acme Corp  ");
 
-        // Act
-        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+        await _sut.CreateOrganization(request);
 
-        // Assert
-        result.Should().BeOfType<UnauthorizedResult>();
-        await AssertNotProvisionedAsync();
+        await _organizationProvisioningService.Received(1).CreateForCurrentUserAsync(request, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CreateOrganization_UserInactive_Returns401()
+    public async Task CreateOrganization_NullBody_PassesEmptyRequest()
     {
-        // Arrange
         SetAuthenticatedOrgCreator();
-        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.Ok(
-                new UserDto(TestUserId, TestExternalUserId, "creator@example.com", "Creator", IsActive: false)));
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.BadRequest("Organization name is required."));
 
-        // Act
-        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
-
-        // Assert
-        result.Should().BeOfType<UnauthorizedResult>();
-        await AssertNotProvisionedAsync();
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task CreateOrganization_MissingOrBlankName_Returns400(string? organizationName)
-    {
-        // Arrange
-        SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-
-        // Act
-        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(organizationName));
-
-        // Assert
-        result.Should().BeOfType<BadRequestObjectResult>();
-        await AssertNotProvisionedAsync();
-    }
-
-    [Fact]
-    public async Task CreateOrganization_NullBody_Returns400()
-    {
-        // Arrange
-        SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-
-        // Act
         var result = await _sut.CreateOrganization(null);
 
-        // Assert
         result.Should().BeOfType<BadRequestObjectResult>();
-        await AssertNotProvisionedAsync();
+        await _organizationProvisioningService.Received(1).CreateForCurrentUserAsync(
+            Arg.Is<CreateOrganizationRequestDto>(r => r.OrganizationName == null), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CreateOrganization_NameLongerThan200Characters_Returns400()
+    public async Task CreateOrganization_ServiceUnauthorized_Returns401()
     {
-        // Arrange
         SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.Unauthorized());
 
-        // Act
+        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme"));
+
+        result.Should().BeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task CreateOrganization_ServiceBadRequest_Returns400WithError()
+    {
+        SetAuthenticatedOrgCreator();
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.BadRequest("Organization name must not exceed 200 characters."));
+
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(new string('a', 201)));
 
-        // Assert
-        result.Should().BeOfType<BadRequestObjectResult>();
-        await AssertNotProvisionedAsync();
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        GetAnonymousObjectProperties(badRequest.Value!)["error"].Should().Be("Organization name must not exceed 200 characters.");
     }
 
     [Fact]
-    public async Task CreateOrganization_NameExactly200Characters_IsAccepted()
+    public async Task CreateOrganization_Success_Returns201WithIdNameAndSlugAndKeepsSession()
     {
-        // Arrange
         SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-        SetupSuccessfulProvisioning();
+        var newTenantId = Guid.NewGuid();
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.Ok(new OrganizationProvisioningResult(newTenantId, "Acme Corp", "acme-corp")));
 
-        // Act
-        var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto(new string('a', 200)));
-
-        // Assert
-        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(201);
-    }
-
-    [Fact]
-    public async Task CreateOrganization_ValidRequest_Returns201WithIdNameAndSlug()
-    {
-        // Arrange
-        SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-        var newTenantId = SetupSuccessfulProvisioning();
-
-        // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
 
-        // Assert
         var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(201);
         var body = GetAnonymousObjectProperties(objectResult.Value!);
         body["id"].Should().Be(newTenantId);
         body["name"].Should().Be("Acme Corp");
         body["slug"].Should().Be("acme-corp");
-    }
 
-    [Fact]
-    public async Task CreateOrganization_ValidRequest_ProvisionsForResolvedUserWithTrimmedName()
-    {
-        // Arrange
-        SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-        SetupSuccessfulProvisioning();
-
-        // Act
-        await _sut.CreateOrganization(new CreateOrganizationRequestDto("  Acme Corp  "));
-
-        // Assert
-        await _organizationProvisioningService.Received(1).ProvisionAsync(
-            Arg.Is<OrganizationProvisioningRequest>(r =>
-                r.UserId == TestUserId &&
-                r.ExternalUserId == TestExternalUserId &&
-                r.OrganizationName == "Acme Corp"),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task CreateOrganization_ValidRequest_DoesNotChangeTheSessionToken()
-    {
-        // Arrange
-        SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-        SetupSuccessfulProvisioning();
-
-        // Act
-        await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
-
-        // Assert — the active tenant stays as is; the user switches later via set-tenant
+        // The active tenant stays as is; the user switches later via set-tenant
         _authCookieWriter.DidNotReceive().WriteAuthCookieAsync(Arg.Any<HttpContext>(), Arg.Any<string>());
-        await _authSessionService.DidNotReceive().SetTenantAsync(
-            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
+        await _authSessionService.DidNotReceive().SetTenantAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>());
     }
 
     [Fact]
     public async Task CreateOrganization_SlugCollision_Returns409WithErrorCode()
     {
-        // Arrange
         SetAuthenticatedOrgCreator();
-        SetupOrgCreator();
-        _organizationProvisioningService.ProvisionAsync(
-                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<OrganizationProvisioningResult>.Fail(
-                "Unable to create organization — slug unavailable after retries.", 409, "SLUG_COLLISION"));
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.Fail(
+            "Unable to create organization — slug unavailable after retries.", 409, "SLUG_COLLISION"));
 
-        // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
 
-        // Assert
         var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(409);
         GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be("SLUG_COLLISION");
     }
 
     private void SetAuthenticatedOrgCreator()
-    {
-        SetAuthenticatedUser(new[]
-        {
-            new Claim("sub", TestUserId.ToString()),
-            new Claim("tid", TestTenantId.ToString())
-        });
-    }
+        => SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", TestTenantId.ToString()) });
 
-    private void SetupOrgCreator()
-    {
-        _userRepository.GetByIdAsync(TestUserId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserDto>.Ok(
-                new UserDto(TestUserId, TestExternalUserId, "creator@example.com", "Creator", IsActive: true)));
-    }
+    private void GivenCreateResult(OperationResult<OrganizationProvisioningResult> result)
+        => _organizationProvisioningService.CreateForCurrentUserAsync(Arg.Any<CreateOrganizationRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(result);
 
-    private Guid SetupSuccessfulProvisioning()
-    {
-        var newTenantId = Guid.NewGuid();
-        _organizationProvisioningService.ProvisionAsync(
-                Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var request = callInfo.ArgAt<OrganizationProvisioningRequest>(0);
-                return OperationResult<OrganizationProvisioningResult>.Ok(
-                    new OrganizationProvisioningResult(newTenantId, request.OrganizationName, "acme-corp"));
-            });
-        return newTenantId;
-    }
-
-    private async Task AssertNotProvisionedAsync()
-    {
-        await _organizationProvisioningService.DidNotReceive().ProvisionAsync(
-            Arg.Any<OrganizationProvisioningRequest>(), Arg.Any<CancellationToken>());
-    }
+    private async Task AssertNotCalledAsync()
+        => await _organizationProvisioningService.DidNotReceiveWithAnyArgs().CreateForCurrentUserAsync(default!, default);
 
     #endregion
 
@@ -1412,7 +1200,7 @@ public sealed class AuthControllerTests
 
         // Assert
         result.Should().BeOfType<OkResult>();
-        await _userRepository.DidNotReceive().GetByExternalUserIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _authSessionService.DidNotReceiveWithAnyArgs().SetTenantForExternalUserAsync(default!, default, default);
         await _authSessionService.Received(1).SetTenantAsync(
             TestUserId,
             TestTenantId,
@@ -1445,8 +1233,9 @@ public sealed class AuthControllerTests
     {
         // Arrange — GroundUp token with no tid
         SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
-        SetupOrgCreator();
-        var newTenantId = SetupSuccessfulProvisioning();
+        var newTenantId = Guid.NewGuid();
+        GivenCreateResult(OperationResult<OrganizationProvisioningResult>.Ok(
+            new OrganizationProvisioningResult(newTenantId, "Acme Corp", "acme-corp")));
 
         // Act
         var result = await _sut.CreateOrganization(new CreateOrganizationRequestDto("Acme Corp"));
@@ -1481,9 +1270,6 @@ public sealed class AuthControllerTests
             _authFlowService,
             _authSessionService,
             _authCookieWriter,
-            _userRepository,
-            _userTenantRepository,
-            _tenantRepository,
             _membershipService,
             _organizationProvisioningService,
             Options.Create(_authOptions),

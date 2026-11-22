@@ -2,9 +2,9 @@ using System.Security.Claims;
 using GroundUp.Auth.Api.Middleware;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
-using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Core;
 using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Http;
@@ -17,12 +17,13 @@ namespace GroundUp.Tests.Unit.Auth.Middleware;
 
 public sealed class HostTokenReconciliationMiddlewareTests
 {
-    private readonly IUserTenantRepository _userTenantRepository;
+    // Unconfigured calls return false: not a member
+    private readonly IMembershipService _membershipService;
     private readonly AuthOptions _options;
 
     public HostTokenReconciliationMiddlewareTests()
     {
-        _userTenantRepository = Substitute.For<IUserTenantRepository>();
+        _membershipService = Substitute.For<IMembershipService>();
         _options = new AuthOptions
         {
             UserIdClaimType = "sub",
@@ -156,14 +157,8 @@ public sealed class HostTokenReconciliationMiddlewareTests
         var userId = Guid.NewGuid();
         var hostTenant = CreateTenantDto(hostTenantId, "target-tenant");
 
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), userId, hostTenantId, "ext-1", IsActive: true),
-            new(Guid.NewGuid(), userId, tokenTenantId, "ext-2", IsActive: true)
-        };
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(userId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+        _membershipService.IsActiveMemberAsync(userId, hostTenantId, Arg.Any<CancellationToken>())
+            .Returns(true);
 
         var (context, nextCalled) = CreateContext(
             hostTenant: hostTenant,
@@ -230,14 +225,9 @@ public sealed class HostTokenReconciliationMiddlewareTests
         var userId = Guid.NewGuid();
         var hostTenant = CreateTenantDto(hostTenantId, "target-tenant");
 
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), userId, tokenTenantId, "ext-1", IsActive: true),
-            new(Guid.NewGuid(), userId, otherTenantId, "ext-2", IsActive: true)
-        };
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(userId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+        _membershipService.IsActiveMemberAsync(userId, tokenTenantId, Arg.Any<CancellationToken>()).Returns(true);
+        _membershipService.IsActiveMemberAsync(userId, otherTenantId, Arg.Any<CancellationToken>()).Returns(true);
+        _membershipService.IsActiveMemberAsync(userId, hostTenantId, Arg.Any<CancellationToken>()).Returns(false);
 
         var (context, nextCalled) = CreateContext(
             hostTenant: hostTenant,
@@ -261,22 +251,17 @@ public sealed class HostTokenReconciliationMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_StandardMismatchInactiveMembership_Returns403Forbidden()
+    public async Task InvokeAsync_StandardMismatchNotActiveMember_Returns403Forbidden()
     {
-        // Arrange — user has a membership in host tenant but it is inactive
+        // Arrange — the service reports the user is not an active member of the host tenant
+        // (an inactive membership counts as not a member; covered in MembershipServiceTests)
         var hostTenantId = Guid.NewGuid();
         var tokenTenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var hostTenant = CreateTenantDto(hostTenantId, "target-tenant");
 
-        var memberships = new List<UserTenantDto>
-        {
-            new(Guid.NewGuid(), userId, hostTenantId, "ext-1", IsActive: false),
-            new(Guid.NewGuid(), userId, tokenTenantId, "ext-2", IsActive: true)
-        };
-
-        _userTenantRepository.GetAllMembershipsForUserAsync(userId, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+        _membershipService.IsActiveMemberAsync(userId, hostTenantId, Arg.Any<CancellationToken>())
+            .Returns(false);
 
         var (context, nextCalled) = CreateContext(
             hostTenant: hostTenant,
@@ -396,7 +381,7 @@ public sealed class HostTokenReconciliationMiddlewareTests
         services.AddSingleton(hostResolvedTenant);
         services.AddSingleton(tenantContext);
         services.AddSingleton(Options.Create(_options));
-        services.AddSingleton(_userTenantRepository);
+        services.AddSingleton(_membershipService);
         var sp = services.BuildServiceProvider();
 
         var context = new DefaultHttpContext

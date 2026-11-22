@@ -113,6 +113,18 @@ GroundUp.Core → (nothing)
 | **Data** (GroundUp.Data.Postgres) | EF Core setup, interceptors, migrations | Contain business logic, be referenced by Services |
 | **Core** (GroundUp.Core) | Shared types, interfaces, DTOs | Depend on any other project |
 
+Module projects follow the same table (`GroundUp.Auth.Api`, `GroundUp.Auth.Services`, `GroundUp.Auth.Repositories`, `GroundUp.Auth.Data.Postgres`). The checked rules:
+
+| Project kind | Must not use |
+|---|---|
+| `*.Api` | `*.Data.Abstractions` (repository interfaces), `*.Data.Postgres`, EF Core, Npgsql |
+| `*.Services` | `*.Data.Postgres`, EF Core, Npgsql |
+| `*.Repositories` | `*.Data.Postgres`, Npgsql (provider-specific code such as unique-violation detection goes through `IUniqueConstraintDetector`) |
+| `GroundUp.Core` | any other GroundUp project |
+| `GroundUp.Events` | any GroundUp project except Core |
+
+Open exception: `GroundUp.Services` still uses `GroundUp.Data.Postgres` and EF Core (settings, bootstrap and setup services). GU-82 removes it.
+
 ## Key Design Decisions
 
 1. **Framework, not application.** GroundUp produces NuGet packages. It never runs on its own — a consuming application wires up the modules it needs.
@@ -125,7 +137,7 @@ GroundUp.Core → (nothing)
 
 5. **Opt-in behaviors.** Audit fields (`IAuditable`), soft delete (`ISoftDeletable`), and tenant scoping (`ITenantEntity`) are interfaces that entities implement to opt in. Nothing is forced on all entities.
 
-6. **Strict layering.** Project references enforce the dependency rules at compile time. You physically cannot reference a repository from a controller — the project reference doesn't exist.
+6. **Strict layering, enforced by tests.** Project references alone do not stop a layer from reaching too far: an API project sees repository interfaces through its reference to the services project. `LayerRulesTests` (unit tests, `tests/GroundUp.Tests.Unit/Architecture`) checks the assemblies each compiled project actually uses, method bodies included, and fails when a rule is broken. Known exceptions are listed in `LayerRulesAllowlist` with the story that removes them (GU-82); an entry that no longer occurs also fails the test, so the list only shrinks. A new project under `src` must be given its layer in the test, or the test fails.
 
 ## How Consuming Applications Use GroundUp
 

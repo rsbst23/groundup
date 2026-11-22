@@ -558,8 +558,9 @@ public sealed class NewOrganizationFlowHandlerTests
                     : OperationResult<UserDto>.Ok(CreateExistingUserDto());
             });
 
+        // BaseRepository.AddAsync reports a unique-constraint violation as a 409 result; it does not throw
         _userRepository.AddAsync(Arg.Any<UserDto>(), Arg.Any<CancellationToken>())
-            .Throws(new Exception("duplicate key value violates unique constraint \"23505\""));
+            .Returns(OperationResult<UserDto>.Fail("A conflict occurred while saving the entity.", 409, ErrorCodes.Conflict));
 
         // Act
         var result = await _sut.HandleCallbackAsync(context);

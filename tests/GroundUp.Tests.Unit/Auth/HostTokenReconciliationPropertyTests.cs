@@ -7,6 +7,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Core;
 using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Http;
@@ -58,24 +59,17 @@ public sealed class HostTokenReconciliationPropertyTests
             var hostResolvedTenant = new HostResolvedTenant { Tenant = hostTenant };
             var tenantContext = new TenantContext { TenantId = testCase.TokenTenantId };
 
-            var userTenantRepository = Substitute.For<IUserTenantRepository>();
+            var membershipService = Substitute.For<IMembershipService>();
 
             // Configure membership result based on test case
-            var memberships = testCase.IsMember
-                ? new List<UserTenantDto>
-                {
-                    new(Guid.NewGuid(), testCase.UserId, testCase.HostTenantId, "ext-1", true)
-                }
-                : new List<UserTenantDto>();
-
-            userTenantRepository.GetAllMembershipsForUserAsync(testCase.UserId, Arg.Any<CancellationToken>())
-                .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));
+            membershipService.IsActiveMemberAsync(testCase.UserId, testCase.HostTenantId, Arg.Any<CancellationToken>())
+                .Returns(testCase.IsMember);
 
             var services = new ServiceCollection();
             services.AddSingleton(hostResolvedTenant);
             services.AddSingleton<TenantContext>(tenantContext);
             services.AddSingleton(Options.Create(DefaultOptions));
-            services.AddSingleton(userTenantRepository);
+            services.AddSingleton(membershipService);
             var sp = services.BuildServiceProvider();
 
             var context = new DefaultHttpContext { RequestServices = sp };

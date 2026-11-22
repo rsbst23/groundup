@@ -1,10 +1,10 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
-using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.Membership;
 using GroundUp.Core;
+using GroundUp.Core.Results;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -23,9 +23,6 @@ public sealed class AuthController : ControllerBase
     private readonly IAuthFlowService _authFlowService;
     private readonly IAuthSessionService _authSessionService;
     private readonly IAuthCookieWriter _authCookieWriter;
-    private readonly IUserRepository _userRepository;
-    private readonly IUserTenantRepository _userTenantRepository;
-    private readonly ITenantRepository _tenantRepository;
     private readonly IMembershipService _membershipService;
     private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly IOptions<AuthOptions> _authOptions;
@@ -39,10 +36,7 @@ public sealed class AuthController : ControllerBase
     /// <param name="authFlowService">Orchestrates authentication flow initiation and callback dispatch.</param>
     /// <param name="authSessionService">Manages tenant selection and token refresh.</param>
     /// <param name="authCookieWriter">Writes and clears authentication cookies.</param>
-    /// <param name="userRepository">Resolves GroundUp users by external identity provider identifier.</param>
-    /// <param name="userTenantRepository">Repository for querying and managing user-tenant memberships.</param>
-    /// <param name="tenantRepository">Repository for loading tenant details.</param>
-    /// <param name="membershipService">Ends memberships (leave) and revokes the access they gave.</param>
+    /// <param name="membershipService">Lists the user's tenants and ends memberships (leave).</param>
     /// <param name="organizationProvisioningService">Creates organizations for authenticated users.</param>
     /// <param name="authOptions">Authentication configuration options.</param>
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
@@ -52,9 +46,6 @@ public sealed class AuthController : ControllerBase
         IAuthFlowService authFlowService,
         IAuthSessionService authSessionService,
         IAuthCookieWriter authCookieWriter,
-        IUserRepository userRepository,
-        IUserTenantRepository userTenantRepository,
-        ITenantRepository tenantRepository,
         IMembershipService membershipService,
         IOrganizationProvisioningService organizationProvisioningService,
         IOptions<AuthOptions> authOptions,
@@ -65,9 +56,6 @@ public sealed class AuthController : ControllerBase
         _authFlowService = authFlowService;
         _authSessionService = authSessionService;
         _authCookieWriter = authCookieWriter;
-        _userRepository = userRepository;
-        _userTenantRepository = userTenantRepository;
-        _tenantRepository = tenantRepository;
         _membershipService = membershipService;
         _organizationProvisioningService = organizationProvisioningService;
         _authOptions = authOptions;
@@ -294,48 +282,43 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var options = _authOptions.Value;
-
-        Guid userId;
-        DateTimeOffset? originalAuthTime = null;
+        OperationResult<SetTenantResponseDto> result;
 
         if (HttpContext.User.IsExternalIdp())
         {
             // Identity-provider principal (for example a Keycloak Bearer token): its sub is the
-            // provider's user id, so resolve the GroundUp user by external id.
+            // provider's user id. The service resolves the GroundUp user (404 when there is none).
             var subClaim = HttpContext.User.FindFirst("sub")?.Value;
             if (string.IsNullOrEmpty(subClaim))
             {
                 return Unauthorized();
             }
 
-            var userResult = await _userRepository.GetByExternalUserIdAsync(subClaim, cancellationToken);
-            if (!userResult.Success || userResult.Data is null)
+            result = await _authSessionService.SetTenantForExternalUserAsync(subClaim, request.TenantId, cancellationToken);
+            if (!result.Success && result.ErrorCode == ErrorCodes.UserNotFound)
             {
-                return NotFound(new { error = "User not found." });
+                // Unchanged response for an identity-provider user with no GroundUp account
+                return NotFound(new { error = result.Message });
             }
-
-            userId = userResult.Data.Id;
-            // First issuance from an identity-provider token: originalAuthTime is null → service sets auth_time = now
         }
         else
         {
             // GroundUp token, with or without a current tenant: read userId and preserve auth_time
-            var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out userId))
+            var userIdClaim = HttpContext.User.FindFirst(_authOptions.Value.UserIdClaimType)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
             {
                 return Unauthorized();
             }
 
-            // Read auth_time from the current token to preserve on reissue
+            DateTimeOffset? originalAuthTime = null;
             var authTimeClaim = HttpContext.User.FindFirst("auth_time");
             if (authTimeClaim is not null && long.TryParse(authTimeClaim.Value, out var authTimeUnix))
             {
                 originalAuthTime = DateTimeOffset.FromUnixTimeSeconds(authTimeUnix);
             }
-        }
 
-        var result = await _authSessionService.SetTenantAsync(userId, request.TenantId, originalAuthTime);
+            result = await _authSessionService.SetTenantAsync(userId, request.TenantId, originalAuthTime);
+        }
 
         if (!result.Success)
         {
@@ -489,69 +472,23 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var userId = ResolveGroundUpUserId();
-        if (userId is null)
+        // Only a GroundUp token identifies a GroundUp user; an identity-provider token's sub does not
+        if (ResolveGroundUpUserId() is null)
         {
             return Unauthorized();
         }
 
-        // Get active memberships
-        var membershipsResult = await _userTenantRepository.GetAllMembershipsForUserAsync(userId.Value, cancellationToken);
-        if (!membershipsResult.Success || membershipsResult.Data is null)
+        var result = await _membershipService.GetMyTenantsAsync(cancellationToken);
+        if (!result.Success || result.Data is null)
         {
-            return Ok(Array.Empty<object>());
+            return result.StatusCode == 401 ? Unauthorized() : Ok(Array.Empty<object>());
         }
 
-        var activeMemberships = membershipsResult.Data.Where(m => m.IsActive).ToList();
-        if (activeMemberships.Count == 0)
-        {
-            return Ok(Array.Empty<object>());
-        }
-
-        // Load tenant details
-        var tenantIds = activeMemberships.Select(m => m.TenantId).ToList();
-        var tenantsResult = await _tenantRepository.GetByIdsBypassFilterAsync(tenantIds, cancellationToken);
-        if (!tenantsResult.Success || tenantsResult.Data is null)
-        {
-            return Ok(Array.Empty<object>());
-        }
-
-        // Determine the current tenant from the tid claim
-        var options = _authOptions.Value;
-        var tidClaim = HttpContext.User.FindFirst(options.TenantIdClaimType)?.Value;
-        Guid? currentTenantId = null;
-        if (!string.IsNullOrEmpty(tidClaim) && Guid.TryParse(tidClaim, out var parsedTid))
-        {
-            currentTenantId = parsedTid;
-        }
-
-        // Map to response
-        var tenantList = tenantsResult.Data.Select(t =>
-        {
-            var isEnterprise = !string.IsNullOrEmpty(t.RealmName);
-            if (isEnterprise)
-            {
-                return (object)new
-                {
-                    id = t.Id,
-                    name = t.Name,
-                    slug = t.Slug,
-                    type = "enterprise",
-                    switchable = false,
-                    subdomain = t.Slug
-                };
-            }
-
-            return new
-            {
-                id = t.Id,
-                name = t.Name,
-                slug = t.Slug,
-                type = "standard",
-                switchable = true,
-                current = t.Id == currentTenantId
-            };
-        }).ToList();
+        // Two response shapes, unchanged: enterprise tenants carry subdomain, standard tenants carry current
+        var tenantList = result.Data.Select(t => t.Type == "enterprise"
+            ? (object)new { id = t.Id, name = t.Name, slug = t.Slug, type = t.Type, switchable = t.Switchable, subdomain = t.Subdomain }
+            : new { id = t.Id, name = t.Name, slug = t.Slug, type = t.Type, switchable = t.Switchable, current = t.Current ?? false })
+            .ToList();
 
         return Ok(tenantList);
     }
@@ -588,36 +525,22 @@ public sealed class AuthController : ControllerBase
         }
 
         var userIdClaim = HttpContext.User.FindFirst(options.UserIdClaimType)?.Value;
-        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out _))
         {
             return Unauthorized();
         }
 
-        // The membership row stores the user's identity-provider subject, which the token does not carry
-        var userResult = await _userRepository.GetByIdAsync(userId, cancellationToken);
-        if (!userResult.Success || userResult.Data is null || !userResult.Data.IsActive)
-        {
-            return Unauthorized();
-        }
-
-        var organizationName = request?.OrganizationName?.Trim();
-        if (string.IsNullOrEmpty(organizationName))
-        {
-            return BadRequest(new { error = "Organization name is required." });
-        }
-
-        if (organizationName.Length > 200)
-        {
-            return BadRequest(new { error = "Organization name must not exceed 200 characters." });
-        }
-
-        var result = await _organizationProvisioningService.ProvisionAsync(
-            new OrganizationProvisioningRequest(userId, userResult.Data.ExternalUserId, organizationName),
-            cancellationToken);
+        var result = await _organizationProvisioningService.CreateForCurrentUserAsync(
+            request ?? new CreateOrganizationRequestDto(), cancellationToken);
 
         if (!result.Success || result.Data is null)
         {
-            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
+            return result.StatusCode switch
+            {
+                401 => Unauthorized(),
+                400 => BadRequest(new { error = result.Message }),
+                _ => StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode })
+            };
         }
 
         return StatusCode(StatusCodes.Status201Created, new

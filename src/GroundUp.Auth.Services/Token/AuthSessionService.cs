@@ -18,6 +18,7 @@ public sealed class AuthSessionService : IAuthSessionService
     private readonly ITenantRepository _tenantRepository;
     private readonly ITokenService _tokenService;
     private readonly ISessionPolicyProvider _sessionPolicyProvider;
+    private readonly IUserRepository _userRepository;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthSessionService"/> class.
@@ -26,16 +27,33 @@ public sealed class AuthSessionService : IAuthSessionService
     /// <param name="tenantRepository">Repository for querying tenant details.</param>
     /// <param name="tokenService">Service for generating JWT tokens.</param>
     /// <param name="sessionPolicyProvider">Resolves the effective absolute session lifetime.</param>
+    /// <param name="userRepository">Resolves a GroundUp user from an identity-provider subject.</param>
     public AuthSessionService(
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
         ITokenService tokenService,
-        ISessionPolicyProvider sessionPolicyProvider)
+        ISessionPolicyProvider sessionPolicyProvider,
+        IUserRepository userRepository)
     {
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
         _tokenService = tokenService;
         _sessionPolicyProvider = sessionPolicyProvider;
+        _userRepository = userRepository;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<SetTenantResponseDto>> SetTenantForExternalUserAsync(
+        string externalUserId, Guid? tenantId, CancellationToken cancellationToken = default)
+    {
+        var userResult = await _userRepository.GetByExternalUserIdAsync(externalUserId, cancellationToken);
+        if (!userResult.Success || userResult.Data is null)
+        {
+            return OperationResult<SetTenantResponseDto>.Fail("User not found.", 404, ErrorCodes.UserNotFound);
+        }
+
+        // First issuance from an identity-provider token: no original auth_time, so it becomes now
+        return await SetTenantAsync(userResult.Data.Id, tenantId, originalAuthTime: null);
     }
 
     /// <inheritdoc />

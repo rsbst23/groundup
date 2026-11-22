@@ -127,6 +127,7 @@ public static class AuthServiceCollectionExtensions
         // AuthFlowState services
         services.AddScoped<IAuthFlowStateService, AuthFlowStateService>();
         services.AddScoped<IValidator<InitiateAuthFlowRequest>, InitiateAuthFlowRequestValidator>();
+        services.AddScoped<IValidator<CreateOrganizationRequestDto>, CreateOrganizationRequestDtoValidator>();
 
         // Bootstrap services
         services.AddScoped<IIdentityBootstrapService, IdentityBootstrapService>();

@@ -33,6 +33,19 @@ public interface IAuthSessionService
     Task<OperationResult<SetTenantResponseDto>> SetTenantAsync(Guid userId, Guid? tenantId, DateTimeOffset? originalAuthTime = null);
 
     /// <summary>
+    /// Tenant selection for a caller authenticated with an identity-provider token (for example a
+    /// Keycloak Bearer token), whose subject is the provider's user id rather than a GroundUp user id.
+    /// Resolves the GroundUp user, then behaves as <see cref="SetTenantAsync"/> for a first issuance
+    /// (<c>auth_time</c> = now).
+    /// </summary>
+    /// <param name="externalUserId">The identity provider's subject (<c>sub</c>).</param>
+    /// <param name="tenantId">The tenant to select, or null to trigger auto-select or list.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>As <see cref="SetTenantAsync"/>; 404 with error code <c>USER_NOT_FOUND</c> when no GroundUp user has that subject.</returns>
+    Task<OperationResult<SetTenantResponseDto>> SetTenantForExternalUserAsync(
+        string externalUserId, Guid? tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Issues a tenantless token for a signed-in user: identity only, no current tenant.
     /// Used after sign-in when the user has not chosen a tenant yet, and after the user leaves
     /// the tenant their session was scoped to.

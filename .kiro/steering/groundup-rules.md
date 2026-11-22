@@ -40,6 +40,7 @@ Events → Core only
 - Services MAY depend on other modules' service INTERFACES for cross-module orchestration
 - Repositories depend on Data.Abstractions and Core
 - Data.Postgres depends on Repositories, Data.Abstractions, and Core
+- These rules are enforced by `tests/GroundUp.Tests.Unit/Architecture/LayerRulesTests.cs` on the compiled assemblies. Fix a violation instead of allowlisting it; the allowlist holds only known exceptions with a Jira story (GU-82)
 - Core has ZERO dependencies on other GroundUp projects
 - Cross-module communication goes through service interfaces — never access another module's repositories directly
 
@@ -127,7 +128,7 @@ Events → Core only
 - Never use int for entity IDs — always UUID v7 (Guid)
 - Never use AutoMapper — use Mapperly
 - Never throw exceptions for business logic — return OperationResult.Fail
-- Never access repositories from controllers — go through services
+- Never access repositories from controllers or middleware — go through services (enforced by LayerRulesTests; do not add allowlist entries without a story to remove them)
 - Never put security logic in controllers — service layer is the boundary
 - Never hardcode connection strings or secrets in framework code
 - Never use Task.Run(() => asyncMethod()).Result — async all the way

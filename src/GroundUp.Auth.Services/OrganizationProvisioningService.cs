@@ -1,8 +1,10 @@
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
+using FluentValidation;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
+using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -28,6 +30,9 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
     private readonly IUnitOfWork _unitOfWork;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<OrganizationProvisioningService> _logger;
+    private readonly ICurrentUser _currentUser;
+    private readonly IUserRepository _userRepository;
+    private readonly IValidator<CreateOrganizationRequestDto> _createValidator;
 
     /// <summary>
     /// Initializes a new instance of <see cref="OrganizationProvisioningService"/>.
@@ -39,7 +44,10 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         IUserRoleRepository userRoleRepository,
         IUnitOfWork unitOfWork,
         TenantContext tenantContext,
-        ILogger<OrganizationProvisioningService> logger)
+        ILogger<OrganizationProvisioningService> logger,
+        ICurrentUser currentUser,
+        IUserRepository userRepository,
+        IValidator<CreateOrganizationRequestDto> createValidator)
     {
         _tenantRepository = tenantRepository;
         _userTenantRepository = userTenantRepository;
@@ -48,6 +56,41 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         _unitOfWork = unitOfWork;
         _tenantContext = tenantContext;
         _logger = logger;
+        _currentUser = currentUser;
+        _userRepository = userRepository;
+        _createValidator = createValidator;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<OrganizationProvisioningResult>> CreateForCurrentUserAsync(
+        CreateOrganizationRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        // Who is asking comes first: an unauthenticated caller learns nothing about the validation rules
+        var userId = _currentUser.UserId;
+        if (userId == Guid.Empty)
+        {
+            return OperationResult<OrganizationProvisioningResult>.Unauthorized();
+        }
+
+        // The membership row stores the user's identity-provider subject, which the token does not carry
+        var userResult = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (!userResult.Success || userResult.Data is null || !userResult.Data.IsActive)
+        {
+            return OperationResult<OrganizationProvisioningResult>.Unauthorized();
+        }
+
+        var validation = await _createValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return OperationResult<OrganizationProvisioningResult>.BadRequest(
+                validation.Errors[0].ErrorMessage,
+                validation.Errors.Select(e => e.ErrorMessage).ToList());
+        }
+
+        return await ProvisionAsync(
+            new OrganizationProvisioningRequest(userId, userResult.Data.ExternalUserId, request.OrganizationName!.Trim()),
+            cancellationToken);
     }
 
     /// <inheritdoc />
