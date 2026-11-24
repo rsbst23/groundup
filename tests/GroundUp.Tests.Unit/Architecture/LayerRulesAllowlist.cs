@@ -12,6 +12,5 @@ internal static class LayerRulesAllowlist
         // GU-82: settings, bootstrap and setup services use GroundUpDbContext directly
         ("GroundUp.Services", "GroundUp.Data.Postgres", "GU-82"),
         ("GroundUp.Services", "Microsoft.EntityFrameworkCore", "GU-82"),
-        ("GroundUp.Services", "Microsoft.EntityFrameworkCore.Relational", "GU-82"),
     ];
 }
