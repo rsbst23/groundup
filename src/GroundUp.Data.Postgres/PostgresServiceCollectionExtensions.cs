@@ -1,8 +1,11 @@
 using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres.Interceptors;
+using GroundUp.Repositories.Bootstrap;
+using GroundUp.Repositories.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace GroundUp.Data.Postgres;
 
@@ -50,6 +53,15 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddSingleton<IUniqueConstraintDetector, PostgresUniqueConstraintDetector>();
         services.AddScoped<IDatabaseMigrator>(sp =>
             new PostgresDatabaseMigrator(sp.GetRequiredService<GroundUpDbContext>()));
+
+        // Framework repositories over the application's context (factory lambdas pass the concrete
+        // context, so they never resolve an unrelated DbContext such as a module's own).
+        services.AddScoped<IBootstrapStateRepository>(sp =>
+            new BootstrapStateRepository(sp.GetRequiredService<GroundUpDbContext>()));
+        services.AddScoped<ISetupTransactionLogRepository>(sp =>
+            new SetupTransactionLogRepository(
+                sp.GetRequiredService<GroundUpDbContext>(),
+                sp.GetRequiredService<ILogger<SetupTransactionLogRepository>>()));
 
         // Register DataSeederRunner as hosted service
         services.AddHostedService<DataSeederRunner>();

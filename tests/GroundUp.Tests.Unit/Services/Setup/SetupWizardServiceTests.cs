@@ -11,6 +11,7 @@ using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Setup;
 using GroundUp.Services.Setup;
 using GroundUp.Services.Setup.Keycloak;
 using Microsoft.EntityFrameworkCore;
@@ -99,6 +100,7 @@ public sealed class SetupWizardServiceTests : IDisposable
             _settingsService,
             _bootstrapStateService,
             _dbContext,
+            new SetupTransactionLogRepository(_dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             _transactionLogOptions,
             _keycloakClient,
             _bootstrapOptions,

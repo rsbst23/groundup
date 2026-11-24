@@ -13,11 +13,12 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
   - [x] 1.4 `AddGroundUpPostgres` registers the migrator and `IUniqueConstraintDetector` (TryAdd). `GroundUpWebApplicationFactory` needs no change: it swaps only the context options, and the app's `AddGroundUpPostgres` does the rest
   - [x] 1.5 Build, run the baselines, commit. The `Services` → EF Relational allowlist pair no longer occurs (`MigrateAsync` was its only use) and is removed. Unit 1700 / 12 known; integration 367 / 48; sample 22/22
 
-- [ ] 2. Bootstrap state and setup log repositories
-  - [ ] 2.1 `IBootstrapStateRepository`, `BootstrapCompletionOutcome` and `BootstrapStateRepository`. `BootstrapStateService` uses them, with the same results, messages, log and cache behavior
-  - [ ] 2.2 `ISetupTransactionLogRepository`, `CreateSetupTransactionLogDto` and `SetupTransactionLogRepository` (rotation with the same warning, stage updates, pending queries, recent rows, by id). `SetupWizardService` uses them for every `SetupTransactionLogs` access
-  - [ ] 2.3 Register both repositories. Write repository unit tests: completion outcomes including a concurrent update, rotation boundaries (limit 0, pending rows protected), and partial stage updates. Add an integration test on Postgres: rotation keeps pending rows and removes the oldest finished rows. The existing rotation property tests copy the algorithm instead of calling it, so they move to the real repository
-  - [ ] 2.4 Update the existing bootstrap and setup unit tests (constructor and fixture changes only). `BootstrapConcurrencyTests` and the 1.1 rotation test stay green. Commit
+- [x] 2. Bootstrap state and setup log repositories
+  - [x] 2.1 `IBootstrapStateRepository`, `BootstrapCompletionOutcome` and `BootstrapStateRepository`. `BootstrapStateService` uses them, with the same results, messages, log and cache behavior
+  - [x] 2.2 `ISetupTransactionLogRepository`, `CreateSetupTransactionLogDto` and `SetupTransactionLogRepository` (rotation with the same warning, stage updates, pending queries, recent rows, by id). `SetupWizardService` uses them for every `SetupTransactionLogs` access
+  - [x] 2.3 Register both repositories. Write repository unit tests: completion outcomes including a concurrent update, rotation boundaries (limit 0, pending rows protected), and partial stage updates. Add an integration test on Postgres: rotation keeps pending rows and removes the oldest finished rows. The existing rotation property tests copy the algorithm instead of calling it, so they move to the real repository
+  - [x] 2.4 Update the existing bootstrap and setup unit tests (constructor and fixture changes only). `BootstrapConcurrencyTests` and the 2.3 rotation test stay green. Commit
+  - Results: unit 1712 / 12 known; integration 369 / 48 known; sample 22/22. The bootstrap outcomes (missing, already complete, concurrent update) are covered by the existing service tests, which now run through the real repository
 
 - [ ] 3. Level lookups
   - [ ] 3.1 `ISettingsRepository` with `GetLevelIdByNameAsync`, `GetLevelNameByIdAsync` and `EnsureLevelAsync`, and `SettingsRepository` (level part). Register it

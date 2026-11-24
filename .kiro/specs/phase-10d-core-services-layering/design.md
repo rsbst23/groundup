@@ -76,14 +76,15 @@ public interface ISetupTransactionLogRepository
 {
     /// <summary>Inserts the row, rotating out the oldest non-pending rows beyond maxRowCount (0 = no limit). One transaction.</summary>
     Task<Guid> InsertWithRotationAsync(CreateSetupTransactionLogDto row, int maxRowCount, CancellationToken cancellationToken = default);
-    Task UpdateStageAsync(Guid id, string stage, string? externalUserId, string? errorMessage, CancellationToken cancellationToken = default);
-    Task<bool> HasUnfinishedFirstAdminAsync(CancellationToken cancellationToken = default);   // keycloak-pending, db-pending, failed
-    Task<SetupTransactionLogDto?> GetLatestPendingAsync(CancellationToken cancellationToken = default);
+    Task UpdateStageAsync(Guid id, string stage, string? externalUserId = null, string? errorMessage = null, CancellationToken cancellationToken = default);
+    /// <summary>Newest first-admin row in keycloak-pending, db-pending or failed; used by both CompleteSetupAsync (is not null) and GetStatusAsync.</summary>
+    Task<Guid?> GetLatestUnfinishedFirstAdminIdAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SetupTransactionLogDto>> GetRecentAsync(int count, CancellationToken cancellationToken = default);
     Task<SetupTransactionLogDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 }
 ```
 
+- Mapping uses `Mappers/SetupTransactionLogMapper.cs` (Mapperly, one mapper per entity as in `GroundUp.Auth.Repositories/Mappers`), including an `IQueryable` projection for the recent-rows query.
 - The stage names and the pending predicates stay exactly as they are today. They move into the repository as private constants, so the repository is the only place that builds the queries.
 - The rotation warning moves into the repository along with the counts, which is why the repository takes an `ILogger`. The message template stays the same.
 - `UpdateStageAsync` updates only the fields it's given: `externalUserId` and `errorMessage` change only when they're not null. That's the same as today, where each call site sets just the fields it touches. A missing id is a no-op. Today the row is always present, because the service inserted it in the same scope.

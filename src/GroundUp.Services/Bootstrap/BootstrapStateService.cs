@@ -1,8 +1,7 @@
 using GroundUp.Core.Entities;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
-using GroundUp.Data.Postgres;
-using Microsoft.EntityFrameworkCore;
+using GroundUp.Data.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -22,16 +21,16 @@ public sealed class BootstrapStateService : IBootstrapStateService
     private const string CacheKey = "groundup:bootstrap-state";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
-    private readonly GroundUpDbContext _dbContext;
+    private readonly IBootstrapStateRepository _repository;
     private readonly IMemoryCache _cache;
     private readonly ILogger<BootstrapStateService> _logger;
 
     public BootstrapStateService(
-        GroundUpDbContext dbContext,
+        IBootstrapStateRepository repository,
         IMemoryCache cache,
         ILogger<BootstrapStateService> logger)
     {
-        _dbContext = dbContext;
+        _repository = repository;
         _cache = cache;
         _logger = logger;
     }
@@ -44,53 +43,35 @@ public sealed class BootstrapStateService : IBootstrapStateService
             return cachedValue;
         }
 
-        var state = await _dbContext.BootstrapStates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == BootstrapState.SentinelId, cancellationToken);
-
-        if (state is null)
-        {
-            throw new InvalidOperationException(
+        var isComplete = await _repository.GetIsCompleteAsync(cancellationToken)
+            ?? throw new InvalidOperationException(
                 "Bootstrap state row is missing. Restore from a database backup or re-run the migration.");
-        }
 
-        _cache.Set(CacheKey, state.IsComplete, new MemoryCacheEntryOptions
+        _cache.Set(CacheKey, isComplete, new MemoryCacheEntryOptions
         {
             AbsoluteExpirationRelativeToNow = CacheTtl
         });
 
-        return state.IsComplete;
+        return isComplete;
     }
 
     /// <inheritdoc />
     public async Task<OperationResult> CompleteSetupAsync(
         Guid completedByUserId, CancellationToken cancellationToken = default)
     {
-        var state = await _dbContext.BootstrapStates
-            .FirstOrDefaultAsync(s => s.Id == BootstrapState.SentinelId, cancellationToken);
+        var outcome = await _repository.TryCompleteAsync(completedByUserId, cancellationToken);
 
-        if (state is null)
+        switch (outcome)
         {
-            return OperationResult.Fail("Bootstrap state row is missing.", 503);
-        }
+            case BootstrapCompletionOutcome.Missing:
+                return OperationResult.Fail("Bootstrap state row is missing.", 503);
 
-        if (state.IsComplete)
-        {
-            return OperationResult.Fail("Setup is already complete.", 409, Core.ErrorCodes.Conflict);
-        }
+            case BootstrapCompletionOutcome.AlreadyComplete:
+                return OperationResult.Fail("Setup is already complete.", 409, Core.ErrorCodes.Conflict);
 
-        state.IsComplete = true;
-        state.CompletedAt = DateTime.UtcNow;
-        state.CompletedBy = completedByUserId;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            _logger.LogWarning("Concurrent setup completion detected for user {UserId}.", completedByUserId);
-            return OperationResult.Fail("Concurrent setup completion detected.", 409, Core.ErrorCodes.Conflict);
+            case BootstrapCompletionOutcome.ConcurrentUpdate:
+                _logger.LogWarning("Concurrent setup completion detected for user {UserId}.", completedByUserId);
+                return OperationResult.Fail("Concurrent setup completion detected.", 409, Core.ErrorCodes.Conflict);
         }
 
         InvalidateCache();

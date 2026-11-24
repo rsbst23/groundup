@@ -10,10 +10,11 @@ using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Setup;
 using GroundUp.Services.Setup;
 using GroundUp.Services.Setup.Keycloak;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -141,31 +142,23 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
 
         Func<bool> property = () =>
         {
-            var dbName = Guid.NewGuid().ToString();
+            using var connection = OpenSqliteConnection();
 
             // Seed the database with existing rows
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 SeedTransactionLogs(ctx, currentTotal, pendingCount);
             }
 
             // Perform one insertion with rotation
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
-                var logger = NullLogger.Instance;
-                var newRow = new SetupTransactionLog
-                {
-                    Id = Guid.NewGuid(),
-                    Operation = "test-operation",
-                    Stage = "completed",
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                PerformInsertWithRotation(ctx, newRow, maxRowCount, logger);
+                var newRow = new CreateSetupTransactionLogDto("test-operation", "completed", null, null);
+                PerformInsertWithRotation(ctx, newRow, maxRowCount);
             }
 
             // Verify the resulting state
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 var totalAfter = ctx.SetupTransactionLogs.Count();
                 var pendingAfter = ctx.SetupTransactionLogs
@@ -203,28 +196,20 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
 
         Func<bool> property = () =>
         {
-            var dbName = Guid.NewGuid().ToString();
+            using var connection = OpenSqliteConnection();
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 SeedTransactionLogs(ctx, currentTotal, pendingCount: 0);
             }
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
-                var logger = NullLogger.Instance;
-                var newRow = new SetupTransactionLog
-                {
-                    Id = Guid.NewGuid(),
-                    Operation = "test-operation",
-                    Stage = "completed",
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                PerformInsertWithRotation(ctx, newRow, maxRowCount, logger);
+                var newRow = new CreateSetupTransactionLogDto("test-operation", "completed", null, null);
+                PerformInsertWithRotation(ctx, newRow, maxRowCount);
             }
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 var totalAfter = ctx.SetupTransactionLogs.Count();
                 // Rotation disabled: row count should be currentTotal + 1
@@ -249,29 +234,21 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
 
         Func<bool> property = () =>
         {
-            var dbName = Guid.NewGuid().ToString();
+            using var connection = OpenSqliteConnection();
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 // Seed ALL rows as pending (keycloak-pending or db-pending)
                 SeedTransactionLogs(ctx, currentTotal, pendingCount: currentTotal);
             }
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
-                var logger = NullLogger.Instance;
-                var newRow = new SetupTransactionLog
-                {
-                    Id = Guid.NewGuid(),
-                    Operation = "test-operation",
-                    Stage = "completed",
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                PerformInsertWithRotation(ctx, newRow, maxRowCount, logger);
+                var newRow = new CreateSetupTransactionLogDto("test-operation", "completed", null, null);
+                PerformInsertWithRotation(ctx, newRow, maxRowCount);
             }
 
-            using (var ctx = CreateRotationDbContext(dbName))
+            using (var ctx = CreateRotationDbContext(connection))
             {
                 var totalAfter = ctx.SetupTransactionLogs.Count();
                 var pendingAfter = ctx.SetupTransactionLogs
@@ -361,6 +338,7 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
             settingsService,
             bootstrapStateService,
             dbContext,
+            new SetupTransactionLogRepository(dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             transactionLogOptions,
             keycloakClient,
             bootstrapOptions,
@@ -374,42 +352,23 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
     #region Helpers — Rotation Tests
 
     /// <summary>
-    /// Replicates the InsertWithRotationAsync logic for direct testing.
-    /// This mirrors the private method in SetupWizardService to test the rotation
-    /// algorithm in isolation with controlled inputs.
+    /// Runs the real rotation (<see cref="SetupTransactionLogRepository.InsertWithRotationAsync"/>)
+    /// with controlled inputs, including its transaction.
     /// </summary>
     private static void PerformInsertWithRotation(
         TestRotationDbContext ctx,
-        SetupTransactionLog row,
-        int maxRowCount,
-        ILogger logger)
+        CreateSetupTransactionLogDto row,
+        int maxRowCount)
     {
-        // InMemory provider doesn't support transactions, so we skip BeginTransaction
-        if (maxRowCount > 0)
-        {
-            var total = ctx.SetupTransactionLogs.Count();
-            var toDelete = (total + 1) - maxRowCount;
-            if (toDelete > 0)
-            {
-                var deletable = ctx.SetupTransactionLogs
-                    .Where(l => l.Stage != "keycloak-pending" && l.Stage != "db-pending")
-                    .OrderBy(l => l.CreatedAt)
-                    .Take(toDelete)
-                    .ToList();
+        var repository = new SetupTransactionLogRepository(ctx, NullLogger<SetupTransactionLogRepository>.Instance);
+        repository.InsertWithRotationAsync(row, maxRowCount).GetAwaiter().GetResult();
+    }
 
-                if (deletable.Count < toDelete)
-                {
-                    logger.LogWarning(
-                        "Transaction log rotation could not free enough rows: total={Total}, max={Max}, pending protected.",
-                        total, maxRowCount);
-                }
-
-                ctx.SetupTransactionLogs.RemoveRange(deletable);
-            }
-        }
-
-        ctx.SetupTransactionLogs.Add(row);
-        ctx.SaveChanges();
+    private static SqliteConnection OpenSqliteConnection()
+    {
+        var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        return connection;
     }
 
     private static void SeedTransactionLogs(TestRotationDbContext ctx, int total, int pendingCount)
@@ -435,13 +394,15 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
         ctx.SaveChanges();
     }
 
-    private static TestRotationDbContext CreateRotationDbContext(string dbName)
+    private static TestRotationDbContext CreateRotationDbContext(SqliteConnection connection)
     {
         var options = new DbContextOptionsBuilder<TestRotationDbContext>()
-            .UseInMemoryDatabase(databaseName: dbName)
+            .UseSqlite(connection)
             .Options;
 
-        return new TestRotationDbContext(options);
+        var context = new TestRotationDbContext(options);
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static TestIdempotencyDbContext CreateIdempotencyDbContext(string dbName)
