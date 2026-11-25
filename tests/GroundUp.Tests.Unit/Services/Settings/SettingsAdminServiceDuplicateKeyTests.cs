@@ -5,6 +5,8 @@ using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -30,7 +32,7 @@ public sealed class SettingsAdminServiceDuplicateKeyTests : IDisposable
         _context = new TestSettingsDbContext(options);
         _context.Database.EnsureCreated();
 
-        _adminService = new SettingsAdminService(_context);
+        _adminService = new SettingsAdminService(new SettingsAdminRepository(_context, SqliteUniqueConstraintDetector.Instance));
     }
 
     [Fact]

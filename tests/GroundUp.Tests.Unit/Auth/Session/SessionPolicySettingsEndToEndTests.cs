@@ -52,6 +52,7 @@ public sealed class SessionPolicySettingsEndToEndTests : IDisposable
         services.AddSingleton<SettingsCacheKeyTracker>();
         services.AddScoped<GroundUpDbContext>(_ => _context);
         services.AddScoped<ISettingsRepository>(_ => new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
+        services.AddScoped<ISettingsAdminRepository>(_ => new SettingsAdminRepository(_context, SqliteUniqueConstraintDetector.Instance));
         services.AddScoped<IScopeChainProvider>(_ => Substitute.For<IScopeChainProvider>());
         services.AddScoped<IEventBus, InvalidatingEventBus>();
         services.AddScoped<SettingsCacheInvalidationHandler>();

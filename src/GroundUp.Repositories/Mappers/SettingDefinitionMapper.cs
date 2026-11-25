@@ -19,6 +19,53 @@ public static partial class SettingDefinitionMapper
     /// <summary>Maps a SettingOption entity to a SettingOptionDto.</summary>
     public static partial SettingOptionDto ToDto(SettingOption entity);
 
+    /// <summary>
+    /// Maps a create DTO's scalar fields to a new entity. Options and allowed levels are added by the
+    /// repository; id and audit fields are set by the repository and database layer.
+    /// </summary>
+    [MapperIgnoreTarget(nameof(SettingDefinition.Id))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Group))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Options))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Values))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.AllowedLevels))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.CreatedAt))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.CreatedBy))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.UpdatedAt))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.UpdatedBy))]
+    [MapperIgnoreSource(nameof(CreateSettingDefinitionDto.Options))]
+    [MapperIgnoreSource(nameof(CreateSettingDefinitionDto.AllowedLevelIds))]
+    public static partial SettingDefinition ToEntity(CreateSettingDefinitionDto dto);
+
+    /// <summary>
+    /// Copies an update DTO's scalar fields onto an existing entity. Options and allowed levels are
+    /// replaced by the repository; id and audit fields are not changed.
+    /// </summary>
+    [MapperIgnoreTarget(nameof(SettingDefinition.Id))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Group))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Options))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.Values))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.AllowedLevels))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.CreatedAt))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.CreatedBy))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.UpdatedAt))]
+    [MapperIgnoreTarget(nameof(SettingDefinition.UpdatedBy))]
+    [MapperIgnoreSource(nameof(UpdateSettingDefinitionDto.Options))]
+    [MapperIgnoreSource(nameof(UpdateSettingDefinitionDto.AllowedLevelIds))]
+    public static partial void UpdateEntity(UpdateSettingDefinitionDto dto, [MappingTarget] SettingDefinition entity);
+
+    /// <summary>Maps a create-option DTO to a new option entity of the given definition.</summary>
+    public static SettingOption ToEntity(CreateSettingOptionDto dto, Guid settingDefinitionId)
+    {
+        var option = ToOptionEntity(dto);
+        option.SettingDefinitionId = settingDefinitionId;
+        return option;
+    }
+
+    [MapperIgnoreTarget(nameof(SettingOption.Id))]
+    [MapperIgnoreTarget(nameof(SettingOption.SettingDefinitionId))]
+    [MapperIgnoreTarget(nameof(SettingOption.SettingDefinition))]
+    private static partial SettingOption ToOptionEntity(CreateSettingOptionDto dto);
+
     private static IReadOnlyList<Guid> MapAllowedLevelIds(ICollection<SettingDefinitionLevel> allowedLevels)
         => allowedLevels.Select(l => l.SettingLevelId).ToList();
 

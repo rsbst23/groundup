@@ -231,6 +231,19 @@ public sealed class SettingsAdminCrudTests : IAsyncLifetime
         result.Data.DisplayName.Should().Be("Theme Setting");
         result.Data.Category.Should().Be("Appearance");
         result.Data.Id.Should().NotBeEmpty();
+        result.Data.AllowedLevelIds.Should().Equal(level.Id);
+        result.Data.Options.Select(o => o.Value).Should().Equal("light", "dark", "auto");
+
+        // GET by id returns the same allowed levels and options, under these JSON names
+        var getResponse = await _client.GetAsync($"/api/settings/definitions/{result.Data.Id}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = System.Text.Json.JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
+        var data = json.RootElement.GetProperty("data");
+        data.GetProperty("allowedLevelIds").EnumerateArray().Select(e => e.GetGuid())
+            .Should().Equal(level.Id);
+        data.GetProperty("options").EnumerateArray().Select(e => e.GetProperty("value").GetString())
+            .Should().Equal("light", "dark", "auto");
+        data.GetProperty("options")[0].GetProperty("isDefault").GetBoolean().Should().BeTrue();
     }
 
     [Fact]

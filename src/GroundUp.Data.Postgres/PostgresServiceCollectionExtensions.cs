@@ -63,6 +63,10 @@ public static class PostgresServiceCollectionExtensions
             new SettingsRepository(
                 sp.GetRequiredService<GroundUpDbContext>(),
                 sp.GetRequiredService<IUniqueConstraintDetector>()));
+        services.AddScoped<ISettingsAdminRepository>(sp =>
+            new SettingsAdminRepository(
+                sp.GetRequiredService<GroundUpDbContext>(),
+                sp.GetRequiredService<IUniqueConstraintDetector>()));
         services.AddScoped<ISetupTransactionLogRepository>(sp =>
             new SetupTransactionLogRepository(
                 sp.GetRequiredService<GroundUpDbContext>(),

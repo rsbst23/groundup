@@ -4,6 +4,8 @@ using GroundUp.Core.Enums;
 using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -21,7 +23,7 @@ public sealed class SettingsAdminServiceDefinitionTests : IDisposable
 
     private SettingsAdminService CreateService(TestSettingsDbContext context)
     {
-        return new SettingsAdminService(context);
+        return new SettingsAdminService(new SettingsAdminRepository(context, SqliteUniqueConstraintDetector.Instance));
     }
 
     [Fact]
@@ -167,6 +169,12 @@ public sealed class SettingsAdminServiceDefinitionTests : IDisposable
         Assert.Equal(2, allowedLevels.Count);
         Assert.Contains(allowedLevels, al => al.SettingLevelId == systemLevelId);
         Assert.Contains(allowedLevels, al => al.SettingLevelId == tenantLevelId);
+
+        // The returned DTO carries the options (by display order) and allowed levels
+        Assert.Equal(new[] { "light", "dark", "auto" }, result.Data.Options.Select(o => o.Value));
+        Assert.Equal(
+            new[] { systemLevelId, tenantLevelId }.OrderBy(id => id),
+            result.Data.AllowedLevelIds.OrderBy(id => id));
     }
 
     [Fact]
@@ -211,6 +219,8 @@ public sealed class SettingsAdminServiceDefinitionTests : IDisposable
         // Assert
         Assert.True(result.Success);
         Assert.Equal("SimpleSetting", result.Data!.Key);
+        Assert.Empty(result.Data.Options);
+        Assert.Empty(result.Data.AllowedLevelIds);
     }
 
     [Fact]
@@ -295,6 +305,12 @@ public sealed class SettingsAdminServiceDefinitionTests : IDisposable
         Assert.Equal(2, allowedLevels.Count);
         Assert.Contains(allowedLevels, al => al.SettingLevelId == systemLevelId);
         Assert.Contains(allowedLevels, al => al.SettingLevelId == tenantLevelId);
+
+        // The returned DTO reflects the replacement, not the old option and level
+        Assert.Equal(new[] { "dark", "midnight" }, result.Data.Options.Select(o => o.Value));
+        Assert.Equal(
+            new[] { systemLevelId, tenantLevelId }.OrderBy(id => id),
+            result.Data.AllowedLevelIds.OrderBy(id => id));
     }
 
     [Fact]
