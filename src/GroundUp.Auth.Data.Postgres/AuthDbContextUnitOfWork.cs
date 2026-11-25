@@ -8,17 +8,22 @@ namespace GroundUp.Auth.Data.Postgres;
 /// <summary>
 /// EF Core-based <see cref="IUnitOfWork"/> implementation using <see cref="AuthDbContext"/>.
 /// Wraps the delegate in a database transaction. Commits on success, rolls back on failure.
-/// Unique constraint violations (Postgres error code 23505) are caught and returned as
-/// conflict (409) results rather than thrown — the caller is expected to handle retries.
+/// Unique constraint violations (recognized by <see cref="IUniqueConstraintDetector"/>) are caught
+/// and returned as conflict (409) results rather than thrown; the caller is expected to handle retries.
 /// </summary>
 public sealed class AuthDbContextUnitOfWork : IUnitOfWork
 {
     private readonly AuthDbContext _context;
+    private readonly IUniqueConstraintDetector _uniqueConstraintDetector;
     private readonly ILogger<AuthDbContextUnitOfWork> _logger;
 
-    public AuthDbContextUnitOfWork(AuthDbContext context, ILogger<AuthDbContextUnitOfWork> logger)
+    public AuthDbContextUnitOfWork(
+        AuthDbContext context,
+        IUniqueConstraintDetector uniqueConstraintDetector,
+        ILogger<AuthDbContextUnitOfWork> logger)
     {
         _context = context;
+        _uniqueConstraintDetector = uniqueConstraintDetector;
         _logger = logger;
     }
 
@@ -39,7 +44,7 @@ public sealed class AuthDbContextUnitOfWork : IUnitOfWork
                 await transaction.CommitAsync(ct);
                 return OperationResult.Ok();
             }
-            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            catch (DbUpdateException ex) when (_uniqueConstraintDetector.IsUniqueConstraintViolation(ex))
             {
                 _logger.LogDebug(ex, "Unique constraint violation during transactional operation");
                 await transaction.RollbackAsync(ct);
@@ -52,24 +57,5 @@ public sealed class AuthDbContextUnitOfWork : IUnitOfWork
                 throw;
             }
         }, cancellationToken);
-    }
-
-    /// <summary>
-    /// Detects Postgres unique constraint violations (error code 23505).
-    /// </summary>
-    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        // Check the inner exception for Postgres error code
-        var inner = ex.InnerException;
-        if (inner is null)
-        {
-            return false;
-        }
-
-        // Npgsql throws PostgresException with SqlState = "23505"
-        var message = inner.Message;
-        return message.Contains("23505") ||
-               message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -56,9 +56,10 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
   - Results: unit 1742 / 12 known; integration 369 / 48 known; sample 22/22. Create/update entity building uses Mapperly (`ToEntity`, `UpdateEntity` with explicit ignores), so RMG012 also guards new Create/Update DTO fields. Repeated allowed level ids are stored once (they used to hit the unique index and return 500). Level-name conflicts can't return 409 until GU-83 adds the index. `GroundUp.Services` no longer uses `Data.Postgres` or EF Core, so the architecture test required removing the last two allowlist entries here (7.2 done early); the project reference itself goes in 7.1
 
 - [ ] 7. Reference removal, cleanup and docs
-  - [ ] 7.1 Remove `GroundUp.Services` → `GroundUp.Data.Postgres`. Add direct references where a project used it transitively (sample, tests). The whole solution builds
+  - [x] 7.1 Remove `GroundUp.Services` → `GroundUp.Data.Postgres`. Add direct references where a project used it transitively (sample, tests). The whole solution builds
   - [x] 7.2 Remove the remaining GU-82 allowlist entries. `LayerRulesTests` passes with an empty allowlist
-  - [ ] 7.3 `AuthDbContextUnitOfWork` uses `IUniqueConstraintDetector`, with an updated unit test
-  - [ ] 7.4 ARCHITECTURE.md: drop the "Open exception" note. Update CLAUDE.md and the steering rules if they mention it. Commit
-  - [ ] 7.5 Sample app smoke check (settings page and setup status) via the manual guide, Parts 11 and 14.4
+  - [x] 7.3 `AuthDbContextUnitOfWork` uses `IUniqueConstraintDetector`, with an updated unit test
+  - [x] 7.4 ARCHITECTURE.md: drop the "Open exception" note. Update CLAUDE.md and the steering rules if they mention it. Commit
+  - Results: whole solution builds without the reference (every consumer already referenced Data.Postgres). `AuthDbContextUnitOfWork` previously matched exception messages ("23505", "duplicate key"); it now takes `IUniqueConstraintDetector`, with 3 new unit tests. Unit 1745 / 12 known; integration 369 / 48 known; sample 22/22
+  - [ ] 7.5 Sample app smoke check (manual, by you) (settings page and setup status) via the manual guide, Parts 11 and 14.4
   - [ ] 7.6 **PR 2 boundary:** I give you the compare URL, title and description, which notes the `SettingDefinitionDto` change for SDK callers. After merge: Jira GU-82 summary, then Done
