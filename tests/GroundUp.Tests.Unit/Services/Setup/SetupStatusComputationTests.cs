@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Setup;
 
@@ -601,7 +602,7 @@ public sealed class SetupStatusComputationTests : IDisposable
         return new SetupWizardService(
             _settingsService,
             _bootstrapStateService,
-            new SettingsRepository(dbContext),
+            new SettingsRepository(dbContext, SqliteUniqueConstraintDetector.Instance),
             new SetupTransactionLogRepository(dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             transactionLogOptions,
             keycloakClient,

@@ -29,33 +29,37 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
 
 ## PR 2: Part B (settings)
 
-- [ ] 4. Setting definition DTO and mapper
-  - [ ] 4.1 Add `AllowedLevelIds` and `Options` to the end of `SettingDefinitionDto`, with XML docs
-  - [ ] 4.2 Add `SettingsMapper` (Mapperly, unmapped members as errors) in `GroundUp.Repositories`. Options are sorted by `DisplayOrder`, then `Value`
-  - [ ] 4.3 Mapper unit test: every field of a fully populated definition, the two new lists, and empty lists when there are none
-  - [ ] 4.4 Fix the 2 test files that construct the DTO. The two services' hand-written `MapToDto` methods stay until task groups 5 and 6, filling the new fields with empty lists for now. Commit
+- [x] 4. Setting definition DTO and mapper
+  - [x] 4.1 Add `AllowedLevelIds` and `Options` to the end of `SettingDefinitionDto`, with XML docs
+  - [x] 4.2 Add per-entity Mapperly mappers (`SettingDefinitionMapper` with options, `SettingGroupMapper`, `SettingValueMapper`; `SettingLevelMapper` exists) in `GroundUp.Repositories/Mappers`. RMG012 (DTO member without a source) is a build error in that project. Options are sorted by `DisplayOrder`, then `Value`
+  - [x] 4.3 Mapper unit test: every field of a fully populated definition, the two new lists, and empty lists when there are none
+  - [x] 4.4 Fix the 2 test files that construct the DTO. The two services' hand-written `MapToDto` methods stay until task groups 5 and 6, filling the new fields from whatever collections were loaded. Commit
+  - Results: unit 1723 / 12 known; integration 369 / 48 known; sample 22/22
 
-- [ ] 5. Settings runtime repository
-  - [ ] 5.1 `ISettingsRepository` runtime methods, `SettingValueUpsertResult`, `SettingValueDeleteResult`
-  - [ ] 5.2 `SettingsRepository` runtime part:
+- [x] 5. Settings runtime repository
+  - [x] 5.1 `ISettingsRepository` runtime methods, `SettingValueUpsertResult`, `SettingValueDeleteResult`
+  - [x] 5.2 `SettingsRepository` runtime part:
     - reads with `AsSplitQuery`
     - upsert with the concurrent-insert retry (Requirement 4.6)
     - find and delete value
     - `EnsureDefinitionAsync` transaction with the detector, rollback and `ChangeTracker.Clear()` (Requirement 6)
-  - [ ] 5.3 `SettingsService` on the repository. Authorization, validation, encryption, secrets, cache and events are unchanged. Remove `MapToDto`, and change `ResolveEffectiveValue` to work on DTOs
-  - [ ] 5.4 `SettingsTestFixture` builds the repository. Update the other constructors (`SettingsCacheTests`, the secret resolver tests, `SettingsServiceAuthorizationTests`, `SettingsEncryptionIntegrationTests`, and the `ActivatorUtilities` callers)
-  - [ ] 5.5 Repository unit tests: upsert insert and update, retry on conflict, ensure-definition race (substituted detector), non-unique error propagates. The 1.1 concurrency test stays green. Commit
+  - [x] 5.3 `SettingsService` on the repository. Authorization, validation, encryption, secrets, cache and events are unchanged. Remove `MapToDto`, and change `ResolveEffectiveValue` to work on DTOs
+  - [x] 5.4 `SettingsTestFixture` builds the repository. Update the other constructors (`SettingsCacheTests`, the secret resolver tests, `SettingsServiceAuthorizationTests`, `SettingsEncryptionIntegrationTests`, and the `ActivatorUtilities` callers)
+  - [x] 5.5 Repository unit tests: upsert insert and update, retry on conflict, ensure-definition race (substituted detector), non-unique error propagates. The 1.1 concurrency test stays green. Commit
+  - Results: unit 1735 / 12 known; integration 369 / 48 known; sample 22/22. `SettingsRepository` takes `IUniqueConstraintDetector`; unit tests use a SQLite detector (`SqliteUniqueConstraintDetector`, code 2067), integration tests the Postgres one. Delete re-checks existence after authorization (404 if removed meanwhile). Finding: the `(definition, level, scope)` unique index treats a null scope as distinct in Postgres, so concurrent System-level inserts are not caught by it (the retry covers tenant scope); needs `NULLS NOT DISTINCT` in a migration, raised as a follow-up
 
-- [ ] 6. Settings admin repository
-  - [ ] 6.1 `ISettingsAdminRepository` and `SettingsAdminRepository`: levels, groups (delete orphans definitions), and definitions (full replace of options and levels). NotFound messages are moved verbatim, and unique violations return 409 `CONFLICT`
-  - [ ] 6.2 `SettingsAdminService` on the repository. It keeps the duplicate checks, the delete guards and their messages. Remove the hand-written mappers
-  - [ ] 6.3 Register the repository. Update the 5 `SettingsAdminService*Tests.cs` files (constructor changes, plus assertions for the new DTO fields where definitions are returned)
-  - [ ] 6.4 Repository unit tests, including the 409 on a concurrent create (substituted detector). Integration test: admin `GET` definition by id returns `allowedLevelIds` and `options`. Commit
+- [x] 6. Settings admin repository
+  - [x] 6.1 `ISettingsAdminRepository` and `SettingsAdminRepository`: levels, groups (delete orphans definitions), and definitions (full replace of options and levels). NotFound messages are moved verbatim, and unique violations return 409 `CONFLICT`
+  - [x] 6.2 `SettingsAdminService` on the repository. It keeps the duplicate checks, the delete guards and their messages. Remove the hand-written mappers
+  - [x] 6.3 Register the repository. Update the 5 `SettingsAdminService*Tests.cs` files (constructor changes, plus assertions for the new DTO fields where definitions are returned)
+  - [x] 6.4 Repository unit tests, including the 409 on a concurrent create (substituted detector). Integration test: admin `GET` definition by id returns `allowedLevelIds` and `options`. Commit
+  - Results: unit 1742 / 12 known; integration 369 / 48 known; sample 22/22. Create/update entity building uses Mapperly (`ToEntity`, `UpdateEntity` with explicit ignores), so RMG012 also guards new Create/Update DTO fields. Repeated allowed level ids are stored once (they used to hit the unique index and return 500). Level-name conflicts can't return 409 until GU-83 adds the index. `GroundUp.Services` no longer uses `Data.Postgres` or EF Core, so the architecture test required removing the last two allowlist entries here (7.2 done early); the project reference itself goes in 7.1
 
 - [ ] 7. Reference removal, cleanup and docs
-  - [ ] 7.1 Remove `GroundUp.Services` → `GroundUp.Data.Postgres`. Add direct references where a project used it transitively (sample, tests). The whole solution builds
-  - [ ] 7.2 Remove the remaining GU-82 allowlist entries. `LayerRulesTests` passes with an empty allowlist
-  - [ ] 7.3 `AuthDbContextUnitOfWork` uses `IUniqueConstraintDetector`, with an updated unit test
-  - [ ] 7.4 ARCHITECTURE.md: drop the "Open exception" note. Update CLAUDE.md and the steering rules if they mention it. Commit
-  - [ ] 7.5 Sample app smoke check (settings page and setup status) via the manual guide, Parts 11 and 14.4
+  - [x] 7.1 Remove `GroundUp.Services` → `GroundUp.Data.Postgres`. Add direct references where a project used it transitively (sample, tests). The whole solution builds
+  - [x] 7.2 Remove the remaining GU-82 allowlist entries. `LayerRulesTests` passes with an empty allowlist
+  - [x] 7.3 `AuthDbContextUnitOfWork` uses `IUniqueConstraintDetector`, with an updated unit test
+  - [x] 7.4 ARCHITECTURE.md: drop the "Open exception" note. Update CLAUDE.md and the steering rules if they mention it. Commit
+  - Results: whole solution builds without the reference (every consumer already referenced Data.Postgres). `AuthDbContextUnitOfWork` previously matched exception messages ("23505", "duplicate key"); it now takes `IUniqueConstraintDetector`, with 3 new unit tests. Unit 1745 / 12 known; integration 369 / 48 known; sample 22/22
+  - [ ] 7.5 Sample app smoke check (manual, by you) (settings page and setup status) via the manual guide, Parts 11 and 14.4
   - [ ] 7.6 **PR 2 boundary:** I give you the compare URL, title and description, which notes the `SettingDefinitionDto` change for SDK callers. After merge: Jira GU-82 summary, then Done

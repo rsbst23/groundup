@@ -3,7 +3,9 @@ using GroundUp.Core.Abstractions;
 using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Events;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Settings;
+using GroundUp.Tests.Unit.Repositories;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -16,7 +18,7 @@ public sealed class SettingsServiceAuthorizationTests : IDisposable
     private readonly ISettingsAuthorizer _authorizer = Substitute.For<ISettingsAuthorizer>();
 
     private SettingsService CreateService(TestSettingsDbContext context)
-        => new(context, _fixture.EventBus, _fixture.ScopeChainProvider, _fixture.MemoryCache,
+        => new(new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance), _fixture.EventBus, _fixture.ScopeChainProvider, _fixture.MemoryCache,
             _fixture.CacheOptions, _fixture.CacheKeyTracker, _authorizer);
 
     private void Decide(SettingsAuthorizationResult result)

@@ -6,6 +6,8 @@ using GroundUp.Core.Models;
 using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using NSubstitute;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -404,7 +406,7 @@ public sealed class SettingsServiceSecretResolverTests : IDisposable
         ISecretResolver? secretResolver)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             _fixture.EventBus,
             _fixture.ScopeChainProvider,
             _fixture.MemoryCache,
@@ -420,7 +422,7 @@ public sealed class SettingsServiceSecretResolverTests : IDisposable
         ISecretResolver? secretResolver)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             _fixture.EventBus,
             _fixture.ScopeChainProvider,
             _fixture.MemoryCache,

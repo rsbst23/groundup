@@ -4,6 +4,7 @@ using GroundUp.Data.Postgres;
 using GroundUp.Repositories.Settings;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Repositories.Settings;
 
@@ -33,7 +34,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).GetLevelIdByNameAsync("System");
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).GetLevelIdByNameAsync("System");
 
         // Assert
         result.Should().Be(systemId);
@@ -47,7 +48,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).GetLevelIdByNameAsync("Tenant");
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).GetLevelIdByNameAsync("Tenant");
 
         // Assert
         result.Should().BeNull();
@@ -61,7 +62,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).GetLevelNameByIdAsync(id);
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).GetLevelNameByIdAsync(id);
 
         // Assert
         result.Should().Be("Tenant");
@@ -74,7 +75,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).GetLevelNameByIdAsync(Guid.NewGuid());
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).GetLevelNameByIdAsync(Guid.NewGuid());
 
         // Assert
         result.Should().BeNull();
@@ -88,7 +89,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).EnsureLevelAsync("Tenant", systemId, 1);
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).EnsureLevelAsync("Tenant", systemId, 1);
 
         // Assert
         result.Name.Should().Be("Tenant");
@@ -110,7 +111,7 @@ public sealed class SettingsRepositoryLevelTests : IDisposable
         await using var context = CreateContext();
 
         // Act
-        var result = await new SettingsRepository(context).EnsureLevelAsync("System", null, 0);
+        var result = await new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance).EnsureLevelAsync("System", null, 0);
 
         // Assert
         result.Id.Should().Be(existingId);

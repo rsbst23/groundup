@@ -45,7 +45,7 @@ public sealed class SessionPolicyIntegrationTests : AuthFlowTestBase, IAsyncLife
         var db = scope.ServiceProvider.GetRequiredService<GroundUpDbContext>();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
 
-        await new DefaultSettingLevelSeeder(new SettingsRepository(db)).SeedAsync();
+        await new DefaultSettingLevelSeeder(new SettingsRepository(db, new PostgresUniqueConstraintDetector())).SeedAsync();
         await new DefaultAuthSettingsSeeder(settings, NullLogger<DefaultAuthSettingsSeeder>.Instance).SeedAsync();
 
         var levels = await db.Set<SettingLevel>().AsNoTracking().ToListAsync();

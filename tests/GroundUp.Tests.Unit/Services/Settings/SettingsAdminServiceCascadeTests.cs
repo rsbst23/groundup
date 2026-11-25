@@ -4,6 +4,8 @@ using GroundUp.Core.Enums;
 using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -22,7 +24,7 @@ public sealed class SettingsAdminServiceCascadeTests : IDisposable
 
     private static SettingsAdminService CreateService(TestSettingsDbContext context)
     {
-        return new SettingsAdminService(context);
+        return new SettingsAdminService(new SettingsAdminRepository(context, SqliteUniqueConstraintDetector.Instance));
     }
 
     [Fact]

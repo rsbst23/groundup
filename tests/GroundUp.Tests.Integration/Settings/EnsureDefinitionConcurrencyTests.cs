@@ -13,6 +13,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
+using GroundUp.Repositories.Settings;
 
 namespace GroundUp.Tests.Integration.Settings;
 
@@ -136,7 +137,7 @@ public sealed class EnsureDefinitionConcurrencyTests : IAsyncLifetime
     {
         var eventBus = new InProcessEventBus(new ServiceProviderStub(), NullLogger<InProcessEventBus>.Instance);
         return new SettingsService(
-            context,
+            new SettingsRepository(context, new PostgresUniqueConstraintDetector()),
             eventBus,
             new EmptyScopeChainProvider(),
             new MemoryCache(new MemoryCacheOptions()),

@@ -123,7 +123,7 @@ Module projects follow the same table (`GroundUp.Auth.Api`, `GroundUp.Auth.Servi
 | `GroundUp.Core` | any other GroundUp project |
 | `GroundUp.Events` | any GroundUp project except Core |
 
-Open exception: `GroundUp.Services` still uses `GroundUp.Data.Postgres` and EF Core (settings, bootstrap and setup services). GU-82 removes it.
+There are no exceptions (since GU-82). Services that need query shapes the generic `IBaseRepository` does not fit (settings resolution, bootstrap state, the setup transaction log) use dedicated repositories: interfaces in `GroundUp.Data.Abstractions` (`ISettingsRepository`, `ISettingsAdminRepository`, `IBootstrapStateRepository`, `ISetupTransactionLogRepository`, `IDatabaseMigrator`), implementations in `GroundUp.Repositories` (or the provider for the migrator), registered by the provider's `AddGroundUpPostgres`. A new provider (for example `Data.SqlServer`) registers the same interfaces and its own `IUniqueConstraintDetector`.
 
 ## Key Design Decisions
 
@@ -137,7 +137,7 @@ Open exception: `GroundUp.Services` still uses `GroundUp.Data.Postgres` and EF C
 
 5. **Opt-in behaviors.** Audit fields (`IAuditable`), soft delete (`ISoftDeletable`), and tenant scoping (`ITenantEntity`) are interfaces that entities implement to opt in. Nothing is forced on all entities.
 
-6. **Strict layering, enforced by tests.** Project references alone do not stop a layer from reaching too far: an API project sees repository interfaces through its reference to the services project. `LayerRulesTests` (unit tests, `tests/GroundUp.Tests.Unit/Architecture`) checks the assemblies each compiled project actually uses, method bodies included, and fails when a rule is broken. Known exceptions are listed in `LayerRulesAllowlist` with the story that removes them (GU-82); an entry that no longer occurs also fails the test, so the list only shrinks. A new project under `src` must be given its layer in the test, or the test fails.
+6. **Strict layering, enforced by tests.** Project references alone do not stop a layer from reaching too far: an API project sees repository interfaces through its reference to the services project. `LayerRulesTests` (unit tests, `tests/GroundUp.Tests.Unit/Architecture`) checks the assemblies each compiled project actually uses, method bodies included, and fails when a rule is broken. Known exceptions would be listed in `LayerRulesAllowlist`, each with the story that removes it; the list is empty since GU-82. An entry that no longer occurs also fails the test, so the list only shrinks. A new project under `src` must be given its layer in the test, or the test fails.
 
 ## How Consuming Applications Use GroundUp
 

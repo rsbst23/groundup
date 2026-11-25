@@ -21,6 +21,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Setup;
 
@@ -84,7 +85,8 @@ public sealed class SetupWizardServiceTests : IDisposable
                         Guid.NewGuid(), req.Key, SettingDataType.String, null, null,
                         req.DisplayName, null, null, null, 0, true, false, false,
                         false, false, false, null, null, null, null, null, null,
-                        null, null, null, null)));
+                        null, null, null, null,
+                        Array.Empty<Guid>(), Array.Empty<SettingOptionDto>())));
             });
 
         // Default: SetAsync succeeds
@@ -101,7 +103,7 @@ public sealed class SetupWizardServiceTests : IDisposable
         _sut = new SetupWizardService(
             _settingsService,
             _bootstrapStateService,
-            new SettingsRepository(_dbContext),
+            new SettingsRepository(_dbContext, SqliteUniqueConstraintDetector.Instance),
             new SetupTransactionLogRepository(_dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             _transactionLogOptions,
             _keycloakClient,

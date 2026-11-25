@@ -40,7 +40,7 @@ Events → Core only
 - Services MAY depend on other modules' service INTERFACES for cross-module orchestration
 - Repositories depend on Data.Abstractions and Core
 - Data.Postgres depends on Repositories, Data.Abstractions, and Core
-- These rules are enforced by `tests/GroundUp.Tests.Unit/Architecture/LayerRulesTests.cs` on the compiled assemblies. Fix a violation instead of allowlisting it; the allowlist holds only known exceptions with a Jira story (GU-82)
+- These rules are enforced by `tests/GroundUp.Tests.Unit/Architecture/LayerRulesTests.cs` on the compiled assemblies. Fix a violation instead of allowlisting it; the allowlist is empty (since GU-82) and may only hold a known exception with a Jira story that removes it
 - Core has ZERO dependencies on other GroundUp projects
 - Cross-module communication goes through service interfaces — never access another module's repositories directly
 

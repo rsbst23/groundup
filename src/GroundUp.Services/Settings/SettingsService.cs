@@ -2,13 +2,11 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Dtos.Settings;
-using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
-using GroundUp.Data.Postgres;
+using GroundUp.Data.Abstractions;
 using GroundUp.Events;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
@@ -19,13 +17,13 @@ namespace GroundUp.Services.Settings;
 /// <summary>
 /// Sealed, scoped implementation of <see cref="ISettingsService"/> that performs
 /// cascade resolution, type-safe deserialization, transparent encryption/decryption,
-/// validation, and domain event publishing. Uses EF Core directly via
-/// <c>DbContext.Set&lt;T&gt;()</c> for optimized query patterns that don't fit
-/// the generic BaseRepository model.
+/// validation, and domain event publishing. Data access goes through
+/// <see cref="ISettingsRepository"/>, whose query shapes (lookups by key, scope chain walks,
+/// batch value reads) fit the resolution instead of generic CRUD.
 /// </summary>
 public sealed class SettingsService : ISettingsService
 {
-    private readonly GroundUpDbContext _dbContext;
+    private readonly ISettingsRepository _repository;
     private readonly IEventBus _eventBus;
     private readonly ISettingEncryptionProvider? _encryptionProvider;
     private readonly ISecretResolver? _secretResolver;
@@ -41,7 +39,7 @@ public sealed class SettingsService : ISettingsService
     /// <summary>
     /// Initializes a new instance of <see cref="SettingsService"/>.
     /// </summary>
-    /// <param name="dbContext">The EF Core database context for querying settings entities.</param>
+    /// <param name="repository">Data access for setting levels, definitions and values.</param>
     /// <param name="eventBus">The event bus for publishing <see cref="SettingChangedEvent"/>.</param>
     /// <param name="scopeChainProvider">The scope chain provider for convenience overloads.</param>
     /// <param name="cache">The in-memory cache for caching resolved settings.</param>
@@ -60,7 +58,7 @@ public sealed class SettingsService : ISettingsService
     /// Optional cross-value validators run by <c>SetAsync</c> after the built-in checks.
     /// </param>
     public SettingsService(
-        GroundUpDbContext dbContext,
+        ISettingsRepository repository,
         IEventBus eventBus,
         IScopeChainProvider scopeChainProvider,
         IMemoryCache cache,
@@ -72,7 +70,7 @@ public sealed class SettingsService : ISettingsService
         IEnumerable<ISettingWriteValidator>? writeValidators = null)
     {
         _writeValidators = writeValidators?.ToList() ?? [];
-        _dbContext = dbContext;
+        _repository = repository;
         _eventBus = eventBus;
         _scopeChainProvider = scopeChainProvider;
         _cache = cache;
@@ -133,9 +131,7 @@ public sealed class SettingsService : ISettingsService
             return denied;
         }
 
-        var definition = await _dbContext.Set<SettingDefinition>()
-            .Include(d => d.AllowedLevels)
-            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+        var definition = await _repository.GetDefinitionByKeyAsync(key, cancellationToken);
 
         if (definition is null)
         {
@@ -149,11 +145,7 @@ public sealed class SettingsService : ISettingsService
         }
 
         // Validation: AllowedLevels
-        var allowedLevelIds = definition.AllowedLevels
-            .Select(al => al.SettingLevelId)
-            .ToHashSet();
-
-        if (!allowedLevelIds.Contains(levelId))
+        if (!definition.AllowedLevelIds.Contains(levelId))
         {
             return OperationResult<SettingValueDto>.BadRequest(
                 $"Level '{levelId}' is not allowed for setting '{key}'");
@@ -203,11 +195,7 @@ public sealed class SettingsService : ISettingsService
         // Validation: registered cross-value validators (for example "tenant value <= System value")
         if (_writeValidators.Count > 0)
         {
-            var levelName = await _dbContext.Set<SettingLevel>()
-                .AsNoTracking()
-                .Where(l => l.Id == levelId)
-                .Select(l => l.Name)
-                .FirstOrDefaultAsync(cancellationToken);
+            var levelName = await _repository.GetLevelNameByIdAsync(levelId, cancellationToken);
 
             var writeContext = new SettingWriteContext(key, value, levelId, levelName, scopeId);
 
@@ -240,35 +228,10 @@ public sealed class SettingsService : ISettingsService
             valueToStore = _encryptionProvider.Encrypt(value);
         }
 
-        // Upsert: find existing or create new
-        var existing = await _dbContext.Set<SettingValue>()
-            .FirstOrDefaultAsync(v =>
-                v.SettingDefinitionId == definition.Id &&
-                v.LevelId == levelId &&
-                v.ScopeId == scopeId,
-                cancellationToken);
-
-        string? oldValue = null;
-
-        if (existing is not null)
-        {
-            oldValue = existing.Value;
-            existing.Value = valueToStore;
-        }
-        else
-        {
-            var newEntity = new SettingValue
-            {
-                SettingDefinitionId = definition.Id,
-                LevelId = levelId,
-                ScopeId = scopeId,
-                Value = valueToStore
-            };
-            _dbContext.Set<SettingValue>().Add(newEntity);
-            existing = newEntity;
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        // Upsert: insert or update the value at this level and scope
+        var change = await _repository.UpsertValueAsync(
+            definition.Id, levelId, scopeId, valueToStore, cancellationToken);
+        var oldValue = change.OldValue;
 
         // Publish event (fire-and-forget)
         try
@@ -287,14 +250,7 @@ public sealed class SettingsService : ISettingsService
             // Fire-and-forget: event publishing failures do not affect the operation result
         }
 
-        var dto = new SettingValueDto(
-            existing.Id,
-            existing.SettingDefinitionId,
-            existing.LevelId,
-            existing.ScopeId,
-            existing.Value);
-
-        return OperationResult<SettingValueDto>.Ok(dto);
+        return OperationResult<SettingValueDto>.Ok(change.Value);
     }
 
     /// <inheritdoc />
@@ -302,18 +258,16 @@ public sealed class SettingsService : ISettingsService
         Guid settingValueId,
         CancellationToken cancellationToken = default)
     {
-        var settingValue = await _dbContext.Set<SettingValue>()
-            .Include(v => v.SettingDefinition)
-            .FirstOrDefaultAsync(v => v.Id == settingValueId, cancellationToken);
+        var found = await _repository.FindValueAsync(settingValueId, cancellationToken);
 
-        if (settingValue is null)
+        if (found is null)
         {
             return OperationResult.NotFound($"Setting value '{settingValueId}' not found");
         }
 
-        var settingKey = settingValue.SettingDefinition.Key;
-        var levelId = settingValue.LevelId;
-        var scopeId = settingValue.ScopeId;
+        var settingKey = found.DefinitionKey;
+        var levelId = found.Value.LevelId;
+        var scopeId = found.Value.ScopeId;
 
         var deniedDelete = await AuthorizeAsync<object>(write: false, settingKey, levelId, scopeId, cancellationToken);
         if (deniedDelete is not null)
@@ -322,10 +276,13 @@ public sealed class SettingsService : ISettingsService
                 ? OperationResult.Unauthorized(deniedDelete.Message)
                 : OperationResult.Forbidden(deniedDelete.Message);
         }
-        var oldValue = settingValue.Value;
+        var oldValue = found.Value.Value;
 
-        _dbContext.Set<SettingValue>().Remove(settingValue);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (!await _repository.DeleteValueByIdAsync(settingValueId, cancellationToken))
+        {
+            // Removed by someone else between the read and the delete
+            return OperationResult.NotFound($"Setting value '{settingValueId}' not found");
+        }
 
         // Publish event (fire-and-forget)
         try
@@ -354,11 +311,7 @@ public sealed class SettingsService : ISettingsService
     private async Task<OperationResult<T>?> AuthorizeAsync<T>(
         bool write, string key, Guid levelId, Guid? scopeId, CancellationToken cancellationToken)
     {
-        var levelName = await _dbContext.Set<SettingLevel>()
-            .AsNoTracking()
-            .Where(l => l.Id == levelId)
-            .Select(l => l.Name)
-            .FirstOrDefaultAsync(cancellationToken);
+        var levelName = await _repository.GetLevelNameByIdAsync(levelId, cancellationToken);
 
         var decision = write
             ? await _authorizer.AuthorizeWriteAsync(key, levelId, levelName, scopeId, cancellationToken)
@@ -473,9 +426,7 @@ public sealed class SettingsService : ISettingsService
         CancellationToken cancellationToken = default)
     {
         // Look up the definition to determine the DataType
-        var definition = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+        var definition = await _repository.GetDefinitionByKeyAsync(key, cancellationToken);
 
         if (definition is null)
         {
@@ -522,109 +473,9 @@ public sealed class SettingsService : ISettingsService
         EnsureSettingDefinitionRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Check if definition already exists by key
-        var existing = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Key == request.Key, cancellationToken);
-
-        if (existing is not null)
-        {
-            return OperationResult<SettingDefinitionDto>.Ok(MapToDto(existing));
-        }
-
-        // Use a transaction to ensure atomicity of group + definition + level associations
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            // Ensure group exists
-            var group = await _dbContext.Set<SettingGroup>()
-                .FirstOrDefaultAsync(g => g.Key == request.GroupKey, cancellationToken);
-
-            if (group is null)
-            {
-                group = new SettingGroup
-                {
-                    Key = request.GroupKey,
-                    DisplayName = request.GroupDisplayName,
-                    DisplayOrder = 0
-                };
-                _dbContext.Set<SettingGroup>().Add(group);
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-
-            // Resolve level IDs from names (case-insensitive comparison)
-            var levelNames = request.AllowedLevelNames
-                .Select(n => n.ToLowerInvariant())
-                .ToList();
-            var levels = await _dbContext.Set<SettingLevel>()
-                .AsNoTracking()
-                .Where(l => levelNames.Contains(l.Name.ToLower()))
-                .ToListAsync(cancellationToken);
-
-            // Create the definition
-            var definition = new SettingDefinition
-            {
-                Key = request.Key,
-                DataType = request.DataType,
-                DefaultValue = request.DefaultValue,
-                DisplayName = request.DisplayName,
-                Description = request.Description,
-                Category = request.Category,
-                GroupId = group.Id,
-                RegexPattern = request.RegexPattern,
-                ValidationMessage = request.ValidationMessage,
-                IsRequired = request.IsRequired,
-                IsSecret = request.IsSecret,
-                IsEncrypted = request.IsEncrypted,
-                MinValue = request.MinValue,
-                MaxValue = request.MaxValue,
-                IsVisible = true,
-                IsReadOnly = false,
-                AllowMultiple = false,
-                DisplayOrder = 0
-            };
-
-            _dbContext.Set<SettingDefinition>().Add(definition);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            // Create level associations
-            foreach (var level in levels)
-            {
-                _dbContext.Set<SettingDefinitionLevel>().Add(new SettingDefinitionLevel
-                {
-                    SettingDefinitionId = definition.Id,
-                    SettingLevelId = level.Id
-                });
-            }
-
-            if (levels.Count > 0)
-            {
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-
-            await transaction.CommitAsync(cancellationToken);
-            return OperationResult<SettingDefinitionDto>.Ok(MapToDto(definition));
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-
-            // Race condition: another instance created the definition concurrently.
-            // Re-fetch and return the existing one.
-            var raceWinner = await _dbContext.Set<SettingDefinition>()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(d => d.Key == request.Key, cancellationToken);
-
-            if (raceWinner is not null)
-            {
-                return OperationResult<SettingDefinitionDto>.Ok(MapToDto(raceWinner));
-            }
-
-            // Unexpected error — not a race condition
-            return OperationResult<SettingDefinitionDto>.Fail(
-                $"Failed to create setting definition '{request.Key}'", 500);
-        }
+        // The repository creates group, definition and level links in one transaction and handles
+        // a concurrent create of the same key by returning the winner.
+        return await _repository.EnsureDefinitionAsync(request, cancellationToken);
     }
 
     #region Private Helpers
@@ -637,19 +488,14 @@ public sealed class SettingsService : ISettingsService
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken)
     {
-        var definition = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .Include(d => d.AllowedLevels)
-            .FirstOrDefaultAsync(d => d.Key == key, cancellationToken);
+        var definition = await _repository.GetDefinitionByKeyAsync(key, cancellationToken);
 
         if (definition is null)
         {
             return OperationResult<T>.NotFound($"Setting '{key}' not found");
         }
 
-        var allowedLevelIds = definition.AllowedLevels
-            .Select(al => al.SettingLevelId)
-            .ToHashSet();
+        var allowedLevelIds = definition.AllowedLevelIds.ToHashSet();
 
         string? effectiveValue = null;
 
@@ -662,13 +508,7 @@ public sealed class SettingsService : ISettingsService
                     continue;
                 }
 
-                var settingValue = await _dbContext.Set<SettingValue>()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(v =>
-                        v.SettingDefinitionId == definition.Id &&
-                        v.LevelId == entry.LevelId &&
-                        v.ScopeId == entry.ScopeId,
-                        cancellationToken);
+                var settingValue = await _repository.GetValueAsync(definition.Id, entry.LevelId, entry.ScopeId, cancellationToken);
 
                 if (settingValue is not null)
                 {
@@ -720,17 +560,11 @@ public sealed class SettingsService : ISettingsService
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken)
     {
-        var definitions = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .Include(d => d.AllowedLevels)
-            .ToListAsync(cancellationToken);
+        var definitions = await _repository.GetAllDefinitionsAsync(cancellationToken);
 
         var definitionIds = definitions.Select(d => d.Id).ToList();
 
-        var allValues = await _dbContext.Set<SettingValue>()
-            .AsNoTracking()
-            .Where(v => definitionIds.Contains(v.SettingDefinitionId))
-            .ToListAsync(cancellationToken);
+        var allValues = await _repository.GetValuesForDefinitionsAsync(definitionIds, cancellationToken);
 
         var results = new List<ResolvedSettingDto>(definitions.Count);
 
@@ -777,7 +611,7 @@ public sealed class SettingsService : ISettingsService
             }
 
             results.Add(new ResolvedSettingDto(
-                MapToDto(definition),
+                definition,
                 effectiveValue,
                 resolved.SourceLevelId,
                 resolved.SourceScopeId,
@@ -796,9 +630,7 @@ public sealed class SettingsService : ISettingsService
         IReadOnlyList<SettingScopeEntry> scopeChain,
         CancellationToken cancellationToken)
     {
-        var group = await _dbContext.Set<SettingGroup>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(g => g.Key == groupKey, cancellationToken);
+        var group = await _repository.GetGroupByKeyAsync(groupKey, cancellationToken);
 
         if (group is null)
         {
@@ -806,18 +638,11 @@ public sealed class SettingsService : ISettingsService
                 $"Setting group '{groupKey}' not found");
         }
 
-        var definitions = await _dbContext.Set<SettingDefinition>()
-            .AsNoTracking()
-            .Include(d => d.AllowedLevels)
-            .Where(d => d.GroupId == group.Id)
-            .ToListAsync(cancellationToken);
+        var definitions = await _repository.GetDefinitionsByGroupAsync(group.Id, cancellationToken);
 
         var definitionIds = definitions.Select(d => d.Id).ToList();
 
-        var allValues = await _dbContext.Set<SettingValue>()
-            .AsNoTracking()
-            .Where(v => definitionIds.Contains(v.SettingDefinitionId))
-            .ToListAsync(cancellationToken);
+        var allValues = await _repository.GetValuesForDefinitionsAsync(definitionIds, cancellationToken);
 
         var results = new List<ResolvedSettingDto>(definitions.Count);
 
@@ -864,7 +689,7 @@ public sealed class SettingsService : ISettingsService
             }
 
             results.Add(new ResolvedSettingDto(
-                MapToDto(definition),
+                definition,
                 effectiveValue,
                 resolved.SourceLevelId,
                 resolved.SourceScopeId,
@@ -900,13 +725,11 @@ public sealed class SettingsService : ISettingsService
     /// Resolves the effective value for a definition by walking the scope chain.
     /// </summary>
     private static ResolvedValue ResolveEffectiveValue(
-        SettingDefinition definition,
-        List<SettingValue> allValues,
+        SettingDefinitionDto definition,
+        IReadOnlyList<SettingValueDto> allValues,
         IReadOnlyList<SettingScopeEntry> scopeChain)
     {
-        var allowedLevelIds = definition.AllowedLevels
-            .Select(al => al.SettingLevelId)
-            .ToHashSet();
+        var allowedLevelIds = definition.AllowedLevelIds.ToHashSet();
 
         if (scopeChain is { Count: > 0 })
         {
@@ -948,7 +771,7 @@ public sealed class SettingsService : ISettingsService
     /// Returns null if validation passes, or a BadRequest result if it fails.
     /// </summary>
     private static OperationResult<SettingValueDto>? ValidateNumericRange(
-        SettingDefinition definition,
+        SettingDefinitionDto definition,
         string value)
     {
         if (string.IsNullOrEmpty(value))
@@ -997,37 +820,6 @@ public sealed class SettingsService : ISettingsService
 
         return null;
     }
-
-    /// <summary>
-    /// Maps a <see cref="SettingDefinition"/> entity to a <see cref="SettingDefinitionDto"/>.
-    /// </summary>
-    private static SettingDefinitionDto MapToDto(SettingDefinition def) => new(
-        def.Id,
-        def.Key,
-        def.DataType,
-        def.DefaultValue,
-        def.GroupId,
-        def.DisplayName,
-        def.Description,
-        def.Placeholder,
-        def.Category,
-        def.DisplayOrder,
-        def.IsVisible,
-        def.IsReadOnly,
-        def.AllowMultiple,
-        def.IsEncrypted,
-        def.IsSecret,
-        def.IsRequired,
-        def.MinValue,
-        def.MaxValue,
-        def.MinLength,
-        def.MaxLength,
-        def.RegexPattern,
-        def.ValidationMessage,
-        def.DependsOnKey,
-        def.DependsOnOperator,
-        def.DependsOnValue,
-        def.CustomValidatorType);
 
     /// <summary>
     /// Internal record for holding resolved value data during bulk resolution.

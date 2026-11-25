@@ -20,6 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Setup;
 
@@ -283,7 +284,8 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
                         Guid.NewGuid(), req.Key, SettingDataType.String, null, null,
                         req.DisplayName, null, null, null, 0, true, false, false,
                         false, false, false, null, null, null, null, null, null,
-                        null, null, null, null)));
+                        null, null, null, null,
+                        Array.Empty<Guid>(), Array.Empty<SettingOptionDto>())));
             });
 
         // SetAsync tracks values in the store
@@ -339,7 +341,7 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
         return new SetupWizardService(
             settingsService,
             bootstrapStateService,
-            new SettingsRepository(dbContext),
+            new SettingsRepository(dbContext, SqliteUniqueConstraintDetector.Instance),
             new SetupTransactionLogRepository(dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             transactionLogOptions,
             keycloakClient,
