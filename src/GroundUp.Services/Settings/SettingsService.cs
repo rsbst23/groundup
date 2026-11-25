@@ -1027,7 +1027,13 @@ public sealed class SettingsService : ISettingsService
         def.DependsOnKey,
         def.DependsOnOperator,
         def.DependsOnValue,
-        def.CustomValidatorType);
+        def.CustomValidatorType,
+        // Interim (GU-82): filled from whatever collections were loaded; replaced by the repository mapper.
+        def.AllowedLevels.Select(l => l.SettingLevelId).ToList(),
+        def.Options
+            .OrderBy(o => o.DisplayOrder).ThenBy(o => o.Value, StringComparer.Ordinal)
+            .Select(o => new SettingOptionDto(o.Id, o.SettingDefinitionId, o.Value, o.Label, o.DisplayOrder, o.IsDefault, o.ParentOptionValue))
+            .ToList());
 
     /// <summary>
     /// Internal record for holding resolved value data during bulk resolution.

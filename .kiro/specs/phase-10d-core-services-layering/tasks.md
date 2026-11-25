@@ -29,11 +29,12 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
 
 ## PR 2: Part B (settings)
 
-- [ ] 4. Setting definition DTO and mapper
-  - [ ] 4.1 Add `AllowedLevelIds` and `Options` to the end of `SettingDefinitionDto`, with XML docs
-  - [ ] 4.2 Add `SettingsMapper` (Mapperly, unmapped members as errors) in `GroundUp.Repositories`. Options are sorted by `DisplayOrder`, then `Value`
-  - [ ] 4.3 Mapper unit test: every field of a fully populated definition, the two new lists, and empty lists when there are none
-  - [ ] 4.4 Fix the 2 test files that construct the DTO. The two services' hand-written `MapToDto` methods stay until task groups 5 and 6, filling the new fields with empty lists for now. Commit
+- [x] 4. Setting definition DTO and mapper
+  - [x] 4.1 Add `AllowedLevelIds` and `Options` to the end of `SettingDefinitionDto`, with XML docs
+  - [x] 4.2 Add per-entity Mapperly mappers (`SettingDefinitionMapper` with options, `SettingGroupMapper`, `SettingValueMapper`; `SettingLevelMapper` exists) in `GroundUp.Repositories/Mappers`. RMG012 (DTO member without a source) is a build error in that project. Options are sorted by `DisplayOrder`, then `Value`
+  - [x] 4.3 Mapper unit test: every field of a fully populated definition, the two new lists, and empty lists when there are none
+  - [x] 4.4 Fix the 2 test files that construct the DTO. The two services' hand-written `MapToDto` methods stay until task groups 5 and 6, filling the new fields from whatever collections were loaded. Commit
+  - Results: unit 1723 / 12 known; integration 369 / 48 known; sample 22/22
 
 - [ ] 5. Settings runtime repository
   - [ ] 5.1 `ISettingsRepository` runtime methods, `SettingValueUpsertResult`, `SettingValueDeleteResult`

@@ -4,7 +4,8 @@ namespace GroundUp.Core.Dtos.Settings;
 
 /// <summary>
 /// Data transfer object for <see cref="Entities.Settings.SettingDefinition"/>.
-/// Contains all definition properties except navigation collections and audit fields.
+/// Contains all definition properties, the levels where the setting can be set and its options.
+/// Audit fields and the values collection are not included.
 /// </summary>
 /// <param name="Id">Unique identifier.</param>
 /// <param name="Key">Programmatic identifier (e.g., "MaxUploadSizeMB").</param>
@@ -32,6 +33,8 @@ namespace GroundUp.Core.Dtos.Settings;
 /// <param name="DependsOnOperator">Comparison operator for the dependency.</param>
 /// <param name="DependsOnValue">Value to compare against for the dependency.</param>
 /// <param name="CustomValidatorType">Fully qualified type name for custom validation logic.</param>
+/// <param name="AllowedLevelIds">Ids of the levels where a value may be set. Empty when none; never null.</param>
+/// <param name="Options">Selectable options, ordered by display order then value. Empty when none; never null.</param>
 public record SettingDefinitionDto(
     Guid Id,
     string Key,
@@ -58,4 +61,6 @@ public record SettingDefinitionDto(
     string? DependsOnKey,
     string? DependsOnOperator,
     string? DependsOnValue,
-    string? CustomValidatorType);
+    string? CustomValidatorType,
+    IReadOnlyList<Guid> AllowedLevelIds,
+    IReadOnlyList<SettingOptionDto> Options);

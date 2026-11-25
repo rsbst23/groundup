@@ -513,7 +513,13 @@ public sealed class SettingsAdminService : ISettingsAdminService
         entity.DependsOnKey,
         entity.DependsOnOperator,
         entity.DependsOnValue,
-        entity.CustomValidatorType);
+        entity.CustomValidatorType,
+        // Interim (GU-82): filled from whatever collections were loaded; replaced by the repository mapper.
+        entity.AllowedLevels.Select(l => l.SettingLevelId).ToList(),
+        entity.Options
+            .OrderBy(o => o.DisplayOrder).ThenBy(o => o.Value, StringComparer.Ordinal)
+            .Select(o => new SettingOptionDto(o.Id, o.SettingDefinitionId, o.Value, o.Label, o.DisplayOrder, o.IsDefault, o.ParentOptionValue))
+            .ToList());
 
     #endregion
 }

@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Mapperly: a DTO member with no source (RMG012) fails the build, so a field added later can't be dropped silently. -->
+    <WarningsAsErrors>$(WarningsAsErrors);RMG012</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
