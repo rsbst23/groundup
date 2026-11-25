@@ -15,9 +15,7 @@ using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
-using GroundUp.Data.Postgres;
 using GroundUp.Services.Setup.Keycloak;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -34,7 +32,7 @@ internal sealed class SetupWizardService : ISetupWizardService
 
     private readonly ISettingsService _settingsService;
     private readonly IBootstrapStateService _bootstrapStateService;
-    private readonly GroundUpDbContext _dbContext;
+    private readonly ISettingsRepository _settingsRepository;
     private readonly ISetupTransactionLogRepository _transactionLogRepository;
     private readonly IOptions<SetupTransactionLogOptions> _transactionLogOptions;
     private readonly KeycloakAdminHttpClient _keycloakClient;
@@ -46,7 +44,7 @@ internal sealed class SetupWizardService : ISetupWizardService
     public SetupWizardService(
         ISettingsService settingsService,
         IBootstrapStateService bootstrapStateService,
-        GroundUpDbContext dbContext,
+        ISettingsRepository settingsRepository,
         ISetupTransactionLogRepository transactionLogRepository,
         IOptions<SetupTransactionLogOptions> transactionLogOptions,
         KeycloakAdminHttpClient keycloakClient,
@@ -57,7 +55,7 @@ internal sealed class SetupWizardService : ISetupWizardService
     {
         _settingsService = settingsService;
         _bootstrapStateService = bootstrapStateService;
-        _dbContext = dbContext;
+        _settingsRepository = settingsRepository;
         _transactionLogRepository = transactionLogRepository;
         _transactionLogOptions = transactionLogOptions;
         _keycloakClient = keycloakClient;
@@ -711,9 +709,8 @@ internal sealed class SetupWizardService : ISetupWizardService
 
     private async Task<Guid> GetSystemLevelIdAsync(CancellationToken ct)
     {
-        var level = await _dbContext.Set<SettingLevel>().AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "System", ct);
-        return level?.Id ?? throw new InvalidOperationException("System setting level not found.");
+        var levelId = await _settingsRepository.GetLevelIdByNameAsync("System", ct);
+        return levelId ?? throw new InvalidOperationException("System setting level not found.");
     }
 
     private static bool IsValidAbsoluteHttpUrl(string value)

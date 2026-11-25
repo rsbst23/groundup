@@ -12,7 +12,9 @@ using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
 using GroundUp.Repositories.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup.Keycloak;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -99,7 +101,7 @@ public sealed class SetupWizardServiceTests : IDisposable
         _sut = new SetupWizardService(
             _settingsService,
             _bootstrapStateService,
-            _dbContext,
+            new SettingsRepository(_dbContext),
             new SetupTransactionLogRepository(_dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             _transactionLogOptions,
             _keycloakClient,

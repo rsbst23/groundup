@@ -2,6 +2,7 @@ using FluentAssertions;
 using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,7 @@ public sealed class DefaultSettingLevelSeederTests : IDisposable
     {
         using var context = _fixture.CreateContext();
 
-        await new DefaultSettingLevelSeeder(context).SeedAsync();
+        await new DefaultSettingLevelSeeder(new SettingsRepository(context)).SeedAsync();
 
         var levels = await context.Set<SettingLevel>().AsNoTracking().ToListAsync();
         var system = levels.Single(l => l.Name == "System");
@@ -30,7 +31,7 @@ public sealed class DefaultSettingLevelSeederTests : IDisposable
     public async Task SeedAsync_RunTwice_DoesNotDuplicate()
     {
         using var context = _fixture.CreateContext();
-        var sut = new DefaultSettingLevelSeeder(context);
+        var sut = new DefaultSettingLevelSeeder(new SettingsRepository(context));
 
         await sut.SeedAsync();
         await sut.SeedAsync();
@@ -45,7 +46,7 @@ public sealed class DefaultSettingLevelSeederTests : IDisposable
         var systemId = await SettingsTestFixture.SeedLevelAsync(context, "System");
         var tenantId = await SettingsTestFixture.SeedLevelAsync(context, "Tenant", 1);
 
-        await new DefaultSettingLevelSeeder(context).SeedAsync();
+        await new DefaultSettingLevelSeeder(new SettingsRepository(context)).SeedAsync();
 
         var levels = await context.Set<SettingLevel>().AsNoTracking().ToListAsync();
         levels.Should().HaveCount(2);
@@ -57,7 +58,7 @@ public sealed class DefaultSettingLevelSeederTests : IDisposable
     {
         // The reason this seeder exists: module seeders look levels up by name when they define settings.
         using var context = _fixture.CreateContext();
-        await new DefaultSettingLevelSeeder(context).SeedAsync();
+        await new DefaultSettingLevelSeeder(new SettingsRepository(context)).SeedAsync();
         var service = _fixture.CreateService(context);
 
         await service.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
@@ -80,7 +81,7 @@ public sealed class DefaultSettingLevelSeederTests : IDisposable
     {
         using var context = _fixture.CreateContext();
 
-        new DefaultSettingLevelSeeder(context).Order.Should().BeLessThan(10);
+        new DefaultSettingLevelSeeder(new SettingsRepository(context)).Order.Should().BeLessThan(10);
     }
 
     public void Dispose() => _fixture.Dispose();

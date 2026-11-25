@@ -1,8 +1,6 @@
 using GroundUp.Core.Abstractions;
-using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Models;
-using GroundUp.Data.Postgres;
-using Microsoft.EntityFrameworkCore;
+using GroundUp.Data.Abstractions;
 
 namespace GroundUp.Services.Settings;
 
@@ -19,17 +17,17 @@ namespace GroundUp.Services.Settings;
 public sealed class DefaultScopeChainProvider : IScopeChainProvider
 {
     private readonly ITenantContext _tenantContext;
-    private readonly GroundUpDbContext _dbContext;
+    private readonly ISettingsRepository _settingsRepository;
 
     /// <summary>
     /// Initializes a new instance of <see cref="DefaultScopeChainProvider"/>.
     /// </summary>
     /// <param name="tenantContext">Provides the current tenant identity.</param>
-    /// <param name="dbContext">The EF Core database context for querying setting levels.</param>
-    public DefaultScopeChainProvider(ITenantContext tenantContext, GroundUpDbContext dbContext)
+    /// <param name="settingsRepository">Looks up setting levels by name.</param>
+    public DefaultScopeChainProvider(ITenantContext tenantContext, ISettingsRepository settingsRepository)
     {
         _tenantContext = tenantContext;
-        _dbContext = dbContext;
+        _settingsRepository = settingsRepository;
     }
 
     /// <inheritdoc />
@@ -42,24 +40,22 @@ public sealed class DefaultScopeChainProvider : IScopeChainProvider
         // Include the Tenant level only when a tenant context is active
         if (_tenantContext.TenantId != Guid.Empty)
         {
-            var tenantLevel = await _dbContext.Set<SettingLevel>()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(l => l.Name == "Tenant", cancellationToken);
+            var tenantLevelId = await _settingsRepository.GetLevelIdByNameAsync(
+                DefaultSettingLevelSeeder.TenantLevelName, cancellationToken);
 
-            if (tenantLevel is not null)
+            if (tenantLevelId is not null)
             {
-                chain.Add(new SettingScopeEntry(tenantLevel.Id, _tenantContext.TenantId));
+                chain.Add(new SettingScopeEntry(tenantLevelId.Value, _tenantContext.TenantId));
             }
         }
 
         // Always include the System level last (scope = null for system-wide settings)
-        var systemLevel = await _dbContext.Set<SettingLevel>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "System", cancellationToken);
+        var systemLevelId = await _settingsRepository.GetLevelIdByNameAsync(
+            DefaultSettingLevelSeeder.SystemLevelName, cancellationToken);
 
-        if (systemLevel is not null)
+        if (systemLevelId is not null)
         {
-            chain.Add(new SettingScopeEntry(systemLevel.Id, null));
+            chain.Add(new SettingScopeEntry(systemLevelId.Value, null));
         }
 
         return chain;

@@ -7,7 +7,9 @@ using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
 using GroundUp.Repositories.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup.Keycloak;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -599,7 +601,7 @@ public sealed class SetupStatusComputationTests : IDisposable
         return new SetupWizardService(
             _settingsService,
             _bootstrapStateService,
-            dbContext,
+            new SettingsRepository(dbContext),
             new SetupTransactionLogRepository(dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             transactionLogOptions,
             keycloakClient,

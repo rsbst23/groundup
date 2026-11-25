@@ -20,11 +20,12 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
   - [x] 2.4 Update the existing bootstrap and setup unit tests (constructor and fixture changes only). `BootstrapConcurrencyTests` and the 2.3 rotation test stay green. Commit
   - Results: unit 1712 / 12 known; integration 369 / 48 known; sample 22/22. The bootstrap outcomes (missing, already complete, concurrent update) are covered by the existing service tests, which now run through the real repository
 
-- [ ] 3. Level lookups
-  - [ ] 3.1 `ISettingsRepository` with `GetLevelIdByNameAsync`, `GetLevelNameByIdAsync` and `EnsureLevelAsync`, and `SettingsRepository` (level part). Register it
-  - [ ] 3.2 Switch `DefaultScopeChainProvider`, `DefaultSettingLevelSeeder` and `SetupWizardService.GetSystemLevelIdAsync` to the repository, keeping the same "System setting level not found." exception
-  - [ ] 3.3 Repository unit tests. Update `DefaultScopeChainProviderTests`, `DefaultSettingLevelSeederTests` and the integration tests that construct the seeder (`SessionPolicyIntegrationTests`, `SettingsAuthorizationIntegrationTests`)
-  - [ ] 3.4 Build, run the baselines, commit. **PR 1 boundary:** I give you the compare URL, title and description
+- [x] 3. Level lookups
+  - [x] 3.1 `ISettingsRepository` with `GetLevelIdByNameAsync`, `GetLevelNameByIdAsync` and `EnsureLevelAsync`, and `SettingsRepository` (level part). Register it
+  - [x] 3.2 Switch `DefaultScopeChainProvider`, `DefaultSettingLevelSeeder` and `SetupWizardService.GetSystemLevelIdAsync` to the repository, keeping the same "System setting level not found." exception
+  - [x] 3.3 Repository unit tests. Update `DefaultScopeChainProviderTests`, `DefaultSettingLevelSeederTests` and the integration tests that construct the seeder (`SessionPolicyIntegrationTests`, `SettingsAuthorizationIntegrationTests`)
+  - [x] 3.4 Build, run the baselines, commit. **PR 1 boundary:** I give you the compare URL, title and description
+  - Results: unit 1718 / 12 known; integration 369 / 48 known; sample 22/22. Finding: `SettingLevels.Name` has no unique index, so two instances seeding at once could both create "System"; out of scope here (needs a migration), raised as a follow-up
 
 ## PR 2: Part B (settings)
 

@@ -1,6 +1,7 @@
 using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres.Interceptors;
 using GroundUp.Repositories.Bootstrap;
+using GroundUp.Repositories.Settings;
 using GroundUp.Repositories.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,6 +59,8 @@ public static class PostgresServiceCollectionExtensions
         // context, so they never resolve an unrelated DbContext such as a module's own).
         services.AddScoped<IBootstrapStateRepository>(sp =>
             new BootstrapStateRepository(sp.GetRequiredService<GroundUpDbContext>()));
+        services.AddScoped<ISettingsRepository>(sp =>
+            new SettingsRepository(sp.GetRequiredService<GroundUpDbContext>()));
         services.AddScoped<ISetupTransactionLogRepository>(sp =>
             new SetupTransactionLogRepository(
                 sp.GetRequiredService<GroundUpDbContext>(),

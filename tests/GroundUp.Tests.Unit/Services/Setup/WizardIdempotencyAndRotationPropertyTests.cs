@@ -11,7 +11,9 @@ using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
 using GroundUp.Repositories.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Setup.Keycloak;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -337,7 +339,7 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
         return new SetupWizardService(
             settingsService,
             bootstrapStateService,
-            dbContext,
+            new SettingsRepository(dbContext),
             new SetupTransactionLogRepository(dbContext, NullLogger<SetupTransactionLogRepository>.Instance),
             transactionLogOptions,
             keycloakClient,

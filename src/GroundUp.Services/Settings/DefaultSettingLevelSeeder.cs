@@ -1,7 +1,4 @@
-using GroundUp.Core.Entities.Settings;
 using GroundUp.Data.Abstractions;
-using GroundUp.Data.Postgres;
-using Microsoft.EntityFrameworkCore;
 
 namespace GroundUp.Services.Settings;
 
@@ -22,15 +19,15 @@ public sealed class DefaultSettingLevelSeeder : IDataSeeder
     /// <summary>The name of the tenant level.</summary>
     public const string TenantLevelName = "Tenant";
 
-    private readonly GroundUpDbContext _dbContext;
+    private readonly ISettingsRepository _settingsRepository;
 
     /// <summary>
     /// Initializes a new instance of <see cref="DefaultSettingLevelSeeder"/>.
     /// </summary>
-    /// <param name="dbContext">The EF Core database context.</param>
-    public DefaultSettingLevelSeeder(GroundUpDbContext dbContext)
+    /// <param name="settingsRepository">Creates the levels when missing.</param>
+    public DefaultSettingLevelSeeder(ISettingsRepository settingsRepository)
     {
-        _dbContext = dbContext;
+        _settingsRepository = settingsRepository;
     }
 
     /// <inheritdoc />
@@ -39,35 +36,7 @@ public sealed class DefaultSettingLevelSeeder : IDataSeeder
     /// <inheritdoc />
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        var system = await EnsureLevelAsync(SystemLevelName, null, 0, cancellationToken);
-        await EnsureLevelAsync(TenantLevelName, system.Id, 1, cancellationToken);
-    }
-
-    private async Task<SettingLevel> EnsureLevelAsync(
-        string name,
-        Guid? parentId,
-        int displayOrder,
-        CancellationToken cancellationToken)
-    {
-        var existing = await _dbContext.Set<SettingLevel>()
-            .FirstOrDefaultAsync(l => l.Name == name, cancellationToken);
-
-        if (existing is not null)
-        {
-            return existing;
-        }
-
-        var level = new SettingLevel
-        {
-            Name = name,
-            ParentId = parentId,
-            DisplayOrder = displayOrder,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _dbContext.Set<SettingLevel>().Add(level);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return level;
+        var system = await _settingsRepository.EnsureLevelAsync(SystemLevelName, null, 0, cancellationToken);
+        await _settingsRepository.EnsureLevelAsync(TenantLevelName, system.Id, 1, cancellationToken);
     }
 }

@@ -120,7 +120,7 @@ public record SettingDefinitionDto(
 
 ### SettingsMapper (Mapperly)
 
-`GroundUp.Repositories/Settings/SettingsMapper.cs` is a `[Mapper] internal static partial class` with these mappings:
+Following the per-entity convention already used in `GroundUp.Auth.Repositories/Mappers` (and by `SettingLevelMapper` and `SetupTransactionLogMapper` in Part A), each entity gets its own Mapperly mapper in `GroundUp.Repositories/Mappers`, covering these mappings:
 - `SettingDefinition → SettingDefinitionDto`. `AllowedLevels` maps to `AllowedLevelIds` through a user method `Select(l => l.SettingLevelId)`, and `Options` maps to a sorted list.
 - `SettingLevel → SettingLevelDto`
 - `SettingGroup → SettingGroupDto`
