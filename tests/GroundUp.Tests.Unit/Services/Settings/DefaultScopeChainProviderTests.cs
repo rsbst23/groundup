@@ -6,6 +6,7 @@ using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -41,7 +42,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(tenantLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -71,7 +72,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().AddRange(systemLevel, tenantLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -98,7 +99,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(systemLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -115,7 +116,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         var tenantContext = Substitute.For<ITenantContext>();
         tenantContext.TenantId.Returns(Guid.Empty);
 
-        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -143,7 +144,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(systemLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance));
 
         // Act
         var result = await provider.GetScopeChainAsync();

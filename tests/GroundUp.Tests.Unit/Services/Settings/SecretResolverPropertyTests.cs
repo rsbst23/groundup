@@ -10,6 +10,8 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using GroundUp.Events;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -188,7 +190,7 @@ public sealed class SecretResolverPropertyTests : IDisposable
         ISecretResolver? secretResolver)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             _fixture.EventBus,
             _fixture.ScopeChainProvider,
             _fixture.MemoryCache,

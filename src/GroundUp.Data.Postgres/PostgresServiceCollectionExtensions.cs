@@ -60,7 +60,9 @@ public static class PostgresServiceCollectionExtensions
         services.AddScoped<IBootstrapStateRepository>(sp =>
             new BootstrapStateRepository(sp.GetRequiredService<GroundUpDbContext>()));
         services.AddScoped<ISettingsRepository>(sp =>
-            new SettingsRepository(sp.GetRequiredService<GroundUpDbContext>()));
+            new SettingsRepository(
+                sp.GetRequiredService<GroundUpDbContext>(),
+                sp.GetRequiredService<IUniqueConstraintDetector>()));
         services.AddScoped<ISetupTransactionLogRepository>(sp =>
             new SetupTransactionLogRepository(
                 sp.GetRequiredService<GroundUpDbContext>(),

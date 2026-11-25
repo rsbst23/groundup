@@ -12,6 +12,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
+using GroundUp.Repositories.Settings;
 
 namespace GroundUp.Tests.Integration.Setup;
 
@@ -200,7 +201,7 @@ public sealed class SettingsEncryptionIntegrationTests : IAsyncLifetime
         var cacheKeyTracker = new SettingsCacheKeyTracker();
 
         var service = new SettingsService(
-            context,
+            new SettingsRepository(context, new PostgresUniqueConstraintDetector()),
             eventBus,
             scopeChainProvider,
             cache,

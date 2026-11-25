@@ -36,16 +36,17 @@ Baselines: unit 1698 pass / 12 known failures (plus 1 flaky property test, GU-73
   - [x] 4.4 Fix the 2 test files that construct the DTO. The two services' hand-written `MapToDto` methods stay until task groups 5 and 6, filling the new fields from whatever collections were loaded. Commit
   - Results: unit 1723 / 12 known; integration 369 / 48 known; sample 22/22
 
-- [ ] 5. Settings runtime repository
-  - [ ] 5.1 `ISettingsRepository` runtime methods, `SettingValueUpsertResult`, `SettingValueDeleteResult`
-  - [ ] 5.2 `SettingsRepository` runtime part:
+- [x] 5. Settings runtime repository
+  - [x] 5.1 `ISettingsRepository` runtime methods, `SettingValueUpsertResult`, `SettingValueDeleteResult`
+  - [x] 5.2 `SettingsRepository` runtime part:
     - reads with `AsSplitQuery`
     - upsert with the concurrent-insert retry (Requirement 4.6)
     - find and delete value
     - `EnsureDefinitionAsync` transaction with the detector, rollback and `ChangeTracker.Clear()` (Requirement 6)
-  - [ ] 5.3 `SettingsService` on the repository. Authorization, validation, encryption, secrets, cache and events are unchanged. Remove `MapToDto`, and change `ResolveEffectiveValue` to work on DTOs
-  - [ ] 5.4 `SettingsTestFixture` builds the repository. Update the other constructors (`SettingsCacheTests`, the secret resolver tests, `SettingsServiceAuthorizationTests`, `SettingsEncryptionIntegrationTests`, and the `ActivatorUtilities` callers)
-  - [ ] 5.5 Repository unit tests: upsert insert and update, retry on conflict, ensure-definition race (substituted detector), non-unique error propagates. The 1.1 concurrency test stays green. Commit
+  - [x] 5.3 `SettingsService` on the repository. Authorization, validation, encryption, secrets, cache and events are unchanged. Remove `MapToDto`, and change `ResolveEffectiveValue` to work on DTOs
+  - [x] 5.4 `SettingsTestFixture` builds the repository. Update the other constructors (`SettingsCacheTests`, the secret resolver tests, `SettingsServiceAuthorizationTests`, `SettingsEncryptionIntegrationTests`, and the `ActivatorUtilities` callers)
+  - [x] 5.5 Repository unit tests: upsert insert and update, retry on conflict, ensure-definition race (substituted detector), non-unique error propagates. The 1.1 concurrency test stays green. Commit
+  - Results: unit 1735 / 12 known; integration 369 / 48 known; sample 22/22. `SettingsRepository` takes `IUniqueConstraintDetector`; unit tests use a SQLite detector (`SqliteUniqueConstraintDetector`, code 2067), integration tests the Postgres one. Delete re-checks existence after authorization (404 if removed meanwhile). Finding: the `(definition, level, scope)` unique index treats a null scope as distinct in Postgres, so concurrent System-level inserts are not caught by it (the retry covers tenant scope); needs `NULLS NOT DISTINCT` in a migration, raised as a follow-up
 
 - [ ] 6. Settings admin repository
   - [ ] 6.1 `ISettingsAdminRepository` and `SettingsAdminRepository`: levels, groups (delete orphans definitions), and definitions (full replace of options and levels). NotFound messages are moved verbatim, and unique violations return 409 `CONFLICT`

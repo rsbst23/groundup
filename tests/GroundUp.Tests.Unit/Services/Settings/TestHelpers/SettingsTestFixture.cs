@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 
@@ -66,7 +68,7 @@ public sealed class SettingsTestFixture : IDisposable
     public SettingsService CreateService(TestSettingsDbContext context, ISettingEncryptionProvider? encryptionProvider = null)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             EventBus,
             ScopeChainProvider,
             MemoryCache,
@@ -84,7 +86,7 @@ public sealed class SettingsTestFixture : IDisposable
         params ISettingWriteValidator[] validators)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             EventBus,
             ScopeChainProvider,
             MemoryCache,
@@ -100,7 +102,7 @@ public sealed class SettingsTestFixture : IDisposable
     public SettingsService CreateServiceWithEncryption(TestSettingsDbContext context)
     {
         return new SettingsService(
-            context,
+            new SettingsRepository(context, SqliteUniqueConstraintDetector.Instance),
             EventBus,
             ScopeChainProvider,
             MemoryCache,

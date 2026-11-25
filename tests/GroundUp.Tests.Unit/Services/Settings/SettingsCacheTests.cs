@@ -10,6 +10,8 @@ using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using GroundUp.Repositories.Settings;
+using GroundUp.Tests.Unit.Repositories;
 
 namespace GroundUp.Tests.Unit.Services.Settings;
 
@@ -124,7 +126,7 @@ public sealed class SettingsCacheTests : IDisposable
             _context, "CacheFailTest", SettingDataType.String, "fallback-value", allowedLevelIds: levelId);
 
         var service = new SettingsService(
-            _context,
+            new SettingsRepository(_context, SqliteUniqueConstraintDetector.Instance),
             _fixture.EventBus,
             _fixture.ScopeChainProvider,
             throwingCache,
