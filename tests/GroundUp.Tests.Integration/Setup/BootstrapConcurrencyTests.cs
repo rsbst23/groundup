@@ -2,6 +2,7 @@ using FluentAssertions;
 using GroundUp.Core.Entities;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Bootstrap;
 using GroundUp.Services.Bootstrap;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -66,7 +67,7 @@ public sealed class BootstrapConcurrencyTests : IAsyncLifetime
             await using var context = CreateContext();
             var cache = new MemoryCache(new MemoryCacheOptions());
             var logger = NullLogger<BootstrapStateService>.Instance;
-            var service = new BootstrapStateService(context, cache, logger);
+            var service = new BootstrapStateService(new BootstrapStateRepository(context), cache, logger);
             return await service.CompleteSetupAsync(userId);
         })).ToArray();
 
@@ -102,7 +103,7 @@ public sealed class BootstrapConcurrencyTests : IAsyncLifetime
             await using var context = CreateContext();
             var cache = new MemoryCache(new MemoryCacheOptions());
             var logger = NullLogger<BootstrapStateService>.Instance;
-            var service = new BootstrapStateService(context, cache, logger);
+            var service = new BootstrapStateService(new BootstrapStateRepository(context), cache, logger);
             var result = await service.CompleteSetupAsync(userId);
             return (UserId: userId, Result: result);
         })).ToArray();
@@ -133,7 +134,7 @@ public sealed class BootstrapConcurrencyTests : IAsyncLifetime
         {
             var cache = new MemoryCache(new MemoryCacheOptions());
             var logger = NullLogger<BootstrapStateService>.Instance;
-            var service = new BootstrapStateService(context, cache, logger);
+            var service = new BootstrapStateService(new BootstrapStateRepository(context), cache, logger);
             var firstResult = await service.CompleteSetupAsync(Guid.NewGuid());
             firstResult.Success.Should().BeTrue();
         }
@@ -142,7 +143,7 @@ public sealed class BootstrapConcurrencyTests : IAsyncLifetime
         await using var secondContext = CreateContext();
         var secondCache = new MemoryCache(new MemoryCacheOptions());
         var secondLogger = NullLogger<BootstrapStateService>.Instance;
-        var secondService = new BootstrapStateService(secondContext, secondCache, secondLogger);
+        var secondService = new BootstrapStateService(new BootstrapStateRepository(secondContext), secondCache, secondLogger);
         var result = await secondService.CompleteSetupAsync(Guid.NewGuid());
 
         // Assert

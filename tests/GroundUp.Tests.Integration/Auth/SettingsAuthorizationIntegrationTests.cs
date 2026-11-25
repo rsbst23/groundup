@@ -13,6 +13,7 @@ using GroundUp.Core.Dtos.Settings;
 using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,7 +49,7 @@ public sealed class SettingsAuthorizationIntegrationTests : AuthFlowTestBase, IA
         var db = scope.ServiceProvider.GetRequiredService<GroundUpDbContext>();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
 
-        await new DefaultSettingLevelSeeder(db).SeedAsync();
+        await new DefaultSettingLevelSeeder(new SettingsRepository(db)).SeedAsync();
         await new DefaultAuthSettingsSeeder(settings, NullLogger<DefaultAuthSettingsSeeder>.Instance).SeedAsync();
 
         var levels = await db.Set<SettingLevel>().AsNoTracking().ToListAsync();

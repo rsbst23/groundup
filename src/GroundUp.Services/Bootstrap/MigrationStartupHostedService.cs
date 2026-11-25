@@ -1,5 +1,4 @@
-using GroundUp.Data.Postgres;
-using Microsoft.EntityFrameworkCore;
+using GroundUp.Data.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,8 +6,9 @@ using Microsoft.Extensions.Logging;
 namespace GroundUp.Services.Bootstrap;
 
 /// <summary>
-/// Runs EF Core migrations during host startup BEFORE the application accepts traffic.
-/// Registered as IHostedService; StartAsync awaits MigrateAsync to completion.
+/// Runs database migrations during host startup BEFORE the application accepts traffic.
+/// Registered as IHostedService; StartAsync awaits <see cref="IDatabaseMigrator.MigrateAsync"/> to completion.
+/// The database provider (for example <c>AddGroundUpPostgres</c>) registers the migrator.
 /// </summary>
 public sealed class MigrationStartupHostedService : IHostedService
 {
@@ -25,8 +25,8 @@ public sealed class MigrationStartupHostedService : IHostedService
     {
         _logger.LogInformation("Applying database migrations...");
         using var scope = _serviceProvider.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<GroundUpDbContext>();
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        var migrator = scope.ServiceProvider.GetRequiredService<IDatabaseMigrator>();
+        await migrator.MigrateAsync(cancellationToken);
         _logger.LogInformation("Database migrations complete.");
     }
 

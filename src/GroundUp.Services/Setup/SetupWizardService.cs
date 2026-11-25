@@ -14,9 +14,8 @@ using GroundUp.Core.Entities;
 using GroundUp.Core.Entities.Settings;
 using GroundUp.Core.Enums;
 using GroundUp.Core.Results;
-using GroundUp.Data.Postgres;
+using GroundUp.Data.Abstractions;
 using GroundUp.Services.Setup.Keycloak;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -33,7 +32,8 @@ internal sealed class SetupWizardService : ISetupWizardService
 
     private readonly ISettingsService _settingsService;
     private readonly IBootstrapStateService _bootstrapStateService;
-    private readonly GroundUpDbContext _dbContext;
+    private readonly ISettingsRepository _settingsRepository;
+    private readonly ISetupTransactionLogRepository _transactionLogRepository;
     private readonly IOptions<SetupTransactionLogOptions> _transactionLogOptions;
     private readonly KeycloakAdminHttpClient _keycloakClient;
     private readonly IOptions<BootstrapOptions> _bootstrapOptions;
@@ -44,7 +44,8 @@ internal sealed class SetupWizardService : ISetupWizardService
     public SetupWizardService(
         ISettingsService settingsService,
         IBootstrapStateService bootstrapStateService,
-        GroundUpDbContext dbContext,
+        ISettingsRepository settingsRepository,
+        ISetupTransactionLogRepository transactionLogRepository,
         IOptions<SetupTransactionLogOptions> transactionLogOptions,
         KeycloakAdminHttpClient keycloakClient,
         IOptions<BootstrapOptions> bootstrapOptions,
@@ -54,7 +55,8 @@ internal sealed class SetupWizardService : ISetupWizardService
     {
         _settingsService = settingsService;
         _bootstrapStateService = bootstrapStateService;
-        _dbContext = dbContext;
+        _settingsRepository = settingsRepository;
+        _transactionLogRepository = transactionLogRepository;
         _transactionLogOptions = transactionLogOptions;
         _keycloakClient = keycloakClient;
         _bootstrapOptions = bootstrapOptions;
@@ -381,14 +383,14 @@ internal sealed class SetupWizardService : ISetupWizardService
         var realmName = realmResult.Data;
 
         // 5. Transaction log: insert keycloak-pending
-        var txLog = new SetupTransactionLog
-        {
-            Operation = "first-admin-create",
-            Stage = "keycloak-pending",
-            Email = email,
-            CorrelationId = correlationId ?? Guid.NewGuid().ToString()
-        };
-        await InsertWithRotationAsync(txLog, ct);
+        var txLogId = await _transactionLogRepository.InsertWithRotationAsync(
+            new CreateSetupTransactionLogDto(
+                "first-admin-create",
+                "keycloak-pending",
+                email,
+                correlationId ?? Guid.NewGuid().ToString()),
+            _transactionLogOptions.Value.MaxRowCount,
+            ct);
 
         // 6. Keycloak user provisioning
         string externalUserId;
@@ -444,9 +446,7 @@ internal sealed class SetupWizardService : ISetupWizardService
         }
 
         // 7. Update transaction log: db-pending
-        txLog.Stage = "db-pending";
-        txLog.ExternalUserId = externalUserId;
-        await _dbContext.SaveChangesAsync(ct);
+        await _transactionLogRepository.UpdateStageAsync(txLogId, "db-pending", externalUserId: externalUserId, cancellationToken: ct);
 
         // 8. DB provisioning
         try
@@ -466,8 +466,7 @@ internal sealed class SetupWizardService : ISetupWizardService
             }
 
             // 9. Update transaction log: completed
-            txLog.Stage = "completed";
-            await _dbContext.SaveChangesAsync(ct);
+            await _transactionLogRepository.UpdateStageAsync(txLogId, "completed", cancellationToken: ct);
 
             _logger.LogInformation(
                 "First admin step completed: email={Email}, userId={UserId}",
@@ -512,9 +511,7 @@ internal sealed class SetupWizardService : ISetupWizardService
                 "First super admin must be created before completing setup.", 412, "precondition_step_missing");
 
         // Check for pending transaction log rows
-        var hasPending = await _dbContext.SetupTransactionLogs
-            .AnyAsync(l => l.Operation == "first-admin-create"
-                        && (l.Stage == "keycloak-pending" || l.Stage == "db-pending" || l.Stage == "failed"), ct);
+        var hasPending = await _transactionLogRepository.GetLatestUnfinishedFirstAdminIdAsync(ct) is not null;
 
         if (hasPending)
             return OperationResult<StepResultDto>.Fail(
@@ -556,15 +553,11 @@ internal sealed class SetupWizardService : ISetupWizardService
         var hasSuperAdmin = await _identityBootstrapService.HasSuperAdminAsync(ct);
 
         // Check for pending transaction log rows
-        var pendingRow = await _dbContext.SetupTransactionLogs
-            .Where(l => l.Operation == "first-admin-create"
-                     && (l.Stage == "keycloak-pending" || l.Stage == "db-pending" || l.Stage == "failed"))
-            .OrderByDescending(l => l.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+        var pendingRowId = await _transactionLogRepository.GetLatestUnfinishedFirstAdminIdAsync(ct);
 
-        var firstAdminCompleted = hasSuperAdmin && pendingRow is null;
-        var firstAdminPending = pendingRow is not null;
-        var firstAdminPendingTransactionLogId = pendingRow?.Id.ToString();
+        var firstAdminCompleted = hasSuperAdmin && pendingRowId is null;
+        var firstAdminPending = pendingRowId is not null;
+        var firstAdminPendingTransactionLogId = pendingRowId?.ToString();
 
         // Determine current step
         var currentStep = isComplete ? "done"
@@ -583,14 +576,7 @@ internal sealed class SetupWizardService : ISetupWizardService
     /// <inheritdoc />
     public async Task<OperationResult<IReadOnlyList<SetupTransactionLogDto>>> GetTransactionLogAsync(CancellationToken ct = default)
     {
-        var rows = await _dbContext.SetupTransactionLogs
-            .AsNoTracking()
-            .OrderByDescending(l => l.CreatedAt)
-            .Take(20)
-            .Select(l => new SetupTransactionLogDto(
-                l.Id, l.Operation, l.Stage, l.CorrelationId,
-                l.ExternalUserId, l.Email, l.ErrorMessage, l.CreatedAt))
-            .ToListAsync(ct);
+        var rows = await _transactionLogRepository.GetRecentAsync(20, ct);
 
         return OperationResult<IReadOnlyList<SetupTransactionLogDto>>.Ok(rows);
     }
@@ -599,8 +585,7 @@ internal sealed class SetupWizardService : ISetupWizardService
     public async Task<OperationResult<RecoverResultDto>> RecoverAsync(Guid transactionLogId, CancellationToken ct = default)
     {
         // 1. Find the transaction log row
-        var logEntry = await _dbContext.SetupTransactionLogs
-            .FirstOrDefaultAsync(l => l.Id == transactionLogId, ct);
+        var logEntry = await _transactionLogRepository.GetByIdAsync(transactionLogId, ct);
 
         if (logEntry is null)
             return OperationResult<RecoverResultDto>.NotFound("Transaction log entry not found.");
@@ -620,9 +605,10 @@ internal sealed class SetupWizardService : ISetupWizardService
         {
             if (string.IsNullOrEmpty(logEntry.ExternalUserId) || string.IsNullOrEmpty(logEntry.Email))
             {
-                logEntry.Stage = "failed";
-                logEntry.ErrorMessage = "Transaction log entry is missing required data (ExternalUserId or Email).";
-                await _dbContext.SaveChangesAsync(ct);
+                await _transactionLogRepository.UpdateStageAsync(
+                    transactionLogId, "failed",
+                    errorMessage: "Transaction log entry is missing required data (ExternalUserId or Email).",
+                    cancellationToken: ct);
 
                 return OperationResult<RecoverResultDto>.Fail(
                     "Transaction log entry is missing required data for recovery.", 500);
@@ -640,8 +626,7 @@ internal sealed class SetupWizardService : ISetupWizardService
 
                 if (dbResult.Success)
                 {
-                    logEntry.Stage = "completed";
-                    await _dbContext.SaveChangesAsync(ct);
+                    await _transactionLogRepository.UpdateStageAsync(transactionLogId, "completed", cancellationToken: ct);
 
                     _logger.LogInformation(
                         "Recovery completed for transaction log {Id}: userId={UserId}",
@@ -652,9 +637,8 @@ internal sealed class SetupWizardService : ISetupWizardService
                 }
 
                 // DB provisioning failed
-                logEntry.Stage = "failed";
-                logEntry.ErrorMessage = dbResult.Message;
-                await _dbContext.SaveChangesAsync(ct);
+                await _transactionLogRepository.UpdateStageAsync(
+                    transactionLogId, "failed", errorMessage: dbResult.Message, cancellationToken: ct);
 
                 return OperationResult<RecoverResultDto>.Fail(
                     $"Recovery failed: {dbResult.Message}", 500);
@@ -663,9 +647,8 @@ internal sealed class SetupWizardService : ISetupWizardService
             {
                 _logger.LogError(ex, "Recovery failed for transaction log {Id}", transactionLogId);
 
-                logEntry.Stage = "failed";
-                logEntry.ErrorMessage = ex.Message;
-                await _dbContext.SaveChangesAsync(ct);
+                await _transactionLogRepository.UpdateStageAsync(
+                    transactionLogId, "failed", errorMessage: ex.Message, cancellationToken: ct);
 
                 return OperationResult<RecoverResultDto>.Fail(
                     "Recovery failed due to an unexpected error.", 500);
@@ -679,39 +662,6 @@ internal sealed class SetupWizardService : ISetupWizardService
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
-
-    private async Task InsertWithRotationAsync(SetupTransactionLog row, CancellationToken ct)
-    {
-        var max = _transactionLogOptions.Value.MaxRowCount;
-        await using var tx = await _dbContext.Database.BeginTransactionAsync(ct);
-
-        if (max > 0)
-        {
-            var total = await _dbContext.SetupTransactionLogs.CountAsync(ct);
-            var toDelete = (total + 1) - max;
-            if (toDelete > 0)
-            {
-                var deletable = await _dbContext.SetupTransactionLogs
-                    .Where(l => l.Stage != "keycloak-pending" && l.Stage != "db-pending")
-                    .OrderBy(l => l.CreatedAt)
-                    .Take(toDelete)
-                    .ToListAsync(ct);
-
-                if (deletable.Count < toDelete)
-                {
-                    _logger.LogWarning(
-                        "Transaction log rotation could not free enough rows: total={Total}, max={Max}, pending protected.",
-                        total, max);
-                }
-
-                _dbContext.SetupTransactionLogs.RemoveRange(deletable);
-            }
-        }
-
-        _dbContext.SetupTransactionLogs.Add(row);
-        await _dbContext.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-    }
 
     private static bool IsValidEmail(string email)
     {
@@ -759,9 +709,8 @@ internal sealed class SetupWizardService : ISetupWizardService
 
     private async Task<Guid> GetSystemLevelIdAsync(CancellationToken ct)
     {
-        var level = await _dbContext.Set<SettingLevel>().AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "System", ct);
-        return level?.Id ?? throw new InvalidOperationException("System setting level not found.");
+        var levelId = await _settingsRepository.GetLevelIdByNameAsync("System", ct);
+        return levelId ?? throw new InvalidOperationException("System setting level not found.");
     }
 
     private static bool IsValidAbsoluteHttpUrl(string value)

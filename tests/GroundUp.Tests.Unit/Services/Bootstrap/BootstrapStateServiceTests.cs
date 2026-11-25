@@ -1,5 +1,6 @@
 using GroundUp.Core.Entities;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Bootstrap;
 using GroundUp.Services.Bootstrap;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -31,7 +32,7 @@ public sealed class BootstrapStateServiceTests : IDisposable
         _dbContext = new TestGroundUpDbContext(options);
         _cache = new MemoryCache(new MemoryCacheOptions());
         _logger = Substitute.For<ILogger<BootstrapStateService>>();
-        _sut = new BootstrapStateService(_dbContext, _cache, _logger);
+        _sut = new BootstrapStateService(new BootstrapStateRepository(_dbContext), _cache, _logger);
     }
 
     public void Dispose()

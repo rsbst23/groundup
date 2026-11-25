@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Entities.Settings;
+using GroundUp.Repositories.Settings;
 using GroundUp.Services.Settings;
 using GroundUp.Tests.Unit.Services.Settings.TestHelpers;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(tenantLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -70,7 +71,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().AddRange(systemLevel, tenantLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -97,7 +98,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(systemLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -114,7 +115,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         var tenantContext = Substitute.For<ITenantContext>();
         tenantContext.TenantId.Returns(Guid.Empty);
 
-        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
 
         // Act
         var result = await provider.GetScopeChainAsync();
@@ -142,7 +143,7 @@ public sealed class DefaultScopeChainProviderTests : IDisposable
         _context.Set<SettingLevel>().Add(systemLevel);
         await _context.SaveChangesAsync();
 
-        var provider = new DefaultScopeChainProvider(tenantContext, _context);
+        var provider = new DefaultScopeChainProvider(tenantContext, new SettingsRepository(_context));
 
         // Act
         var result = await provider.GetScopeChainAsync();

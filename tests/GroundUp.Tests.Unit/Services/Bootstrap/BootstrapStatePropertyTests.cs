@@ -4,6 +4,7 @@ using GroundUp.Core;
 using GroundUp.Core.Entities;
 using GroundUp.Core.Results;
 using GroundUp.Data.Postgres;
+using GroundUp.Repositories.Bootstrap;
 using GroundUp.Services.Bootstrap;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -68,7 +69,7 @@ public sealed class BootstrapStatePropertyTests : IDisposable
                 using var ctx = CreateDbContext(dbName);
                 using var cache = new MemoryCache(new MemoryCacheOptions());
                 var logger = Substitute.For<ILogger<BootstrapStateService>>();
-                var sut = new BootstrapStateService(ctx, cache, logger);
+                var sut = new BootstrapStateService(new BootstrapStateRepository(ctx), cache, logger);
                 results[i] = sut.CompleteSetupAsync(Guid.NewGuid()).GetAwaiter().GetResult();
             }
 
@@ -107,7 +108,7 @@ public sealed class BootstrapStatePropertyTests : IDisposable
             {
                 using var cache = new MemoryCache(new MemoryCacheOptions());
                 var logger = Substitute.For<ILogger<BootstrapStateService>>();
-                var sut = new BootstrapStateService(ctx, cache, logger);
+                var sut = new BootstrapStateService(new BootstrapStateRepository(ctx), cache, logger);
                 var firstResult = sut.CompleteSetupAsync(Guid.NewGuid()).GetAwaiter().GetResult();
                 if (!firstResult.Success) return false;
             }
@@ -118,7 +119,7 @@ public sealed class BootstrapStatePropertyTests : IDisposable
                 using var ctx = CreateDbContext(dbName);
                 using var cache = new MemoryCache(new MemoryCacheOptions());
                 var logger = Substitute.For<ILogger<BootstrapStateService>>();
-                var sut = new BootstrapStateService(ctx, cache, logger);
+                var sut = new BootstrapStateService(new BootstrapStateRepository(ctx), cache, logger);
                 var result = sut.CompleteSetupAsync(userId).GetAwaiter().GetResult();
 
                 if (result.Success || result.StatusCode != 409)
@@ -153,7 +154,7 @@ public sealed class BootstrapStatePropertyTests : IDisposable
             {
                 using var cache = new MemoryCache(new MemoryCacheOptions());
                 var logger = Substitute.For<ILogger<BootstrapStateService>>();
-                var sut = new BootstrapStateService(ctx, cache, logger);
+                var sut = new BootstrapStateService(new BootstrapStateRepository(ctx), cache, logger);
                 var result = sut.CompleteSetupAsync(winnerId).GetAwaiter().GetResult();
 
                 if (!result.Success) return false;
@@ -202,7 +203,7 @@ public sealed class BootstrapStatePropertyTests : IDisposable
             using var ctx = CreateConcurrencyThrowingDbContext(dbName);
             using var cache = new MemoryCache(new MemoryCacheOptions());
             var logger = Substitute.For<ILogger<BootstrapStateService>>();
-            var sut = new BootstrapStateService(ctx, cache, logger);
+            var sut = new BootstrapStateService(new BootstrapStateRepository(ctx), cache, logger);
 
             var result = sut.CompleteSetupAsync(userId).GetAwaiter().GetResult();
 
