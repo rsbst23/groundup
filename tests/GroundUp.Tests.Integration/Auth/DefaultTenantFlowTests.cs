@@ -144,7 +144,7 @@ public sealed class DefaultTenantFlowTests : AuthFlowTestBase
         var rows = await GetAllMembershipRowsAsync(userId, DefaultTenantId);
         rows.Should().ContainSingle("a user has exactly one membership row per tenant");
         rows[0].Id.Should().Be(originalMembershipId, "the old row is reused");
-        rows[0].IsActive.Should().BeTrue();
+        rows[0].Status.Should().Be(MembershipStatus.Active);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class DefaultTenantFlowTests : AuthFlowTestBase
         var rows = await GetAllMembershipRowsAsync(userId, DefaultTenantId);
         rows.Should().ContainSingle();
         rows[0].Id.Should().Be(originalMembershipId);
-        rows[0].IsActive.Should().BeTrue();
+        rows[0].Status.Should().Be(MembershipStatus.Active);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using FluentAssertions;
 using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
@@ -44,7 +45,7 @@ public sealed class MembershipServiceTests
     private void GivenMemberships(params (Guid TenantId, bool IsActive)[] memberships)
         => _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships
-                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, "ext", m.IsActive))
+                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, "ext", m.IsActive ? MembershipStatus.Active : MembershipStatus.Inactive))
                 .ToList()));
 
     private void GivenAdmins(params Guid[] adminUserIds)
@@ -273,6 +274,34 @@ public sealed class MembershipServiceTests
         _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Fail("db", 500));
         (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+    }
+
+    private void GivenStatuses(params (Guid TenantId, MembershipStatus Status)[] memberships)
+        => _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships
+                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, null, m.Status))
+                .ToList()));
+
+    [Fact]
+    public async Task IsActiveMemberAsync_PendingMembership_False()
+    {
+        GivenStatuses((_target, MembershipStatus.Pending));
+
+        (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_PendingMembership_NotListed()
+    {
+        var active = Guid.NewGuid();
+        GivenStatuses((_target, MembershipStatus.Pending), (active, MembershipStatus.Active));
+        GivenTenants(Standard(active, "Active"));
+
+        var result = await _sut.GetMyTenantsAsync();
+
+        result.Data.Should().ContainSingle().Which.Id.Should().Be(active);
+        await _tenants.Received(1).GetByIdsBypassFilterAsync(
+            Arg.Is<IEnumerable<Guid>>(ids => ids.SequenceEqual(new[] { active })), Arg.Any<CancellationToken>());
     }
 
     // ── GetMyTenantsAsync ─────────────────────────────────────────

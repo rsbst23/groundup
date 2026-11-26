@@ -495,7 +495,7 @@ public abstract class AuthFlowTestBase
         {
             UserId = userId,
             TenantId = tenantId,
-            IsActive = isActive
+            Status = isActive ? MembershipStatus.Active : MembershipStatus.Inactive
         };
         context.Set<GroundUp.Auth.Core.Entities.UserTenant>().Add(membership);
         await context.SaveChangesAsync();
@@ -568,7 +568,7 @@ public abstract class AuthFlowTestBase
     {
         await using var context = Fixture.CreateAuthDbContext();
         return await context.Set<GroundUp.Auth.Core.Entities.UserTenant>()
-            .Where(ut => ut.UserId == userId && ut.IsActive)
+            .Where(ut => ut.UserId == userId && ut.Status == MembershipStatus.Active)
             .ToListAsync();
     }
 

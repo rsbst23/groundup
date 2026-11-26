@@ -69,7 +69,7 @@ public sealed class AuthSessionServiceTests
         _userRepository.GetByExternalUserIdAsync("kc|known", Arg.Any<CancellationToken>())
             .Returns(OperationResult<UserDto>.Ok(new UserDto(_userId, "kc|known", "u@example.com", "U", true)));
         var tenantId = Guid.NewGuid();
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, tenantId, "kc|known", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, tenantId, "kc|known", MembershipStatus.Active) });
 
         var result = await _sut.SetTenantForExternalUserAsync("kc|known", tenantId);
 
@@ -116,7 +116,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
 
         // Act
@@ -135,7 +135,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
 
         // Act
@@ -151,7 +151,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
         _tokenService.GenerateTokenAsync(_userId, _tenantId1, Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
             .Returns((string?)null);
@@ -172,8 +172,8 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
         SetupTenants(
             new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true),
@@ -197,8 +197,8 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
         SetupTenants(
             new TenantDto(_tenantId1, "Tenant One", "tenant-one", TenantType.Standard, OnboardingMode.InviteOnly, null, null, true),
@@ -222,8 +222,8 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
 
         // Act
@@ -241,7 +241,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
         var nonMemberTenantId = Guid.NewGuid();
 
@@ -262,7 +262,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
 
         // Act
@@ -279,7 +279,7 @@ public sealed class AuthSessionServiceTests
         // Arrange — user has memberships but not for the requested tenant
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
 
         // Act
@@ -311,7 +311,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
         _tokenService.GenerateTokenAsync(_userId, _tenantId1, Arg.Any<IEnumerable<System.Security.Claims.Claim>?>())
             .Returns((string?)null);
@@ -330,7 +330,7 @@ public sealed class AuthSessionServiceTests
         // Arrange
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active)
         });
 
         // Act
@@ -350,7 +350,7 @@ public sealed class AuthSessionServiceTests
         // Arrange — user has one membership, but it's inactive
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", IsActive: false)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", Status: MembershipStatus.Inactive)
         });
 
         // Act
@@ -367,8 +367,8 @@ public sealed class AuthSessionServiceTests
         // Arrange — user has only an inactive membership for the requested tenant
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", IsActive: false),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", IsActive: true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", Status: MembershipStatus.Inactive),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", Status: MembershipStatus.Active)
         });
 
         // Act — request the inactive tenant
@@ -385,8 +385,8 @@ public sealed class AuthSessionServiceTests
         // Arrange — one inactive, one active membership → only the active one counts as "single"
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", IsActive: false),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", IsActive: true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", Status: MembershipStatus.Inactive),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", Status: MembershipStatus.Active)
         });
 
         // Act
@@ -404,7 +404,7 @@ public sealed class AuthSessionServiceTests
         // Arrange — membership exists but is inactive
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", IsActive: false)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", Status: MembershipStatus.Inactive)
         });
 
         // Act
@@ -423,8 +423,8 @@ public sealed class AuthSessionServiceTests
         // Arrange — multi-tenant case, but the tenant repository fails to load details
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
         _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<TenantDto>>.Fail("DB connection lost", 500));
@@ -443,8 +443,8 @@ public sealed class AuthSessionServiceTests
         // Arrange — user has 2 memberships, but tenant repo only returns 1 (other was hard-deleted)
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
         // Only one tenant resolves
         _tenantRepository.GetByIdsBypassFilterAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
@@ -469,7 +469,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_SessionPastAbsoluteLifetime_ReturnsUnauthorizedAndIssuesNoToken()
     {
         // Arrange
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
         var tooOld = DateTimeOffset.UtcNow.AddMinutes(-481);
 
         // Act
@@ -486,7 +486,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_SessionJustInsideAbsoluteLifetime_IssuesToken()
     {
         // Arrange
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
         var justInside = DateTimeOffset.UtcNow.AddMinutes(-479);
 
         // Act
@@ -501,7 +501,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_SessionPastAbsoluteLifetime_ReturnsReauthRequiredCode()
     {
         // Arrange
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
 
         // Act
         var result = await _sut.SetTenantAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-481));
@@ -514,7 +514,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_SelectedTenantHasStricterCap_ReturnsReauthRequired()
     {
         // Arrange: System allows 480 minutes, this tenant only 60. The session is 90 minutes old.
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
         _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
             .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
 
@@ -535,8 +535,8 @@ public sealed class AuthSessionServiceTests
         // Arrange: only tenant 2 is strict; the user selects tenant 1
         SetupMemberships(new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true),
-            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", true)
+            new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active),
+            new(Guid.NewGuid(), _userId, _tenantId2, "ext-2", MembershipStatus.Active)
         });
         _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId2, Arg.Any<CancellationToken>())
             .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
@@ -553,7 +553,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_AutoSelectedTenantHasStricterCap_ReturnsReauthRequired()
     {
         // Arrange: no tenant named, one membership, and that tenant's cap has passed
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
         _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
             .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
 
@@ -568,7 +568,7 @@ public sealed class AuthSessionServiceTests
     public async Task SetTenantAsync_NoOriginalAuthTime_SkipsCapCheck()
     {
         // Arrange: first issuance from an identity-provider token
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
 
         // Act
         var result = await _sut.SetTenantAsync(_userId, _tenantId1);
@@ -584,7 +584,7 @@ public sealed class AuthSessionServiceTests
     public async Task RefreshTokenAsync_SessionPastTenantCap_ReturnsReauthRequiredAndIssuesNoToken()
     {
         // Arrange
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
         _sessionPolicyProvider.GetPolicyForTenantAsync(_tenantId1, Arg.Any<CancellationToken>())
             .Returns(new SessionPolicy(TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60)));
 
@@ -603,7 +603,7 @@ public sealed class AuthSessionServiceTests
     public async Task RefreshTokenAsync_SessionInsideCap_IssuesToken()
     {
         // Arrange
-        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", true) });
+        SetupMemberships(new List<UserTenantDto> { new(Guid.NewGuid(), _userId, _tenantId1, "ext-1", MembershipStatus.Active) });
 
         // Act
         var result = await _sut.RefreshTokenAsync(_userId, _tenantId1, DateTimeOffset.UtcNow.AddMinutes(-100));

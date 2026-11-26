@@ -1,4 +1,5 @@
 using GroundUp.Auth.Core.Entities;
+using GroundUp.Auth.Core.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,12 +15,13 @@ public class UserTenantConfiguration : IEntityTypeConfiguration<UserTenant>
     {
         builder.ToTable("AuthUserTenants");
 
+        // Null while the membership belongs to a pending user who has not signed in yet.
         builder.Property(e => e.ExternalUserId)
-            .IsRequired()
             .HasMaxLength(200);
 
-        builder.Property(e => e.IsActive)
-            .HasDefaultValue(true);
+        // Stored as int: Active = 0, Inactive = 1, Pending = 2.
+        builder.Property(e => e.Status)
+            .HasConversion<int>();
 
         builder.HasIndex(e => new { e.UserId, e.TenantId })
             .IsUnique();

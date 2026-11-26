@@ -1,5 +1,6 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
 using GroundUp.Core.Abstractions;
@@ -100,10 +101,11 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         if (entity is null)
             return OperationResult.NotFound();
 
-        if (entity.IsActive == isActive)
+        var target = isActive ? MembershipStatus.Active : MembershipStatus.Inactive;
+        if (entity.Status == target)
             return OperationResult.Ok();
 
-        entity.IsActive = isActive;
+        entity.Status = target;
 
         // Leaving also removes the user's role assignments in that tenant, in the same save, so a
         // later rejoin starts clean and a former TenantAdmin does not silently regain admin rights.

@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using FluentAssertions;
 using GroundUp.Auth.Core.Dtos;
 
@@ -21,7 +22,7 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@test.com");
 
         var repoA = CreateUserTenantRepository(tenantAId);
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act
         var result = await repoA.GetByUserIdAsync(userId);
@@ -41,7 +42,7 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@test.com");
 
         var repoA = CreateUserTenantRepository(tenantAId);
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act — query from Tenant B's context
         var repoB = CreateUserTenantRepository(tenantBId);
@@ -62,8 +63,8 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
 
         var repoA = CreateUserTenantRepository(tenantAId);
         var repoB = CreateUserTenantRepository(tenantBId);
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
-        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act — call from Tenant A's context, should still return both
         var result = await repoA.GetAllMembershipsForUserAsync(userId);
@@ -84,12 +85,12 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@test.com");
 
         var repoA = CreateUserTenantRepository(tenantAId);
-        var createResult = await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
+        var createResult = await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
         var userTenantId = createResult.Data!.Id;
 
         // Act — try to update from Tenant B's context
         var repoB = CreateUserTenantRepository(tenantBId);
-        var updatedDto = new UserTenantDto(userTenantId, userId, tenantAId, $"ext-hacked-{Guid.NewGuid():N}", true);
+        var updatedDto = new UserTenantDto(userTenantId, userId, tenantAId, $"ext-hacked-{Guid.NewGuid():N}", MembershipStatus.Active);
         var result = await repoB.UpdateAsync(userTenantId, updatedDto);
 
         // Assert
@@ -106,7 +107,7 @@ public sealed class UserTenantIsolationTests : AuthIntegrationTestBase
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", $"user-{Guid.NewGuid():N}@test.com");
 
         var repoA = CreateUserTenantRepository(tenantAId);
-        var createResult = await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
+        var createResult = await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
         var userTenantId = createResult.Data!.Id;
 
         // Act — try to delete from Tenant B's context

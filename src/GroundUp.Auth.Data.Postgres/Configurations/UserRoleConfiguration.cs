@@ -14,7 +14,12 @@ public class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
     {
         builder.ToTable("AuthUserRoles");
 
-        builder.HasIndex(e => new { e.UserId, e.RoleId, e.TenantId })
+        // Stored as int (see RoleAssignmentSource). A user can hold one role from several
+        // sources, one row per source.
+        builder.Property(e => e.Source)
+            .HasConversion<int>();
+
+        builder.HasIndex(e => new { e.UserId, e.RoleId, e.TenantId, e.Source })
             .IsUnique();
 
         builder.HasOne(ur => ur.User)

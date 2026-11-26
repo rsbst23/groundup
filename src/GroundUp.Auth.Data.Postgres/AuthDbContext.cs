@@ -65,6 +65,11 @@ public class AuthDbContext : GroundUpDbContext
         // Apply Auth module entity configurations only
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AuthDbContext).Assembly);
 
+        // The base context exposes the bootstrap tables as DbSets, so they are part of this model.
+        // The consuming app's own context owns and migrates them; Auth migrations must not.
+        modelBuilder.Entity<BootstrapState>().ToTable(t => t.ExcludeFromMigrations());
+        modelBuilder.Entity<SetupTransactionLog>().ToTable(t => t.ExcludeFromMigrations());
+
         // Apply framework conventions: UUID v7 value generation and soft delete filters
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {

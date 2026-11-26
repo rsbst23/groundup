@@ -37,6 +37,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "System Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(systemRole.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, systemRole.Data!.Id, tenantId));
 
         // Act — resolve permissions
@@ -66,6 +67,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var sysPolicy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Sys Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(sysPolicy.Data!.Id, sysPerm);
         await roleRepo.AssignPolicyAsync(sysRole.Data!.Id, sysPolicy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, sysRole.Data!.Id, tenantId));
 
         // Tenant-scoped role with its own policy/permission
@@ -73,6 +75,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var tenantPolicy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Tenant Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(tenantPolicy.Data!.Id, tenantPerm);
         await roleRepo.AssignPolicyAsync(tenantRole.Data!.Id, tenantPolicy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, tenantRole.Data!.Id, tenantId));
 
         // Act
@@ -103,6 +106,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Global Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(sysRole.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, sysRole.Data!.Id, tenantId));
 
         // Act — resolve permissions (user has no tenant-scoped roles)
@@ -126,6 +130,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
 
         var sysRole = await roleRepoA.AddAsync(new RoleDto(Guid.Empty, "CrossTenantAdmin", null, RoleType.System, tenantAId, false));
+        await SeedMembershipAsync(userId, tenantAId);
         await userRoleRepoA.AddAsync(new UserRoleDto(Guid.Empty, userId, sysRole.Data!.Id, tenantAId));
 
         // Act — query system roles from tenant B context
@@ -149,6 +154,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var userRoleRepo = CreateUserRoleRepository(tenantId);
 
         var sysRole = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "PlatformAdmin", null, RoleType.System, tenantId, false));
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, sysRole.Data!.Id, tenantId));
 
         // Act
@@ -170,6 +176,7 @@ public sealed class SystemRoleResolutionTests : AuthIntegrationTestBase
         var userRoleRepo = CreateUserRoleRepository(tenantId);
 
         var sysRole = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "SuperAdmin", null, RoleType.System, tenantId, false));
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, sysRole.Data!.Id, tenantId));
 
         // Act — check with different casing

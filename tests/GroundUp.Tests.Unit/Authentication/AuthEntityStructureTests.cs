@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using System.Collections;
 using System.Reflection;
 using FluentAssertions;
@@ -149,7 +150,7 @@ public sealed class AuthEntityStructureTests
     public void UserTenant_IsActive_DefaultsToTrue()
     {
         var userTenant = new UserTenant();
-        userTenant.IsActive.Should().BeTrue();
+        userTenant.Status.Should().Be(MembershipStatus.Active);
     }
 
     public static IEnumerable<object[]> AllEntities()

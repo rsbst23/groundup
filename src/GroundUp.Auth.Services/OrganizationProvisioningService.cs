@@ -202,7 +202,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
             UserId: request.UserId,
             TenantId: tenantId,
             ExternalUserId: request.ExternalUserId,
-            IsActive: true);
+            Status: MembershipStatus.Active);
 
         var membershipResult = await _userTenantRepository.AddAsync(membershipDto, ct);
         if (!membershipResult.Success)

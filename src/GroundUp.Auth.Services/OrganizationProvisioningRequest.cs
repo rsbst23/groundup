@@ -7,10 +7,10 @@ namespace GroundUp.Auth.Services;
 /// <param name="UserId">The GroundUp identifier of the founding user.</param>
 /// <param name="ExternalUserId">
 /// The founding user's identity-provider subject for the shared realm. Stored on the
-/// membership row.
+/// membership row. Null only for a user who has never signed in (a pending user).
 /// </param>
 /// <param name="OrganizationName">The display name of the new organization. The slug is derived from it.</param>
 public sealed record OrganizationProvisioningRequest(
     Guid UserId,
-    string ExternalUserId,
+    string? ExternalUserId,
     string OrganizationName);
