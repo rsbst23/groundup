@@ -54,6 +54,9 @@ public class AuthDbContext : GroundUpDbContext
     /// <summary>Gets the AuthFlowStates DbSet.</summary>
     public DbSet<AuthFlowState> AuthFlowStates => Set<AuthFlowState>();
 
+    /// <summary>Gets the Invitations DbSet.</summary>
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
     /// <summary>
     /// Configures the Auth module's entity model. Applies only the Auth assembly's
     /// configurations and the framework conventions (UUID v7, soft delete filters),

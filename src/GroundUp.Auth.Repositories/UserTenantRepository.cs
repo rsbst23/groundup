@@ -94,6 +94,20 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     }
 
     /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult> MarkPendingAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SetMembershipStatusAsync(userId, tenantId, MembershipStatus.Pending, removeRoles: false,
+            "A conflict occurred while inviting the former member.", cancellationToken);
+        return result.Success
+            ? OperationResult.Ok()
+            : OperationResult.Fail(result.Message, result.StatusCode, result.ErrorCode);
+    }
+
+    /// <inheritdoc />
     /// <remarks>SYSTEM BYPASS: keeps the membership's own tenant instead of the current tenant context.</remarks>
     public async Task<OperationResult<UserTenantDto>> AddForTenantAsync(
         UserTenantDto membership,

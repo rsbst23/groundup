@@ -50,6 +50,12 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
     /// </summary>
     public IIdentityProviderService MockIdentityProviderService { get; } = Substitute.For<IIdentityProviderService>();
 
+    /// <summary>The <c>auth.invitations.accept-url</c> value seeded for tests.</summary>
+    public const string TestInvitationAcceptUrl = "https://app.test/invite/{token}?org={tenantSlug}";
+
+    /// <summary>Every invitation email the app sent, in order.</summary>
+    public CapturingInvitationEmailSender InvitationEmails { get; } = new();
+
     /// <summary>
     /// The JWT signing key used for test token generation and validation.
     /// </summary>
@@ -105,6 +111,14 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             TestDefaultDomain,
             "Default Domain",
             "The default domain for host-based tenant resolution");
+
+        // Invitations need an accept page; {tenantSlug} included so tests can check both placeholders
+        await SeedSystemSettingAsync(
+            _container.GetConnectionString(),
+            GroundUp.Auth.Core.InvitationSettingKeys.AcceptUrl,
+            TestInvitationAcceptUrl,
+            "Invitation Accept URL",
+            "The client app's invitation accept page");
 
         // Derived fixtures add data that must exist before the first request (see the hook below)
         await SeedBeforeHostStartAsync();
@@ -197,6 +211,10 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             // Inject controllable TimeProvider for refresh/session tests
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(TimeProvider);
+
+            // Capture invitation emails so tests can read the link (and its token)
+            services.RemoveAll<GroundUp.Auth.Services.Invitations.IInvitationEmailSender>();
+            services.AddSingleton<GroundUp.Auth.Services.Invitations.IInvitationEmailSender>(InvitationEmails);
         });
     }
 

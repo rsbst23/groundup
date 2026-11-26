@@ -56,6 +56,21 @@ public sealed class UserRepository : BaseRepository<User, UserDto>, IUserReposit
     }
 
     /// <inheritdoc />
+    public async Task<OperationResult<List<UserDto>>> GetAllByEmailAsync(
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = email.Trim().ToLower();
+
+        var entities = await DbSet.AsNoTracking()
+            .Where(u => u.MergedIntoUserId == null && u.Email.ToLower() == normalizedEmail)
+            .OrderBy(u => u.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<UserDto>>.Ok(entities.Select(MapToDto).ToList());
+    }
+
+    /// <inheritdoc />
     public async Task<OperationResult<List<UserDto>>> GetUnlinkedByEmailAsync(
         string email,
         CancellationToken cancellationToken = default)

@@ -1,6 +1,7 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Events;
 using GroundUp.Auth.Services.Roles;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
@@ -21,6 +22,7 @@ internal sealed class MemberManagementService : IMemberManagementService
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly IRoleRepository _roleRepository;
+    private readonly IInvitationRepository _invitationRepository;
     private readonly RoleGrantPolicy _rolePolicy;
     private readonly LastAdminGuard _lastAdminGuard;
     private readonly TenantAccessRevoker _accessRevoker;
@@ -32,6 +34,7 @@ internal sealed class MemberManagementService : IMemberManagementService
         IUserTenantRepository userTenantRepository,
         IUserRoleRepository userRoleRepository,
         IRoleRepository roleRepository,
+        IInvitationRepository invitationRepository,
         RoleGrantPolicy rolePolicy,
         LastAdminGuard lastAdminGuard,
         TenantAccessRevoker accessRevoker,
@@ -42,6 +45,7 @@ internal sealed class MemberManagementService : IMemberManagementService
         _userTenantRepository = userTenantRepository;
         _userRoleRepository = userRoleRepository;
         _roleRepository = roleRepository;
+        _invitationRepository = invitationRepository;
         _rolePolicy = rolePolicy;
         _lastAdminGuard = lastAdminGuard;
         _accessRevoker = accessRevoker;
@@ -95,6 +99,16 @@ internal sealed class MemberManagementService : IMemberManagementService
             return OperationResult.Fail(guard.Message, guard.StatusCode, guard.ErrorCode);
         }
 
+        // A pending member's invitation goes first, so its link can never re-activate the membership
+        if (membership.Status == MembershipStatus.Pending)
+        {
+            var revoked = await RevokeInvitationsAsync(userId, tenantId, cancellationToken);
+            if (!revoked.Success)
+            {
+                return revoked;
+            }
+        }
+
         var removed = await _userTenantRepository.DeactivateMembershipAsync(userId, tenantId, cancellationToken);
         if (!removed.Success)
         {
@@ -106,6 +120,24 @@ internal sealed class MemberManagementService : IMemberManagementService
         _logger.LogInformation(
             "Member {UserId} removed from tenant {TenantId} by {CallerId}",
             userId, tenantId, _currentUser.UserId);
+        return OperationResult.Ok();
+    }
+
+    private async Task<OperationResult> RevokeInvitationsAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken)
+    {
+        var revoked = await _invitationRepository.RevokePendingForUserAsync(tenantId, userId, _currentUser.UserId, cancellationToken);
+        if (!revoked.Success || revoked.Data is null)
+        {
+            return OperationResult.Fail(revoked.Message, revoked.StatusCode, revoked.ErrorCode);
+        }
+
+        foreach (var invitationId in revoked.Data)
+        {
+            await _accessRevoker.PublishSafelyAsync(
+                new InvitationRevoked { InvitationId = invitationId, InvitedUserId = userId, TenantId = tenantId, UserId = _currentUser.UserId },
+                cancellationToken);
+        }
+
         return OperationResult.Ok();
     }
 

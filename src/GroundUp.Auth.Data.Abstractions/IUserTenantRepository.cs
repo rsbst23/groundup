@@ -86,6 +86,19 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sets an existing membership in <paramref name="tenantId"/> to Pending (a former member invited
+    /// again). Roles are not touched. System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Success, NotFound, or a 409 conflict if the save fails.</returns>
+    Task<OperationResult> MarkPendingAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lists the Active and Pending members of <paramref name="tenantId"/>, ordered by email, with
     /// their roles and each role's sources. System-level bypass: targets the tenant explicitly.
     /// </summary>

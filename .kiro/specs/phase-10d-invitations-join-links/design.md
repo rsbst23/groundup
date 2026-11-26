@@ -224,7 +224,7 @@ public interface IInvitationService
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
     Task<OperationResult<CreatedInvitationDto>> CreateAsync(CreateInvitationDto request, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
-    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(FilterParams filter, CancellationToken ct = default);
+    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(PaginationParams paging, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
     Task<OperationResult<InvitationDto>> ResendAsync(Guid invitationId, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
@@ -245,9 +245,9 @@ public interface IInvitationService
    - insert the invitation. A violation of the partial index → 409 `INVITATION_PENDING`.
 5. After commit: publish role event; send the email (5.5). A send failure is logged; the invitation stays and the admin can resend.
 
-`ResendAsync`: Pending (including expired) only, else 409. New token, new hash, expiry restarted. Saved before sending.
+`ResendAsync`: Pending (including expired) only, else 409. The resender must be allowed to grant the role, and becomes the invitation's `CreatedByUserId`, so an invitation whose creator lost the right can be revived by an admin who has it. New token, new hash, expiry restarted. Saved before sending.
 
-`RevokeAsync`: Pending (including expired) only. In one transaction: status Revoked, `RemoveBySourceAsync(user, tenant, Invitation)`, membership Pending → deleted. Then `InvitationRevoked` event and cache eviction. The user record stays.
+`RevokeAsync`: Pending (including expired) only. In one transaction: status Revoked (conditional update), and a membership that is still Pending is deactivated with **all** its roles (`DeactivateMembershipAsync`), not just the Invitation-source ones: roles added to a pending member by hand would otherwise linger on an inactive membership and come back on a later rejoin. A member who became Active another way keeps their access. The row is kept as Inactive (not deleted), so a later invitation or rejoin reuses it. After commit: role-removed events, revocation and cache eviction (`TenantAccessRevoker`), then `InvitationRevoked`. The user record stays.
 
 ### 5.4 Settings (`DefaultAuthSettingsSeeder`)
 

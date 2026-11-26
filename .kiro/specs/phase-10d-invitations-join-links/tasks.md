@@ -34,13 +34,13 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
 
 ## PR B: invitations
 
-- [ ] 4. Invitation records and admin service (design 5.1-5.5, 5.10 admin rows)
-  - [ ] 4.1 `Invitation` entity, configuration (partial unique index on pending email), migration `AddInvitations`, `IInvitationRepository` (bypass lookup by hash, conditional accept)
-  - [ ] 4.2 `OpaqueToken` (create, hash)
-  - [ ] 4.3 Invitation settings in `DefaultAuthSettingsSeeder`; `IInvitationEmailSender`, `LoggingInvitationEmailSender`, URL template
-  - [ ] 4.4 `IInvitationService` (create, list, resend, revoke) with `CreateInvitationDto` validator; `InvitationsController` admin endpoints under `/api/invitations`; startup check
-  - [ ] 4.5a `RemoveMemberAsync` on a Pending member also revokes their Pending invitation
-  - [ ] 4.5 Tests: create paths (new pending user, existing user, unlinked pending user reused, Inactive member back to Pending), `ALREADY_MEMBER`, `INVITATION_PENDING` (including concurrent creates), enterprise refused, URL not configured, resend rotates the token, revoke removes only Invitation-source roles, link logged only in Development
+- [x] 4. Invitation records and admin service (design 5.1-5.5, 5.10 admin rows)
+  - [x] 4.1 `Invitation` entity, configuration (partial unique index on pending email), migration `AddInvitations`, `IInvitationRepository` (bypass lookup by hash, conditional accept)
+  - [x] 4.2 `OpaqueToken` (create, hash)
+  - [x] 4.3 Invitation settings in `DefaultAuthSettingsSeeder`; `IInvitationEmailSender`, `LoggingInvitationEmailSender`, URL template
+  - [x] 4.4 `IInvitationService` (create, list, resend, revoke) with `CreateInvitationDto` validator; `InvitationsController` admin endpoints under `/api/invitations`; startup check
+  - [x] 4.5a `RemoveMemberAsync` on a Pending member also revokes their Pending invitation
+  - [x] 4.5 Tests: create paths (new pending user, existing user, unlinked pending user reused, Inactive member back to Pending), `ALREADY_MEMBER`, `INVITATION_PENDING` (including concurrent creates), enterprise refused, URL not configured, resend rotates the token, revoke removes only Invitation-source roles, link logged only in Development; refusals before any write; expiry clamp (unit 1922 / 0; integration 472 / 0; sample 22/22). Revoke deactivates the pending membership with all its roles (design 5.3)
 
 - [ ] 5. Accepting an invitation (design 5.6-5.9, 5.10 public rows)
   - [ ] 5.1 Flow plumbing: `AuthPrompt`, `login_hint`, `InvitationId`/`JoinLinkId` passed through, validator rules, `FlowResult.AlreadyMember` and callback body

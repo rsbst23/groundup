@@ -31,6 +31,16 @@ public interface IUserRepository : IBaseRepository<UserDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns every user with this email (case-insensitive) that was not merged into another user,
+    /// linked or pending, oldest first.
+    /// </summary>
+    /// <param name="email">The email address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<UserDto>>> GetAllByEmailAsync(
+        string email,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the pending users with this email (case-insensitive): no identity-provider id yet and
     /// not merged into another user.
     /// </summary>
