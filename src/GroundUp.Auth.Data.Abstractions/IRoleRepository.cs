@@ -43,4 +43,15 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
         Guid roleId,
         Guid policyId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds a role by ID in any tenant. System-level bypass: the role service needs SuperAdmin,
+    /// which lives in the System tenant, and checks the role's tenant itself.
+    /// </summary>
+    /// <param name="roleId">The role identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The role, or NotFound.</returns>
+    Task<OperationResult<RoleDto>> FindByIdAnyTenantAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default);
 }

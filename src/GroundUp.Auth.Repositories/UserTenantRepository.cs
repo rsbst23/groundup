@@ -68,11 +68,11 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     /// SYSTEM BYPASS: Targets the given tenant explicitly rather than the current tenant
     /// context, so a user can leave a tenant other than the one their session is scoped to.
     /// </remarks>
-    public Task<OperationResult> DeactivateMembershipAsync(
+    public Task<OperationResult<List<UserRoleDto>>> DeactivateMembershipAsync(
         Guid userId,
         Guid tenantId,
         CancellationToken cancellationToken = default) =>
-        SetMembershipActiveAsync(userId, tenantId, isActive: false, removeRoles: true,
+        SetMembershipStatusAsync(userId, tenantId, MembershipStatus.Inactive, removeRoles: true,
             "A conflict occurred while leaving the tenant.", cancellationToken);
 
     /// <inheritdoc />
@@ -80,17 +80,52 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     /// SYSTEM BYPASS: Targets the given tenant explicitly rather than the current tenant
     /// context, because sign-in callbacks run before any tenant is selected.
     /// </remarks>
-    public Task<OperationResult> ReactivateMembershipAsync(
+    public async Task<OperationResult> ReactivateMembershipAsync(
         Guid userId,
         Guid tenantId,
-        CancellationToken cancellationToken = default) =>
-        SetMembershipActiveAsync(userId, tenantId, isActive: true, removeRoles: false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SetMembershipStatusAsync(userId, tenantId, MembershipStatus.Active, removeRoles: false,
             "A conflict occurred while rejoining the tenant.", cancellationToken);
+        return result.Success
+            ? OperationResult.Ok()
+            : OperationResult.Fail(result.Message, result.StatusCode, result.ErrorCode);
+    }
 
-    private async Task<OperationResult> SetMembershipActiveAsync(
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: keeps the membership's own tenant instead of the current tenant context.</remarks>
+    public async Task<OperationResult<UserTenantDto>> AddForTenantAsync(
+        UserTenantDto membership,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = new UserTenant
+        {
+            UserId = membership.UserId,
+            TenantId = membership.TenantId,
+            ExternalUserId = membership.ExternalUserId,
+            Status = membership.Status
+        };
+        Context.Set<UserTenant>().Add(entity);
+
+        try
+        {
+            await Context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The expected cause is a concurrent insert for the same user and tenant; the caller re-reads.
+            Context.Entry(entity).State = EntityState.Detached;
+            return OperationResult<UserTenantDto>.Fail(
+                "The membership already exists.", 409, GroundUp.Core.ErrorCodes.Conflict);
+        }
+
+        return OperationResult<UserTenantDto>.Ok(AuthUserTenantMapper.ToDto(entity), statusCode: 201);
+    }
+
+    private async Task<OperationResult<List<UserRoleDto>>> SetMembershipStatusAsync(
         Guid userId,
         Guid tenantId,
-        bool isActive,
+        MembershipStatus target,
         bool removeRoles,
         string conflictMessage,
         CancellationToken cancellationToken)
@@ -99,29 +134,34 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
             .FirstOrDefaultAsync(ut => ut.UserId == userId && ut.TenantId == tenantId, cancellationToken);
 
         if (entity is null)
-            return OperationResult.NotFound();
+            return OperationResult<List<UserRoleDto>>.NotFound();
 
-        var target = isActive ? MembershipStatus.Active : MembershipStatus.Inactive;
         if (entity.Status == target)
-            return OperationResult.Ok();
+            return OperationResult<List<UserRoleDto>>.Ok([]);
 
         entity.Status = target;
 
-        // Leaving also removes the user's role assignments in that tenant, in the same save, so a
-        // later rejoin starts clean and a former TenantAdmin does not silently regain admin rights.
+        // Leaving also removes the user's role assignments in that tenant (every source), in the same
+        // save, so a later rejoin starts clean and a former TenantAdmin does not silently regain admin
+        // rights. The removed rows are returned so the caller can publish the role-removed events.
         List<UserRole> removedRoles = [];
         if (removeRoles)
         {
             removedRoles = await Context.Set<UserRole>()
+                .Include(ur => ur.Role)
                 .Where(ur => ur.UserId == userId && ur.TenantId == tenantId)
                 .ToListAsync(cancellationToken);
             Context.Set<UserRole>().RemoveRange(removedRoles);
         }
 
+        var removed = removedRoles
+            .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name, ur.Source))
+            .ToList();
+
         try
         {
             await Context.SaveChangesAsync(cancellationToken);
-            return OperationResult.Ok();
+            return OperationResult<List<UserRoleDto>>.Ok(removed);
         }
         catch (DbUpdateException)
         {
@@ -132,7 +172,7 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
                 Context.Entry(role).State = EntityState.Unchanged;
             }
 
-            return OperationResult.Fail(
+            return OperationResult<List<UserRoleDto>>.Fail(
                 conflictMessage,
                 409,
                 GroundUp.Core.ErrorCodes.Conflict);

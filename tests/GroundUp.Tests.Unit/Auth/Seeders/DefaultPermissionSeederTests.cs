@@ -78,7 +78,7 @@ public sealed class DefaultPermissionSeederTests : IDisposable
         var authPermissions = await _dbContext.Permissions
             .Where(p => p.Module == "auth")
             .ToListAsync();
-        Assert.Equal(12, authPermissions.Count); // 12 auth.* permissions
+        Assert.Equal(13, authPermissions.Count); // 13 auth.* permissions
 
         var settingsPermissions = await _dbContext.Permissions
             .Where(p => p.Module == "settings")

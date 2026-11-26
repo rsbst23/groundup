@@ -19,16 +19,17 @@ public sealed class LastAdminGuardPropertyTests
 {
     /// <summary>
     /// Creates a <see cref="LastAdminGuard"/> with a mocked repository that returns
-    /// the specified number of TenantAdmin holders for any tenant query.
+    /// the specified number of TenantAdmin holders for any tenant query. The first holder is
+    /// <paramref name="holderUserId"/>.
     /// </summary>
-    private static LastAdminGuard CreateSut(int adminCount, Guid tenantId)
+    private static LastAdminGuard CreateSut(int adminCount, Guid tenantId, Guid holderUserId)
     {
         var userRoleRepository = Substitute.For<IUserRoleRepository>();
 
         var adminHolders = Enumerable.Range(0, adminCount)
-            .Select(_ => new UserRoleDto(
+            .Select(i => new UserRoleDto(
                 Id: Guid.NewGuid(),
-                UserId: Guid.NewGuid(),
+                UserId: i == 0 ? holderUserId : Guid.NewGuid(),
                 RoleId: Guid.NewGuid(),
                 TenantId: tenantId,
                 RoleName: AuthRoleNames.TenantAdmin))
@@ -56,7 +57,7 @@ public sealed class LastAdminGuardPropertyTests
         if (scenario.ActiveAdminCount != 1)
             return true.ToProperty();
 
-        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId);
+        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId, scenario.UserIdToRemove);
 
         // Act
         var result = sut.CanRemoveTenantAdminAsync(scenario.UserIdToRemove, scenario.TenantId)
@@ -83,7 +84,7 @@ public sealed class LastAdminGuardPropertyTests
         if (scenario.ActiveAdminCount < 2)
             return true.ToProperty();
 
-        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId);
+        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId, scenario.UserIdToRemove);
 
         // Act
         var result = sut.CanRemoveTenantAdminAsync(scenario.UserIdToRemove, scenario.TenantId)
@@ -106,7 +107,7 @@ public sealed class LastAdminGuardPropertyTests
         DisplayName = "Feature: phase-10c-auth-dispatcher, Property 17: Removal rejected iff exactly one admin")]
     public Property Removal_RejectedIffExactlyOneAdmin(TenantAdminRemovalScenario scenario)
     {
-        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId);
+        var sut = CreateSut(scenario.ActiveAdminCount, scenario.TenantId, scenario.UserIdToRemove);
 
         // Act
         var result = sut.CanRemoveTenantAdminAsync(scenario.UserIdToRemove, scenario.TenantId)
@@ -123,32 +124,28 @@ public sealed class LastAdminGuardPropertyTests
 
     /// <summary>
     /// Feature: phase-10c-auth-dispatcher, Property 17: Last Admin Guard
-    /// The guard decision is independent of the specific user being removed — only the
-    /// count of TenantAdmin holders in the tenant matters.
+    /// Removing TenantAdmin from a user who does not hold it never changes the holder count,
+    /// so the guard always allows it (GU-68: the guard checks the user is a holder).
     /// **Validates: Requirements 10.8**
     /// </summary>
     [Property(MaxTest = 100, Arbitrary = new[] { typeof(LastAdminGuardArbitraries) },
-        DisplayName = "Feature: phase-10c-auth-dispatcher, Property 17: Guard decision depends only on admin count")]
-    public Property GuardDecision_IndependentOfUserIdentity(
+        DisplayName = "Feature: phase-10c-auth-dispatcher, Property 17: Removing from a non-holder is always allowed")]
+    public Property NonHolder_RemovalAllowed(
         TenantAdminRemovalScenario scenario1,
         TenantAdminRemovalScenario scenario2)
     {
-        // Use same admin count and tenant but different user IDs
+        // Holders include scenario1's user only; scenario2's user holds nothing
         var tenantId = scenario1.TenantId;
         var adminCount = scenario1.ActiveAdminCount;
 
-        var sut = CreateSut(adminCount, tenantId);
+        var sut = CreateSut(adminCount, tenantId, scenario1.UserIdToRemove);
 
-        // Act — same tenant/count, different users
-        var result1 = sut.CanRemoveTenantAdminAsync(scenario1.UserIdToRemove, tenantId)
-            .GetAwaiter().GetResult();
-        var result2 = sut.CanRemoveTenantAdminAsync(scenario2.UserIdToRemove, tenantId)
+        // Act — the non-holder, whatever the holder count
+        var result = sut.CanRemoveTenantAdminAsync(scenario2.UserIdToRemove, tenantId)
             .GetAwaiter().GetResult();
 
-        // Assert — both should have the same outcome
-        return (result1.Success == result2.Success
-            && result1.ErrorCode == result2.ErrorCode)
-            .ToProperty();
+        // Assert
+        return (result.Success && result.Data).ToProperty();
     }
 }
 

@@ -3,7 +3,6 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace GroundUp.Auth.Services.Membership;
@@ -19,8 +18,7 @@ public sealed class MembershipService : IMembershipService
     private readonly ITenantContext _tenantContext;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly LastAdminGuard _lastAdminGuard;
-    private readonly ITokenRevocationStore _revocationStore;
-    private readonly IMemoryCache _cache;
+    private readonly TenantAccessRevoker _accessRevoker;
     private readonly IAuthSessionService _authSessionService;
     private readonly ITenantRepository _tenantRepository;
     private readonly ILogger<MembershipService> _logger;
@@ -32,8 +30,7 @@ public sealed class MembershipService : IMembershipService
     /// <param name="tenantContext">The session's current tenant.</param>
     /// <param name="userTenantRepository">Membership persistence.</param>
     /// <param name="lastAdminGuard">Keeps at least one active TenantAdmin per tenant.</param>
-    /// <param name="revocationStore">Records token revocation cutoffs.</param>
-    /// <param name="cache">The cache holding resolved permissions.</param>
+    /// <param name="accessRevoker">Publishes role-removed events, records the revocation cutoff and evicts cached permissions.</param>
     /// <param name="authSessionService">Issues the tenantless session token.</param>
     /// <param name="tenantRepository">Loads tenant details for the tenant list.</param>
     /// <param name="logger">Logger.</param>
@@ -42,8 +39,7 @@ public sealed class MembershipService : IMembershipService
         ITenantContext tenantContext,
         IUserTenantRepository userTenantRepository,
         LastAdminGuard lastAdminGuard,
-        ITokenRevocationStore revocationStore,
-        IMemoryCache cache,
+        TenantAccessRevoker accessRevoker,
         IAuthSessionService authSessionService,
         ITenantRepository tenantRepository,
         ILogger<MembershipService> logger)
@@ -53,8 +49,7 @@ public sealed class MembershipService : IMembershipService
         _tenantContext = tenantContext;
         _userTenantRepository = userTenantRepository;
         _lastAdminGuard = lastAdminGuard;
-        _revocationStore = revocationStore;
-        _cache = cache;
+        _accessRevoker = accessRevoker;
         _authSessionService = authSessionService;
         _logger = logger;
     }
@@ -92,8 +87,8 @@ public sealed class MembershipService : IMembershipService
                 deactivateResult.Message, deactivateResult.StatusCode, deactivateResult.ErrorCode);
         }
 
-        // 4. Access has ended: revoke tokens issued so far and drop cached permissions
-        await EndAccessAsync(userId, tenantId, cancellationToken);
+        // 4. Access has ended: role-removed events, revoke tokens issued so far, drop cached permissions
+        await _accessRevoker.EndAccessAsync(userId, tenantId, deactivateResult.Data, cancellationToken);
 
         // 5. Session outcome
         Guid? currentTenantId = _tenantContext.TenantId == Guid.Empty ? null : _tenantContext.TenantId;
@@ -160,26 +155,5 @@ public sealed class MembershipService : IMembershipService
             .ToList();
 
         return OperationResult<IReadOnlyList<MyTenantDto>>.Ok(tenants);
-    }
-
-    /// <summary>
-    /// Records the revocation cutoff and evicts cached permissions. Runs only after the change is saved.
-    /// A store failure is logged and does not undo the leave: the membership is already gone, and the
-    /// token stops working within the token lifetime.
-    /// </summary>
-    private async Task EndAccessAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _revocationStore.RevokeTenantAccessAsync(userId, tenantId, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex,
-                "Could not record token revocation for user {UserId} in tenant {TenantId}; existing tokens stay valid until they expire",
-                userId, tenantId);
-        }
-
-        _cache.Remove(PermissionCacheKeys.For(userId, tenantId));
     }
 }

@@ -15,13 +15,13 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [x] 1.4 Role reads join on an Active membership and return distinct roles (`GetByUserIdAsync`, `GetByUserIdForTenantAsync`, `GetSystemRolesForUserAsync`, `GetTenantAdminHoldersAsync`)
   - [x] 1.5 Tests: migration on old-shape data (status and source mapping); pending membership gives no permissions, no token roles, not in the picker, not counted by the last-admin guard; SuperAdmin still resolves; existing suites green (unit 1795 / 0; integration 437 / 0; sample 22/22). Existing tests that gave roles without a membership now seed one; the auth migrations no longer try to create the bootstrap tables, which the app context owns
 
-- [ ] 2. Role service and rules (design 2.1-2.6)
-  - [ ] 2.1 `RoleGrantPolicy`, `IRoleAssignmentRule`, `RoleAssignmentContext`, `RoleChange`; error codes (design 8) and resource strings
-  - [ ] 2.2 `IUserRoleService` and internal `IRoleGrantWriter` in one `UserRoleService`: assign, remove, `CanGrantRoleAsync`, events with the affected user, cache eviction, revocation on removal, System-tenant membership for SuperAdmin grants
-  - [ ] 2.3 Guards: `LastAdminGuard.CanRemoveTenantAdminAsync` checks the user is a holder and is now called; `LAST_SUPERADMIN`
-  - [ ] 2.4 `TenantAccessRevoker` extracted from `MembershipService`; `DeactivateMembershipAsync` returns the removed roles and leave publishes deleted events
-  - [ ] 2.5 `OrganizationProvisioningService` grants TenantAdmin through `IRoleGrantWriter` (source Provisioning), events after commit
-  - [ ] 2.6 Unit tests: the full rule matrix (caller kind × role kind × assign/remove), app rule refusal, both guards, idempotent assign/remove, events and revocation; integration: concurrent assign, provisioning still atomic
+- [x] 2. Role service and rules (design 2.1-2.6)
+  - [x] 2.1 `RoleGrantPolicy`, `IRoleAssignmentRule`, `RoleAssignmentContext`, `RoleChange`; error codes (design 8) and resource strings
+  - [x] 2.2 `IUserRoleService` and internal `IRoleGrantWriter` in one `UserRoleService`: assign, remove, `CanGrantRoleAsync`, events with the affected user, cache eviction, revocation on removal, System-tenant membership for SuperAdmin grants
+  - [x] 2.3 Guards: `LastAdminGuard.CanRemoveTenantAdminAsync` checks the user is a holder and is now called; `LAST_SUPERADMIN`
+  - [x] 2.4 `TenantAccessRevoker` extracted from `MembershipService`; `DeactivateMembershipAsync` returns the removed roles and leave publishes deleted events
+  - [x] 2.5 `OrganizationProvisioningService` grants TenantAdmin through `IRoleGrantWriter` (source Provisioning), events after commit
+  - [x] 2.6 Unit tests: the full rule matrix (caller kind × role kind × assign/remove), app rule refusal, both guards, idempotent assign/remove, events and revocation; integration: concurrent assign, invitation revoke keeps a Manual grant, removal revokes tokens, pending member role not effective, provisioning grant has source Provisioning (unit 1870 / 0; integration 442 / 0; sample 22/22)
 
 - [ ] 3. Claiming, default role and member management (design 2.7, 3, 4)
   - [ ] 3.1 `SignInUserResolver` replaces the three `ResolveOrCreateUserAsync` copies (known identity, invitation claim, verified-email claim, new user)

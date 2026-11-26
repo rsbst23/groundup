@@ -43,8 +43,11 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
     /// <param name="userId">The user identifier.</param>
     /// <param name="tenantId">The tenant whose membership is deactivated.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Success, NotFound if no membership exists, or a 409 conflict if the save fails.</returns>
-    Task<OperationResult> DeactivateMembershipAsync(
+    /// <returns>
+    /// The removed role assignments (empty when the membership was already inactive), NotFound if
+    /// no membership exists, or a 409 conflict if the save fails.
+    /// </returns>
+    Task<OperationResult<List<UserRoleDto>>> DeactivateMembershipAsync(
         Guid userId,
         Guid tenantId,
         CancellationToken cancellationToken = default);
@@ -67,5 +70,17 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
     Task<OperationResult> ReactivateMembershipAsync(
         Guid userId,
         Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Inserts a membership in the tenant named by <paramref name="membership"/> (not the current
+    /// tenant context). System-level bypass, used when granting SuperAdmin creates the System-tenant
+    /// membership.
+    /// </summary>
+    /// <param name="membership">The membership to insert. <c>Id</c> is ignored.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The saved membership, or a 409 conflict when the user already has one in that tenant.</returns>
+    Task<OperationResult<UserTenantDto>> AddForTenantAsync(
+        UserTenantDto membership,
         CancellationToken cancellationToken = default);
 }

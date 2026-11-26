@@ -1,4 +1,5 @@
 using GroundUp.Auth.Core.Dtos;
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
 
@@ -58,5 +59,61 @@ public interface IUserRoleRepository : IBaseRepository<UserRoleDto>
     /// <returns>A list of user-role DTOs for users holding TenantAdmin in the specified tenant.</returns>
     Task<OperationResult<List<UserRoleDto>>> GetTenantAdminHoldersAsync(
         Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the IDs of the users who hold <paramref name="roleId"/> through an Active membership
+    /// in the role's tenant, each once. Used by the last-SuperAdmin guard.
+    /// System-level bypass: ignores the current tenant context.
+    /// </summary>
+    /// <param name="roleId">The role identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<Guid>>> GetActiveHolderIdsAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns every assignment row of <paramref name="roleId"/> to <paramref name="userId"/> in
+    /// <paramref name="tenantId"/>, one per source, whatever the membership status.
+    /// System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="roleId">The role identifier.</param>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<UserRoleDto>>> GetAssignmentsAsync(
+        Guid userId,
+        Guid roleId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Inserts an assignment in the tenant named by <paramref name="assignment"/> (not the current
+    /// tenant context), keeping its source. System-level bypass, used by the role service, which
+    /// checks who may grant the role first.
+    /// </summary>
+    /// <param name="assignment">The assignment to insert. <c>Id</c> is ignored.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The saved assignment, or a 409 conflict when the same role and source already exist.</returns>
+    Task<OperationResult<UserRoleDto>> AddForTenantAsync(
+        UserRoleDto assignment,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the user's assignments of <paramref name="roleId"/> in <paramref name="tenantId"/>,
+    /// either from every source or from <paramref name="source"/> only.
+    /// System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="roleId">The role identifier, or null for every role.</param>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="source">Only this source, or null for every source.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The deleted assignments (empty when there were none).</returns>
+    Task<OperationResult<List<UserRoleDto>>> RemoveAssignmentsAsync(
+        Guid userId,
+        Guid? roleId,
+        Guid tenantId,
+        RoleAssignmentSource? source,
         CancellationToken cancellationToken = default);
 }
