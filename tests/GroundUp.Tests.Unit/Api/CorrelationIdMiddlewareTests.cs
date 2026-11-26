@@ -42,27 +42,93 @@ public sealed class CorrelationIdMiddlewareTests
 
     #region Property Tests
 
-    /// <summary>
-    /// Property 3: Correlation ID header propagation.
-    /// For any non-empty string value provided as the X-Correlation-Id request header,
-    /// the middleware stores that exact value in HttpContext.Items["CorrelationId"]
-    /// and adds that exact value to the response X-Correlation-Id header.
-    /// </summary>
-    [Property(MaxTest = 100)]
-    public Property InvokeAsync_AnyNonEmptyCorrelationId_PropagatesValueUnchanged(NonEmptyString correlationId)
+    private const string AllowedChars =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-";
+
+    /// <summary>Runs the middleware for one header value; returns the stored and response values.</summary>
+    private static (string? Stored, string ResponseHeader) Run(string? headerValue)
     {
-        var value = correlationId.Get;
         var (context, fireOnStarting) = CreateContextWithOnStarting();
-        context.Request.Headers[CorrelationIdMiddleware.HeaderName] = value;
+        if (headerValue is not null)
+        {
+            context.Request.Headers[CorrelationIdMiddleware.HeaderName] = headerValue;
+        }
 
         var middleware = new CorrelationIdMiddleware(_ => Task.CompletedTask);
         middleware.InvokeAsync(context).GetAwaiter().GetResult();
         fireOnStarting().GetAwaiter().GetResult();
 
-        var storedValue = context.Items["CorrelationId"]?.ToString();
-        var responseHeader = context.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString();
+        return (context.Items["CorrelationId"]?.ToString(),
+            context.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString());
+    }
 
-        return (storedValue == value && responseHeader == value).ToProperty();
+    /// <summary>
+    /// A valid correlation ID (1 to 128 allowed characters) is stored and returned unchanged.
+    /// </summary>
+    [Property(MaxTest = 200, Arbitrary = new[] { typeof(CorrelationIdArbitraries) })]
+    public Property InvokeAsync_ValidCorrelationId_PropagatesValueUnchanged(ValidCorrelationId id)
+    {
+        var (stored, responseHeader) = Run(id.Value);
+
+        return (stored == id.Value && responseHeader == id.Value).ToProperty();
+    }
+
+    /// <summary>
+    /// An invalid correlation ID (too long, whitespace-only, or containing any character outside the
+    /// allowed set) is replaced by a newly generated GUID, in the context item and the response header.
+    /// </summary>
+    [Property(MaxTest = 200, Arbitrary = new[] { typeof(CorrelationIdArbitraries) })]
+    public Property InvokeAsync_InvalidCorrelationId_ReplacedWithNewGuid(InvalidCorrelationId id)
+    {
+        var (stored, responseHeader) = Run(id.Value);
+
+        return (stored != id.Value
+                && Guid.TryParse(stored, out _)
+                && responseHeader == stored).ToProperty();
+    }
+
+    /// <summary>Wraps a generated valid correlation ID.</summary>
+    public sealed record ValidCorrelationId(string Value)
+    {
+        public override string ToString() => Value;
+    }
+
+    /// <summary>Wraps a generated invalid correlation ID.</summary>
+    public sealed record InvalidCorrelationId(string Value)
+    {
+        public override string ToString() => string.Concat(Value.Select(c => c < 32 || c > 126 ? $"\\u{(int)c:x4}" : c.ToString()));
+    }
+
+    /// <summary>Generators that produce each class explicitly, so coverage does not depend on chance.</summary>
+    public static class CorrelationIdArbitraries
+    {
+        private static Gen<string> AllowedString(int minLength, int maxLength) =>
+            from length in Gen.Choose(minLength, maxLength)
+            from chars in Gen.ArrayOf(length, Gen.Elements(AllowedChars.ToCharArray()))
+            select new string(chars);
+
+        public static Arbitrary<ValidCorrelationId> Valid() =>
+            Arb.From(AllowedString(1, CorrelationIdMiddleware.MaxLength).Select(s => new ValidCorrelationId(s)));
+
+        public static Arbitrary<InvalidCorrelationId> Invalid()
+        {
+            // Allowed text with one disallowed character inserted at a random position
+            var disallowed = Gen.Elements('\t', '\r', '\n', '\0', ' ', '/', '<', '"', '=', 'é', '\u2028', '\u007f');
+            var withBadChar =
+                from text in AllowedString(0, 60)
+                from bad in disallowed
+                from position in Gen.Choose(0, text.Length)
+                select text.Insert(position, bad.ToString());
+
+            var tooLong = AllowedString(CorrelationIdMiddleware.MaxLength + 1, 300);
+
+            var whitespaceOnly =
+                from length in Gen.Choose(1, 10)
+                from chars in Gen.ArrayOf(length, Gen.Elements(' ', '\t'))
+                select new string(chars);
+
+            return Arb.From(Gen.OneOf(withBadChar, tooLong, whitespaceOnly).Select(s => new InvalidCorrelationId(s)));
+        }
     }
 
     #endregion
@@ -135,6 +201,51 @@ public sealed class CorrelationIdMiddlewareTests
         // Assert
         var responseHeader = context.Response.Headers[CorrelationIdMiddleware.HeaderName].ToString();
         Assert.Equal(expectedId, responseHeader);
+    }
+
+    [Fact]
+    public void InvokeAsync_ExactlyMaxLength_IsAccepted()
+    {
+        var value = new string('a', CorrelationIdMiddleware.MaxLength);
+
+        var (stored, _) = Run(value);
+
+        Assert.Equal(value, stored);
+    }
+
+    [Fact]
+    public void InvokeAsync_OneOverMaxLength_IsReplaced()
+    {
+        var value = new string('a', CorrelationIdMiddleware.MaxLength + 1);
+
+        var (stored, _) = Run(value);
+
+        Assert.NotEqual(value, stored);
+        Assert.True(Guid.TryParse(stored, out _));
+    }
+
+    [Theory]
+    [InlineData("a\tb")]
+    [InlineData("a\r\nb")]
+    [InlineData("id\r\nX-Injected: 1")]
+    [InlineData("")]
+    public void InvokeAsync_ControlCharactersOrEmpty_AreReplaced(string value)
+    {
+        var (stored, responseHeader) = Run(value);
+
+        Assert.NotEqual(value, stored);
+        Assert.True(Guid.TryParse(stored, out _));
+        Assert.Equal(stored, responseHeader);
+    }
+
+    [Theory]
+    [InlineData("0b8f6e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b")]
+    [InlineData("4bf92f3577b34da6a3ce929d0e0e4736")]
+    [InlineData("00f067aa0ba902b7")]
+    [InlineData("req_2024.11:abc-DEF")]
+    public void IsValid_CommonIdFormats_AreAccepted(string value)
+    {
+        Assert.True(CorrelationIdMiddleware.IsValid(value));
     }
 
     [Fact]

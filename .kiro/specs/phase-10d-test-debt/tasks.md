@@ -25,10 +25,11 @@ Starting point: unit 1745 pass / 12 known failures (plus the flaky correlation I
 
 ## PR 2: Hardening
 
-- [ ] 3. Correlation ID validation
-  - [ ] 3.1 `CorrelationIdMiddleware.IsValid` and `MaxLength = 128`; an invalid incoming id is replaced with a new GUID, and nothing is logged
-  - [ ] 3.2 Replace the flaky property with two properties (valid ids propagate unchanged, invalid ids are replaced) using explicit generators. Facts for 128 and 129 characters, tab, and CR/LF
-  - [ ] 3.3 Build, run all suites, commit
+- [x] 3. Correlation ID validation
+  - [x] 3.1 `CorrelationIdMiddleware.IsValid` and `MaxLength = 128`; an invalid incoming id is replaced with a new GUID, and nothing is logged
+  - [x] 3.2 Replace the flaky property with two properties (valid ids propagate unchanged, invalid ids are replaced) using explicit generators. Facts for 128 and 129 characters, tab, and CR/LF
+  - [x] 3.3 Build, run all suites, commit
+  - Results: unit 1769 / 0; integration 422 / 0; sample 22/22 (first fully green run). The correlation ID tests passed 5 consecutive runs at 200 cases per property
 
 - [ ] 4. Host/token exemptions and Keycloak version
   - [ ] 4.1 `AuthOptions.HostTokenCheckExemptPathPrefixes`, added to the two built-in prefixes, with segment-boundary matching

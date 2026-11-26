@@ -27,15 +27,50 @@ public sealed class CorrelationIdMiddleware
     }
 
     /// <summary>
-    /// Reads or generates a correlation ID, stores it in HttpContext.Items,
-    /// adds it to response headers, and invokes the next middleware.
+    /// The maximum accepted length of an incoming correlation ID.
+    /// </summary>
+    public const int MaxLength = 128;
+
+    /// <summary>
+    /// Returns true when <paramref name="value"/> may be used as a correlation ID: 1 to
+    /// <see cref="MaxLength"/> characters, each one of <c>A-Z a-z 0-9 . _ : -</c>. This covers GUIDs,
+    /// W3C trace and span ids, and common request-id formats. The value is written to logs, error
+    /// responses and response headers, so anything else (control characters, spaces, separators,
+    /// non-ASCII) is rejected to prevent log injection and header manipulation (NIST 800-53 SI-10, AU-9).
+    /// </summary>
+    /// <param name="value">The candidate correlation ID.</param>
+    public static bool IsValid(string? value)
+    {
+        if (value is null || value.Length is 0 or > MaxLength)
+        {
+            return false;
+        }
+
+        foreach (var c in value)
+        {
+            if (!IsAllowedChar(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsAllowedChar(char c) =>
+        c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '.' or '_' or ':' or '-';
+
+    /// <summary>
+    /// Reads the incoming correlation ID when it is valid (see <see cref="IsValid"/>), otherwise generates
+    /// a new GUID. Stores it in HttpContext.Items, adds it to response headers, and invokes the next
+    /// middleware. A rejected incoming value is discarded and never logged or echoed.
     /// </summary>
     public async Task InvokeAsync(HttpContext context)
     {
-        var correlationId = context.Request.Headers.TryGetValue(HeaderName, out var values)
-            && !string.IsNullOrWhiteSpace(values.FirstOrDefault())
-            ? values.First()!
-            : Guid.NewGuid().ToString();
+        var incoming = context.Request.Headers.TryGetValue(HeaderName, out var values)
+            ? values.FirstOrDefault()
+            : null;
+        var correlationId = IsValid(incoming) ? incoming! : Guid.NewGuid().ToString();
 
         context.Items["CorrelationId"] = correlationId;
 
