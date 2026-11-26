@@ -15,12 +15,13 @@ Starting point: unit 1745 pass / 12 known failures (plus the flaky correlation I
   - [x] 1.6 Build, run all suites, commit
   - Results: unit 1758 pass / 0 failed; integration 413 pass / 7 failed (the group 2 tests) / 0 skipped; sample 22/22. Also found in 1.3: `SetupBodySizeTests` registered the scheme twice too, and 3 of its tests were skipped with an outdated reason (`AddGroundUpSetup` is wired in the sample now); unskipped, all pass
 
-- [ ] 2. Auth tests and the MarkFailed bug
-  - [ ] 2.1 Unique permission keys in `AuthorizationProxyIntegrationTests` (2 sites) and `PermissionResolutionTests`
-  - [ ] 2.2 Clear `AuthFlowStates` before each test (`IAsyncLifetime`) in the sweeper, bulk-operations and mark-failed test classes. Check the other auth-flow-state test classes for count assertions
-  - [ ] 2.3 `MarkFailedAsync` as one conditional update (design). Regression tests: consumed then failed, and expired then failed, each returning 409 with the row unchanged, using one context
-  - [ ] 2.4 Cookie-domain test expects 200 JSON with `redirectUrl`, and the cookie domain check is case-insensitive
-  - [ ] 2.5 Build, run all suites (expected: no failures except the flaky correlation ID test, fixed in 3), commit. **PR 1 boundary**
+- [x] 2. Auth tests and the MarkFailed bug
+  - [x] 2.1 Unique permission keys in `AuthorizationProxyIntegrationTests` (2 sites) and `PermissionResolutionTests`
+  - [x] 2.2 Clear `AuthFlowStates` before each test (`IAsyncLifetime`) in the sweeper, bulk-operations and mark-failed test classes. Check the other auth-flow-state test classes for count assertions
+  - [x] 2.3 `MarkFailedAsync` as one conditional update (design). Regression tests: consumed then failed, and expired then failed, each returning 409 with the row unchanged, using one context
+  - [x] 2.4 Cookie-domain test expects 200 JSON with `redirectUrl`, and the cookie domain check is case-insensitive
+  - [x] 2.5 Build, run all suites (expected: no failures except the flaky correlation ID test, fixed in 3), commit. **PR 1 boundary**
+  - Results: unit 1757 pass / 1 failed (the flaky correlation ID property, replaced in 3); integration 422 / 0; sample 22/22. Permission keys: the proxy tests need the literal `orders.read` (the attribute checks it), so `SeedPermissionAsync` reuses an existing key instead of inserting a duplicate; only the sweeper and bulk-operation classes needed clearing
 
 ## PR 2: Hardening
 

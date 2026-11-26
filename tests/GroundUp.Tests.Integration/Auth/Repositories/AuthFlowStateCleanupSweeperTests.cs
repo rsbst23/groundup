@@ -12,9 +12,15 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// without starting the BackgroundService timer.
 /// </summary>
 [Collection("AuthPostgres")]
-public sealed class AuthFlowStateCleanupSweeperTests : AuthIntegrationTestBase
+public sealed class AuthFlowStateCleanupSweeperTests : AuthIntegrationTestBase, IAsyncLifetime
 {
     public AuthFlowStateCleanupSweeperTests(AuthPostgresFixture fixture) : base(fixture) { }
+
+    /// <summary>Starts each test from an empty auth flow state table (these tests assert table-wide counts).</summary>
+    public Task InitializeAsync() => ClearAuthFlowStatesAsync();
+
+    /// <inheritdoc />
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 

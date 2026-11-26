@@ -91,29 +91,37 @@ public sealed class AuthFlowStateRepository : BaseRepository<AuthFlowState, Auth
             reason = reason[..1024];
         }
 
-        var entity = await DbSet.FindAsync(new object[] { id }, cancellationToken);
+        var now = DateTime.UtcNow;
 
-        if (entity is null)
+        // Atomic conditional UPDATE: only a row that is still Pending in the database becomes Failed.
+        // A read-then-save would trust a possibly stale tracked copy (for example after
+        // MarkConsumedAsync, which also bypasses the change tracker) and overwrite a terminal state.
+        var rowsAffected = await DbSet
+            .Where(x => x.Id == id && x.Status == FlowStatus.Pending)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Status, FlowStatus.Failed)
+                .SetProperty(x => x.FailureReason, reason)
+                .SetProperty(x => x.TerminatedAt, now)
+                .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+
+        var current = await DbSet.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+        if (current is null)
         {
             return OperationResult<AuthFlowStateDto>.NotFound(
                 $"AuthFlowState '{id}' not found");
         }
 
-        if (entity.Status != FlowStatus.Pending)
+        if (rowsAffected == 0)
         {
             return OperationResult<AuthFlowStateDto>.Fail(
-                $"AuthFlowState '{id}' is already in terminal state '{entity.Status}'",
+                $"AuthFlowState '{id}' is already in terminal state '{current.Status}'",
                 409,
                 ErrorCodes.Conflict);
         }
 
-        entity.Status = FlowStatus.Failed;
-        entity.FailureReason = reason;
-        entity.TerminatedAt = DateTime.UtcNow;
-
-        await Context.SaveChangesAsync(cancellationToken);
-
-        return OperationResult<AuthFlowStateDto>.Ok(AuthFlowStateMapper.ToDto(entity));
+        return OperationResult<AuthFlowStateDto>.Ok(AuthFlowStateMapper.ToDto(current));
     }
 
     /// <inheritdoc />

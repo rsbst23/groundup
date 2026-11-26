@@ -38,8 +38,9 @@ public sealed class SecurityControlsTests : AuthFlowTestBase
         // Act
         var response = await Client.SendAsync(request);
 
-        // Assert — the response should be a redirect (successful single-membership auto-select)
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // Assert — successful single-membership auto-select returns 200 JSON with the redirect URL
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("\"redirectUrl\"");
 
         // Assert — the Set-Cookie header contains Domain=.testapp.local
         response.Headers.TryGetValues("Set-Cookie", out var cookies).Should().BeTrue(
@@ -50,7 +51,7 @@ public sealed class SecurityControlsTests : AuthFlowTestBase
         authCookieHeader.Should().NotBeNull("AuthToken cookie should be present in Set-Cookie");
 
         // The domain attribute should be .testapp.local (dot-prefixed default domain)
-        authCookieHeader.Should().Contain(
+        authCookieHeader.Should().ContainEquivalentOf(
             $"domain=.{AuthFlowTestFixture.TestDefaultDomain}",
             "cookie Domain must be dot-prefixed default domain for cross-subdomain sharing");
     }
