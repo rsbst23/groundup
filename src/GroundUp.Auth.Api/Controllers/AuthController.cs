@@ -185,7 +185,8 @@ public sealed class AuthController : ControllerBase
 
         // Success with token — cookie already written by the flow handler.
         // The client gets its CSRF token from GET /auth/csrf after this response.
-        return Ok(new { token = flowResult.Token, redirectUrl = flowResult.RedirectUrl ?? "/" });
+        // alreadyMember: an invitation or join link used by an existing member (no role change)
+        return Ok(new { token = flowResult.Token, redirectUrl = flowResult.RedirectUrl ?? "/", alreadyMember = flowResult.AlreadyMember });
     }
 
     /// <summary>

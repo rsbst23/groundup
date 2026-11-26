@@ -20,9 +20,11 @@ namespace GroundUp.Auth.Services;
 /// When true (and not a sign-up), appends <c>prompt=login</c> so the identity provider asks for
 /// credentials even if its single sign-on session is still alive.
 /// </param>
+/// <param name="LoginHint">When set, appended as <c>login_hint</c> to pre-fill the email field.</param>
 public sealed record AuthUrlRequest(
     string? RealmOverride,
     string RedirectUri,
     bool IsSignup = false,
     int? MaxAgeSeconds = null,
-    bool ForceLogin = false);
+    bool ForceLogin = false,
+    string? LoginHint = null);

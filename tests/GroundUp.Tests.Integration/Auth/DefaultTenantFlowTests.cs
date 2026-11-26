@@ -274,6 +274,52 @@ public sealed class DefaultTenantFlowTests : AuthFlowTestBase
         (await context.Users.AsNoTracking().SingleAsync(u => u.Id == pendingId)).ExternalUserId.Should().BeNull();
     }
 
+    [Fact]
+    public async Task Callback_Login_PendingInviteeJoinsTheDefaultTenant_ClosesTheirInvitation()
+    {
+        // Invited to the default tenant, but signs in normally (verified email) instead of using the link
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var email = $"invited-default-{suffix}@example.com";
+        var pendingId = await SeedPendingUserAsync(email);
+        Guid invitationId;
+        await using (var context = Fixture.CreateAuthDbContext())
+        {
+            context.UserTenants.Add(new GroundUp.Auth.Core.Entities.UserTenant
+            {
+                UserId = pendingId, TenantId = DefaultTenantId, Status = MembershipStatus.Pending
+            });
+            var invitation = new GroundUp.Auth.Core.Entities.Invitation
+            {
+                TenantId = DefaultTenantId,
+                Email = email,
+                NormalizedEmail = email,
+                RoleId = _defaultTenantFixture.DefaultRoleId,
+                UserId = pendingId,
+                CreatedByUserId = Guid.NewGuid(),
+                TokenHash = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+                ExpiresAt = DateTime.UtcNow.AddDays(1)
+            };
+            context.Invitations.Add(invitation);
+            await context.SaveChangesAsync();
+            invitationId = invitation.Id;
+        }
+
+        var sub = $"kc-invdef-{suffix}";
+        var flowState = await CreatePendingFlowStateAsync(FlowType.Login);
+        SetupSuccessfulCodeExchange(sub, flowState.Nonce, email);
+        SetupUserInfoWithVerifiedEmail(sub, email, verified: true);
+
+        var response = await Client.SendAsync(CreateCallbackRequest("auth-code-invdef", flowState.StateToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verify = Fixture.CreateAuthDbContext();
+        (await verify.UserTenants.AsNoTracking().SingleAsync(ut => ut.UserId == pendingId && ut.TenantId == DefaultTenantId))
+            .Status.Should().Be(MembershipStatus.Active);
+        var closed = await verify.Invitations.AsNoTracking().SingleAsync(i => i.Id == invitationId);
+        closed.Status.Should().Be(InvitationStatus.Accepted, "the link must not work once the membership is active");
+        closed.AcceptedByUserId.Should().Be(pendingId);
+    }
+
     private void SetupUserInfoWithVerifiedEmail(string sub, string email, bool verified)
     {
         var userInfo = new ExternalUserInfo(sub, email, "Claimed User",

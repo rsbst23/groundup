@@ -23,6 +23,13 @@ public sealed class InitiateAuthFlowRequestValidator : AbstractValidator<Initiat
         RuleFor(x => x.ReturnUrl).MaximumLength(2048).When(x => x.ReturnUrl is not null);
         RuleFor(x => x.CreatedByIp).MaximumLength(64).When(x => x.CreatedByIp is not null);
         RuleFor(x => x.CreatedByUserAgent).MaximumLength(512).When(x => x.CreatedByUserAgent is not null);
+        // An invitation or join-link flow carries its id; no other flow carries one
+        RuleFor(x => x.InvitationId).NotNull().When(x => x.FlowType == Enums.FlowType.Invitation)
+            .WithMessage("An invitation flow needs the invitation id.");
+        RuleFor(x => x.InvitationId).Null().When(x => x.FlowType != Enums.FlowType.Invitation);
+        RuleFor(x => x.JoinLinkId).NotNull().When(x => x.FlowType == Enums.FlowType.JoinLink)
+            .WithMessage("A join-link flow needs the join link id.");
+        RuleFor(x => x.JoinLinkId).Null().When(x => x.FlowType != Enums.FlowType.JoinLink);
         RuleFor(x => x.Lifetime)
             .Must(lt => lt is null || lt.Value > TimeSpan.Zero)
             .WithMessage("Lifetime must be positive if specified.");

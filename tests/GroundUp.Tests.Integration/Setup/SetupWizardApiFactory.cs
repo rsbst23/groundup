@@ -223,6 +223,9 @@ internal sealed class FakeIdentityBootstrapService : IIdentityBootstrapService
 /// </summary>
 internal sealed class FakeIdentityProviderAdminService : IIdentityProviderAdminService
 {
+    public Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(string realmName, string email, CancellationToken cancellationToken = default)
+        => Task.FromResult(OperationResult<IdentityProviderUserDto?>.Ok(null));
+
     public Task<OperationResult<RealmDto>> CreateRealmAsync(
         CreateRealmRequest request, CancellationToken cancellationToken = default)
         => Task.FromResult(OperationResult<RealmDto>.Ok(new RealmDto(request.RealmName, request.DisplayName, true)));

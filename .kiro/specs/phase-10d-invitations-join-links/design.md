@@ -289,12 +289,12 @@ The response is the same shape in every case (`{ redirectUrl }`), so it doesn't 
 
 ### 5.7 Flow plumbing changes
 
-- `FlowInitiationRequest` gains `Guid? InvitationId`, `Guid? JoinLinkId`, `string? LoginHint`, `AuthPrompt? Prompt`.
-- `AuthUrlRequest` gains `string? LoginHint` and `AuthPrompt Prompt` (`None`, `Login`, `Create`), replacing the two bools. `IsSignup` maps to `Create`, `ForceLogin` to `Login` in `AuthFlowService`, so existing callers don't change.
-- `AuthUrlBuilderService` writes `prompt` from the enum and `login_hint` when set.
+As built (group 5):
+- `FlowInitiationRequest` gains `Guid? InvitationId`, `Guid? JoinLinkId`, `string? LoginHint` and `bool Register` (opens the registration page, like the sign-up flows).
+- `AuthUrlRequest` gains `string? LoginHint`; `AuthUrlBuilderService` writes `login_hint` when set. The existing `IsSignup` (`prompt=create`) and `ForceLogin` (`prompt=login`) flags are kept instead of a new `AuthPrompt` enum: the acceptance service only ever sets one of them, so the enum would add churn without a new case.
 - `AuthFlowService.InitiateFlowAsync` passes `InvitationId`/`JoinLinkId` through instead of `null`. `InitiateAuthFlowRequestValidator`: InvitationId required for `FlowType.Invitation`, JoinLinkId for `FlowType.JoinLink`, both null otherwise.
-- `FlowResult` gains `bool AlreadyMember`. `FlowResult.Success(token, redirectUrl, alreadyMember: false)`. `AuthController.Callback` adds `alreadyMember` to the success body.
-
+- `FlowResult` gains `bool AlreadyMember`. `AuthController.Callback` adds `alreadyMember` to the success body.
+- A Pending membership activated by any other path (default-tenant sign-in now, join links in group 6) closes its pending invitations as Accepted inside `UserTenantRepository.ReactivateMembershipAsync`, in the same save, so the link cannot be used afterwards (task 5.4a).
 ### 5.8 `IIdentityProviderAdminService.FindUserByEmailAsync`
 
 `Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(string realmName, string email, CancellationToken ct = default)`. Keycloak: `GET /admin/realms/{realm}/users?email={email}&exact=true&briefRepresentation=true`, existing token cache, client and status mapping. `IdentityProviderUserDto(string ExternalUserId, string Email, bool EmailVerified)`. Realm = tenant realm or `SharedRealmName`.

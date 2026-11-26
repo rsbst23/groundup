@@ -363,4 +363,22 @@ public sealed class AuthUrlBuilderTests
         var query = System.Web.HttpUtility.ParseQueryString(new Uri(result.Data!.AuthorizationUrl).Query);
         query["prompt"].Should().BeNull();
     }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_LoginHint_IsAddedEscaped()
+    {
+        var request = new AuthUrlRequest(null, "https://app.example.com/auth/callback", LoginHint: "ana+test@example.com");
+
+        var result = await _sut.BuildAuthorizationUrlAsync(request);
+
+        result.Data!.AuthorizationUrl.Should().Contain("login_hint=ana%2Btest%40example.com");
+    }
+
+    [Fact]
+    public async Task BuildAuthorizationUrlAsync_NoLoginHint_LeavesItOut()
+    {
+        var result = await _sut.BuildAuthorizationUrlAsync(new AuthUrlRequest(null, "https://app.example.com/auth/callback"));
+
+        result.Data!.AuthorizationUrl.Should().NotContain("login_hint");
+    }
 }

@@ -174,6 +174,9 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IValidator<CreateInvitationDto>, CreateInvitationDtoValidator>();
         services.TryAddScoped<IInvitationEmailSender, LoggingInvitationEmailSender>();
         services.AddAuthorized<IInvitationService, InvitationService>();
+        // Accepting invitations: the public start (the token is the credential) and the callback
+        services.AddScoped<IInvitationAcceptanceService, InvitationAcceptanceService>();
+        services.AddScoped<IFlowHandler, InvitationFlowHandler>();
 
         // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
         // TimeProvider.System on purpose: the cutoff must use the clock that stamps iat on tokens, not

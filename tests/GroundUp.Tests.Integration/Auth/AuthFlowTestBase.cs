@@ -59,6 +59,7 @@ public abstract class AuthFlowTestBase
     /// <param name="tenantId">Optional tenant ID (for host-pinned flows).</param>
     /// <param name="realm">Optional realm override (for enterprise tenants).</param>
     /// <param name="expiresAt">Override expiration; defaults to 10 minutes from now.</param>
+    /// <param name="invitationId">The invitation being accepted (Invitation flows).</param>
     protected async Task<AuthFlowState> CreatePendingFlowStateAsync(
         FlowType flowType,
         string? stateToken = null,
@@ -68,7 +69,8 @@ public abstract class AuthFlowTestBase
         string? organizationName = null,
         Guid? tenantId = null,
         string? realm = null,
-        DateTime? expiresAt = null)
+        DateTime? expiresAt = null,
+        Guid? invitationId = null)
     {
         stateToken ??= AuthFlowTestFixture.GenerateStateToken();
         nonce ??= AuthFlowTestFixture.GenerateNonce();
@@ -86,6 +88,7 @@ public abstract class AuthFlowTestBase
             OrganizationName = organizationName,
             TenantId = tenantId,
             Realm = realm,
+            InvitationId = invitationId,
             ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(10),
             CreatedByIp = "127.0.0.1",
             CreatedByUserAgent = "IntegrationTest/1.0",

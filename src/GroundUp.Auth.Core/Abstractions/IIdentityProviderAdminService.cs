@@ -125,4 +125,15 @@ public interface IIdentityProviderAdminService
     /// <returns>Success or failure result.</returns>
     Task<OperationResult> DeleteUserAsync(
         string realmName, string externalUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds the account with this exact email in the realm (GU-68: chooses whether an invitee sees
+    /// the sign-in or the registration page). Read-only.
+    /// </summary>
+    /// <param name="realmName">The realm to search.</param>
+    /// <param name="email">The email address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The account, null data when none has the email, or a failure when the lookup itself failed.</returns>
+    Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(
+        string realmName, string email, CancellationToken cancellationToken = default);
 }

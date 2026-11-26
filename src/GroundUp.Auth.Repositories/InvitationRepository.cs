@@ -78,6 +78,15 @@ public sealed class InvitationRepository : IInvitationRepository
     }
 
     /// <inheritdoc />
+    public async Task<OperationResult<InvitationDto>> GetByIdAnyTenantAsync(
+        Guid invitationId, CancellationToken cancellationToken = default)
+    {
+        var dto = await Project(Invitations.AsNoTracking().Where(i => i.Id == invitationId))
+            .FirstOrDefaultAsync(cancellationToken);
+        return dto is null ? OperationResult<InvitationDto>.NotFound("Invitation not found.") : OperationResult<InvitationDto>.Ok(dto);
+    }
+
+    /// <inheritdoc />
     public async Task<OperationResult<InvitationDto>> GetByTokenHashAsync(
         string tokenHash, CancellationToken cancellationToken = default)
     {
@@ -132,6 +141,22 @@ public sealed class InvitationRepository : IInvitationRepository
     {
         var updated = await Revoke(PendingById(tenantId, invitationId), revokedByUserId, cancellationToken);
         return updated == 1 ? OperationResult.Ok() : await NotPendingAsync(tenantId, invitationId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryAcceptAsync(Guid invitationId, Guid acceptedByUserId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var updated = await Invitations
+            .Where(i => i.Id == invitationId && i.Status == InvitationStatus.Pending && i.ExpiresAt > now)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.Status, InvitationStatus.Accepted)
+                .SetProperty(i => i.AcceptedByUserId, acceptedByUserId)
+                .SetProperty(i => i.AcceptedAt, now)
+                .SetProperty(i => i.UpdatedAt, now)
+                .SetProperty(i => i.UpdatedBy, acceptedByUserId.ToString()),
+                cancellationToken);
+        return updated == 1;
     }
 
     /// <inheritdoc />

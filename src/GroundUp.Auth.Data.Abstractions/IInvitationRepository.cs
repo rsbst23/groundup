@@ -20,6 +20,9 @@ public interface IInvitationRepository
     /// <summary>Finds an invitation of <paramref name="tenantId"/> by ID.</summary>
     Task<OperationResult<InvitationDto>> GetByIdAsync(Guid tenantId, Guid invitationId, CancellationToken cancellationToken = default);
 
+    /// <summary>Finds an invitation by ID in any tenant (the sign-in callback, before a tenant is selected).</summary>
+    Task<OperationResult<InvitationDto>> GetByIdAnyTenantAsync(Guid invitationId, CancellationToken cancellationToken = default);
+
     /// <summary>Finds an invitation by the hash of its token, in any tenant.</summary>
     Task<OperationResult<InvitationDto>> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
 
@@ -40,6 +43,13 @@ public interface IInvitationRepository
     /// <returns>Success, NotFound, or a 409 conflict when the invitation is no longer pending.</returns>
     Task<OperationResult> RevokeAsync(
         Guid tenantId, Guid invitationId, Guid revokedByUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks the invitation Accepted if it is still Pending and not expired. Of two concurrent
+    /// acceptances only one succeeds.
+    /// </summary>
+    /// <returns>True when this call accepted it.</returns>
+    Task<bool> TryAcceptAsync(Guid invitationId, Guid acceptedByUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes every stored-Pending invitation of <paramref name="userId"/> to <paramref name="tenantId"/>

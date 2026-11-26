@@ -531,6 +531,9 @@ internal sealed class StatefulFakeIdentityBootstrapService : IIdentityBootstrapS
 /// </summary>
 internal sealed class StatefulFakeIdentityProviderAdminService : IIdentityProviderAdminService
 {
+    public Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(string realmName, string email, CancellationToken cancellationToken = default)
+        => Task.FromResult(OperationResult<IdentityProviderUserDto?>.Ok(null));
+
     private readonly object _lock = new();
     private readonly Dictionary<string, string> _provisionedUsers = new(); // email → externalUserId
 
