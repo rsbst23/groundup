@@ -5,8 +5,6 @@ using GroundUp.Auth.Services.Configuration;
 using GroundUp.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Polly;
-using Polly.Extensions.Http;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -41,14 +39,14 @@ public static class KeycloakServiceCollectionExtensions
             {
                 client.Timeout = TimeSpan.FromSeconds(10);
             })
-            .AddPolicyHandler((sp, _) => GetRetryPolicy(
+            .AddPolicyHandler((sp, _) => KeycloakRetryPolicy.Create(
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("GroundUp.Auth.Keycloak.HttpRetry")));
 
         services.AddHttpClient("KeycloakAdmin", client =>
             {
                 client.Timeout = TimeSpan.FromSeconds(10);
             })
-            .AddPolicyHandler((sp, _) => GetRetryPolicy(
+            .AddPolicyHandler((sp, _) => KeycloakRetryPolicy.Create(
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("GroundUp.Auth.Keycloak.HttpRetry")));
 
         // Singleton caches
@@ -64,40 +62,5 @@ public static class KeycloakServiceCollectionExtensions
         services.AddSingleton<KeycloakAdminLinkBuilder>();
 
         return services;
-    }
-
-    /// <summary>
-    /// Creates the Polly retry policy for Keycloak HTTP calls.
-    /// Retries on HTTP 5xx and transient network exceptions with exponential backoff and jitter.
-    /// Logs each retry attempt at Warning level.
-    /// </summary>
-    private static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy(ILogger logger)
-    {
-        return HttpPolicyExtensions
-            .HandleTransientHttpError()
-            .WaitAndRetryAsync(
-                retryCount: 3,
-                sleepDurationProvider: attempt =>
-                    TimeSpan.FromSeconds(Math.Pow(2, attempt - 1))
-                    + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000)),
-                onRetry: (outcome, delay, attempt, _) =>
-                {
-                    if (outcome.Exception is not null)
-                    {
-                        logger.LogWarning(
-                            outcome.Exception,
-                            "Keycloak HTTP retry attempt {Attempt} after {Delay}ms due to exception",
-                            attempt,
-                            delay.TotalMilliseconds);
-                    }
-                    else
-                    {
-                        logger.LogWarning(
-                            "Keycloak HTTP retry attempt {Attempt} after {Delay}ms due to status code {StatusCode}",
-                            attempt,
-                            delay.TotalMilliseconds,
-                            (int)outcome.Result.StatusCode);
-                    }
-                });
     }
 }

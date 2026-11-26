@@ -41,11 +41,12 @@ Starting point: unit 1745 pass / 12 known failures (plus the flaky correlation I
 
 ## PR 3: Keycloak test gaps
 
-- [ ] 5. Keycloak unit tests
-  - [ ] 5.1 Extract `KeycloakRetryPolicy.Create(logger, sleepDurationProvider)`; registration unchanged
-  - [ ] 5.2 `PollyRetryPolicyPropertyTests` (5xx retried `RetryCount` times then returned, 4xx not retried, 408 retried, exception rethrown after the last attempt, success after failures), with zero delay
-  - [ ] 5.3 `KeycloakOptionsSetupTests` (mapping property, change token fires only for Keycloak keys, `CurrentValue` refreshes)
-  - [ ] 5.4 Build, run all suites, commit
+- [x] 5. Keycloak unit tests
+  - [x] 5.1 Extract `KeycloakRetryPolicy.Create(logger, sleepDurationProvider)`; registration unchanged
+  - [x] 5.2 `PollyRetryPolicyPropertyTests` (5xx retried `RetryCount` times then returned, 4xx not retried, 408 retried, exception rethrown after the last attempt, success after failures), with zero delay
+  - [x] 5.3 `KeycloakOptionsSetupTests` (mapping property, change token fires only for Keycloak keys, `CurrentValue` refreshes)
+  - [x] 5.4 Build, run all suites, commit
+  - Results: unit 1793 / 0; integration 422 / 0; sample 22/22. The 10 new tests run in under a second (no real retry delays)
 
 - [ ] 6. Keycloak code exchange and cleanup
   - [ ] 6.1 `KeycloakCodeExchangeTests`: login form with PKCE, exchange, token validation; a reused code and an invalid code return null
