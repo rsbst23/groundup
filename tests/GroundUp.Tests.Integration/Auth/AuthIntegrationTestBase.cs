@@ -14,14 +14,23 @@ namespace GroundUp.Tests.Integration.Auth;
 /// </summary>
 public abstract class AuthIntegrationTestBase
 {
-    private readonly AuthPostgresFixture _fixture;
     protected AuthDbContext DbContext;
 
     protected AuthIntegrationTestBase(AuthPostgresFixture fixture)
     {
-        _fixture = fixture;
+        Fixture = fixture;
         DbContext = fixture.CreateContext();
     }
+
+    /// <summary>The shared Postgres fixture; use it to create a separate context for verification reads.</summary>
+    protected AuthPostgresFixture Fixture { get; }
+
+    /// <summary>
+    /// Deletes every auth flow state row. For tests that assert on table-wide counts (sweeper and
+    /// bulk operations): the classes in this collection share one database and run serially, so
+    /// clearing before each test removes rows left by other tests.
+    /// </summary>
+    protected Task ClearAuthFlowStatesAsync() => DbContext.AuthFlowStates.ExecuteDeleteAsync();
 
     /// <summary>
     /// Creates a mock ITenantContext that returns the specified tenant ID.
@@ -113,10 +122,21 @@ public abstract class AuthIntegrationTestBase
     }
 
     /// <summary>
-    /// Seeds a permission directly into the database and returns its ID.
+    /// Returns the ID of the permission with this key, creating it if it does not exist yet.
+    /// Permission keys are globally unique and the test classes in this collection share one
+    /// database, so a key seeded by an earlier test is reused rather than inserted again.
     /// </summary>
     protected async Task<Guid> SeedPermissionAsync(string key, string name, string module)
     {
+        var existingId = await DbContext.Permissions
+            .Where(p => p.Key == key)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync();
+        if (existingId is not null)
+        {
+            return existingId.Value;
+        }
+
         var permission = new GroundUp.Auth.Core.Entities.Permission
         {
             Key = key,

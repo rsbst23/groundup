@@ -2,6 +2,7 @@ using FluentAssertions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace GroundUp.Tests.Integration.Auth.Repositories;
 
@@ -72,6 +73,48 @@ public sealed class AuthFlowStateRepositoryMarkFailedTests : AuthIntegrationTest
         // Assert
         result.Success.Should().BeFalse();
         result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_AlreadyConsumed_LeavesStoredRowConsumed()
+    {
+        // Arrange: same repository and context throughout, so a tracked copy of the row exists
+        var repo = CreateRepository();
+        var created = await repo.AddAsync(CreatePendingDto());
+        var id = created.Data!.Id;
+        await repo.MarkConsumedAsync(id);
+
+        // Act
+        await repo.MarkFailedAsync(id, "Should not work");
+
+        // Assert: read from a fresh context so the database row is checked, not a tracked copy
+        await using var verify = Fixture.CreateContext();
+        var stored = await verify.AuthFlowStates.AsNoTracking().SingleAsync(x => x.Id == id);
+        stored.Status.Should().Be(FlowStatus.Consumed);
+        stored.FailureReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_AlreadyExpired_ReturnsConflict409AndLeavesRowExpired()
+    {
+        // Arrange: a Pending row past its expiry, swept to Expired by the bulk operation
+        var repo = CreateRepository();
+        var dto = CreatePendingDto() with { ExpiresAt = DateTime.UtcNow.AddMinutes(-5) };
+        var created = await repo.AddAsync(dto);
+        var id = created.Data!.Id;
+        await repo.MarkExpiredOlderThanAsync(DateTime.UtcNow);
+
+        // Act
+        var result = await repo.MarkFailedAsync(id, "Should not work");
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+
+        await using var verify = Fixture.CreateContext();
+        var stored = await verify.AuthFlowStates.AsNoTracking().SingleAsync(x => x.Id == id);
+        stored.Status.Should().Be(FlowStatus.Expired);
+        stored.FailureReason.Should().BeNull();
     }
 
     [Fact]

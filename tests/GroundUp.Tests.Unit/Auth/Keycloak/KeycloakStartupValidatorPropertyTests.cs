@@ -164,17 +164,48 @@ public sealed class KeycloakStartupValidatorPropertyTests
     }
 
     /// <summary>
-    /// Property 3: When bootstrap is incomplete but settings are partially populated, validation runs.
-    /// **Validates: Requirement 3.4**
+    /// While setup is incomplete, partially populated settings do not stop startup. The seeders fill
+    /// some defaults (public base URL, shared realm name) before the wizard sets the rest, so strict
+    /// validation here would block the wizard itself. Once setup is complete, the same subsets throw
+    /// (see <see cref="StartAsync_MissingSettings_ExceptionNamesEachMissingKey"/>).
+    /// **Validates: Requirement 3.4 (as revised in phase-10-cleanup issues.md)**
     /// </summary>
-    [Fact]
-    public async Task StartAsync_BootstrapIncompletePartialSettings_ThrowsForMissing()
+    [Property(MaxTest = 100, Arbitrary = new[] { typeof(StartupValidatorArbitraries) })]
+    public Property StartAsync_BootstrapIncompletePartialSettings_DoesNotThrow(MissingSettingsSubset subset)
     {
         var options = new KeycloakOptions
         {
-            PublicBaseUrl = "https://keycloak.example.com",
-            SharedRealmName = "groundup"
-            // Rest left empty
+            PublicBaseUrl = subset.IncludePublicBaseUrl ? "https://keycloak.example.com" : "",
+            SharedRealmName = subset.IncludeSharedRealmName ? "groundup" : "",
+            InternalBaseUrl = subset.IncludeInternalBaseUrl ? "http://keycloak:8080" : "",
+            AdminClientId = subset.IncludeAdminClientId ? "admin-cli" : "",
+            AdminClientSecret = subset.IncludeAdminClientSecret ? "secret123" : "",
+            AppClientId = subset.IncludeAppClientId ? "groundup-app" : ""
+        };
+
+        var sp = BuildServiceProvider(options, bootstrapComplete: false);
+        var validator = new KeycloakStartupValidator(sp);
+
+        var exception = Record.Exception(() => validator.StartAsync(CancellationToken.None).GetAwaiter().GetResult());
+
+        return (exception is null).ToProperty();
+    }
+
+    /// <summary>
+    /// While setup is incomplete, fully populated but invalid settings are still rejected, so a bad URL
+    /// entered in the wizard is caught at the next start.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_BootstrapIncompleteAllPopulatedInvalidUrl_Throws()
+    {
+        var options = new KeycloakOptions
+        {
+            PublicBaseUrl = "ftp://keycloak.example.com",
+            SharedRealmName = "groundup",
+            InternalBaseUrl = "http://keycloak:8080",
+            AdminClientId = "admin-cli",
+            AdminClientSecret = "secret123",
+            AppClientId = "groundup-app"
         };
 
         var sp = BuildServiceProvider(options, bootstrapComplete: false);
@@ -183,10 +214,7 @@ public sealed class KeycloakStartupValidatorPropertyTests
         var act = () => validator.StartAsync(CancellationToken.None);
 
         var ex = await act.Should().ThrowAsync<InvalidOperationException>();
-        ex.Which.Message.Should().Contain(KeycloakOptionsSetup.SettingKeys.InternalBaseUrl);
-        ex.Which.Message.Should().Contain(KeycloakOptionsSetup.SettingKeys.AdminClientId);
-        ex.Which.Message.Should().Contain(KeycloakOptionsSetup.SettingKeys.AdminClientSecret);
-        ex.Which.Message.Should().Contain(KeycloakOptionsSetup.SettingKeys.AppClientId);
+        ex.Which.Message.Should().Contain(KeycloakOptionsSetup.SettingKeys.PublicBaseUrl);
     }
 
     /// <summary>

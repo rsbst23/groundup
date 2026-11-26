@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using GroundUp.Services.Settings;
 
 namespace GroundUp.Tests.Integration.Setup;
 
@@ -42,12 +43,12 @@ public sealed class SetupWizardApiFactory : GroundUpWebApplicationFactory<Progra
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
 
     /// <summary>
-    /// Indicates whether the "system" setting level has been seeded.
+    /// Indicates whether the System setting level has been seeded.
     /// </summary>
-    private static bool _systemLevelSeeded;
+    private bool _systemLevelSeeded; // per factory: each factory has its own database
 
     /// <summary>
-    /// Ensures the "system" setting level exists in the database.
+    /// Ensures the System setting level exists in the database.
     /// Called by test classes in their InitializeAsync to seed required data.
     /// Thread-safe and idempotent.
     /// </summary>
@@ -59,14 +60,14 @@ public sealed class SetupWizardApiFactory : GroundUpWebApplicationFactory<Progra
         var dbContext = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
 
         var exists = await dbContext.Set<SettingLevel>()
-            .AnyAsync(l => l.Name == "system");
+            .AnyAsync(l => l.Name == DefaultSettingLevelSeeder.SystemLevelName);
 
         if (!exists)
         {
             dbContext.Set<SettingLevel>().Add(new SettingLevel
             {
                 Id = Guid.NewGuid(),
-                Name = "system",
+                Name = DefaultSettingLevelSeeder.SystemLevelName,
                 DisplayOrder = 0,
                 CreatedAt = DateTime.UtcNow
             });
@@ -144,10 +145,7 @@ public sealed class SetupWizardApiFactory : GroundUpWebApplicationFactory<Progra
         services.RemoveAll<IIdentityProviderAdminService>();
         services.AddScoped<IIdentityProviderAdminService, FakeIdentityProviderAdminService>();
 
-        // Register the BootstrapAdminToken authentication scheme
-        services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, BootstrapAdminTokenAuthenticationHandler>(
-                BootstrapAdminTokenAuthenticationHandler.SchemeName, _ => { });
+        // The BootstrapAdminToken scheme is registered by AddGroundUpSetup in the app; registering it again throws.
 
         // Memory cache for bootstrap state
         services.AddMemoryCache();
@@ -286,7 +284,7 @@ public sealed class SetupWizardApiCollection : ICollectionFixture<SetupWizardApi
 }
 
 /// <summary>
-/// Test scope chain provider that returns the "system" level from the database.
+/// Test scope chain provider that returns the System level from the database.
 /// This allows the SetupWizardService's precondition checks (which use the convenience
 /// GetAsync overload) to find settings stored at the system level.
 /// </summary>
@@ -304,7 +302,7 @@ internal sealed class SetupWizardTestScopeChainProvider : IScopeChainProvider
     {
         var systemLevel = await _dbContext.Set<SettingLevel>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Name == "system", cancellationToken);
+            .FirstOrDefaultAsync(l => l.Name == DefaultSettingLevelSeeder.SystemLevelName, cancellationToken);
 
         if (systemLevel is null)
             return Array.Empty<SettingScopeEntry>();

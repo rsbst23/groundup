@@ -10,9 +10,15 @@ namespace GroundUp.Tests.Integration.Auth.Repositories;
 /// (MarkExpiredOlderThanAsync, DeleteTerminalOlderThanAsync) against real Postgres.
 /// </summary>
 [Collection("AuthPostgres")]
-public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegrationTestBase
+public sealed class AuthFlowStateRepositoryBulkOperationsTests : AuthIntegrationTestBase, IAsyncLifetime
 {
     public AuthFlowStateRepositoryBulkOperationsTests(AuthPostgresFixture fixture) : base(fixture) { }
+
+    /// <summary>Starts each test from an empty auth flow state table (these tests assert table-wide counts).</summary>
+    public Task InitializeAsync() => ClearAuthFlowStatesAsync();
+
+    /// <inheritdoc />
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private AuthFlowStateRepository CreateRepository() => new(DbContext);
 
