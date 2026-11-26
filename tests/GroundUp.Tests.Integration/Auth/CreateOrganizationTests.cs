@@ -62,6 +62,8 @@ public sealed class CreateOrganizationTests : AuthFlowTestBase
         var assignment = await context.UserRoles.AsNoTracking()
             .FirstOrDefaultAsync(ur => ur.UserId == userId && ur.RoleId == adminRole.Id && ur.TenantId == newTenantId);
         assignment.Should().NotBeNull("the creator must be the new organization's TenantAdmin");
+        assignment!.Source.Should().Be(GroundUp.Auth.Core.Enums.RoleAssignmentSource.Provisioning,
+            "organization creation grants TenantAdmin through the role service as a system grant");
     }
 
     [Fact]

@@ -242,7 +242,7 @@ public sealed class LoginFlowHandlerTests
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
             {
-                new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, false)
+                new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, MembershipStatus.Inactive)
             }));
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
@@ -909,7 +909,7 @@ public sealed class LoginFlowHandlerTests
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
             {
-                new(Guid.NewGuid(), TestUserId, TestTenantId1, TestExternalUserId, false)
+                new(Guid.NewGuid(), TestUserId, TestTenantId1, TestExternalUserId, MembershipStatus.Inactive)
             }));
     }
 
@@ -923,7 +923,7 @@ public sealed class LoginFlowHandlerTests
     {
         var memberships = new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), TestUserId, tenantId, TestExternalUserId, IsActive: true)
+            new(Guid.NewGuid(), TestUserId, tenantId, TestExternalUserId, Status: MembershipStatus.Active)
         };
 
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
@@ -934,9 +934,9 @@ public sealed class LoginFlowHandlerTests
     {
         var memberships = new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), TestUserId, TestTenantId1, TestExternalUserId, IsActive: true),
-            new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, IsActive: true),
-            new(Guid.NewGuid(), TestUserId, TestTenantId3, TestExternalUserId, IsActive: true)
+            new(Guid.NewGuid(), TestUserId, TestTenantId1, TestExternalUserId, Status: MembershipStatus.Active),
+            new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, Status: MembershipStatus.Active),
+            new(Guid.NewGuid(), TestUserId, TestTenantId3, TestExternalUserId, Status: MembershipStatus.Active)
         };
 
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
@@ -947,8 +947,8 @@ public sealed class LoginFlowHandlerTests
     {
         var memberships = new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), TestUserId, includedTenantId, TestExternalUserId, IsActive: true),
-            new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, IsActive: true)
+            new(Guid.NewGuid(), TestUserId, includedTenantId, TestExternalUserId, Status: MembershipStatus.Active),
+            new(Guid.NewGuid(), TestUserId, TestTenantId2, TestExternalUserId, Status: MembershipStatus.Active)
         };
 
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
@@ -961,7 +961,7 @@ public sealed class LoginFlowHandlerTests
         var otherTenantId = excludedTenantId == TestTenantId2 ? TestTenantId3 : TestTenantId2;
         var memberships = new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), TestUserId, otherTenantId, TestExternalUserId, IsActive: true)
+            new(Guid.NewGuid(), TestUserId, otherTenantId, TestExternalUserId, Status: MembershipStatus.Active)
         };
 
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())

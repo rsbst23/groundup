@@ -26,5 +26,12 @@
     <ProjectReference Include="..\GroundUp.Services\GroundUp.Services.csproj" />
     <ProjectReference Include="..\GroundUp.Events\GroundUp.Events.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Internal system paths (IRoleGrantWriter and the classes that use it) are tested directly.
+         DynamicProxyGenAssembly2 lets NSubstitute substitute internal interfaces. -->
+    <InternalsVisibleTo Include="GroundUp.Tests.Unit" />
+    <InternalsVisibleTo Include="GroundUp.Tests.Integration" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
 
 </Project>

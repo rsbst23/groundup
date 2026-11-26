@@ -122,6 +122,55 @@ public abstract class AuthIntegrationTestBase
     }
 
     /// <summary>
+    /// Seeds a membership directly into the database and returns its ID, or returns the existing
+    /// membership's ID. Role lookups only return roles held through an Active membership, so tests
+    /// that assign roles seed one first.
+    /// </summary>
+    protected async Task<Guid> SeedMembershipAsync(
+        Guid userId,
+        Guid tenantId,
+        MembershipStatus status = MembershipStatus.Active)
+    {
+        // One membership per user and tenant: reuse an existing one (tests call this before each role)
+        var existingId = await DbContext.UserTenants
+            .Where(ut => ut.UserId == userId && ut.TenantId == tenantId)
+            .Select(ut => (Guid?)ut.Id)
+            .FirstOrDefaultAsync();
+        if (existingId is not null)
+        {
+            return existingId.Value;
+        }
+
+        var membership = new GroundUp.Auth.Core.Entities.UserTenant
+        {
+            UserId = userId,
+            TenantId = tenantId,
+            ExternalUserId = status == MembershipStatus.Pending ? null : $"ext-{Guid.NewGuid():N}",
+            Status = status
+        };
+        DbContext.UserTenants.Add(membership);
+        await DbContext.SaveChangesAsync();
+        return membership.Id;
+    }
+
+    /// <summary>
+    /// Seeds a pending user (no identity-provider id yet) and returns its ID.
+    /// </summary>
+    protected async Task<Guid> SeedPendingUserAsync(string email)
+    {
+        var user = new GroundUp.Auth.Core.Entities.User
+        {
+            ExternalUserId = null,
+            Email = email,
+            DisplayName = email,
+            IsActive = true
+        };
+        DbContext.Users.Add(user);
+        await DbContext.SaveChangesAsync();
+        return user.Id;
+    }
+
+    /// <summary>
     /// Returns the ID of the permission with this key, creating it if it does not exist yet.
     /// Permission keys are globally unique and the test classes in this collection share one
     /// database, so a key seeded by an earlier test is reused rather than inserted again.

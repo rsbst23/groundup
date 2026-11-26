@@ -9,6 +9,7 @@ using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
 using GroundUp.Auth.Services.Membership;
 using GroundUp.Auth.Services.Revocation;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Auth.Services.Session;
 using GroundUp.Auth.Services.Settings;
 using GroundUp.Auth.Services.Token;
@@ -152,8 +153,15 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IFlowHandler, LoginFlowHandler>();
         services.AddScoped<IFlowHandler, SimpleSignupFlowHandler>();
         services.AddScoped<LastAdminGuard>();
+        services.AddScoped<TenantAccessRevoker>();
         services.AddScoped<IMembershipService, MembershipService>();
         services.AddScoped<IOrganizationProvisioningService, OrganizationProvisioningService>();
+        // Role assignment (GU-68): one class behind the public, rule-checked IUserRoleService and the
+        // internal system path IRoleGrantWriter. Applications add rules as IRoleAssignmentRule.
+        services.AddScoped<RoleGrantPolicy>();
+        services.AddScoped<UserRoleService>();
+        services.AddScoped<IUserRoleService>(sp => sp.GetRequiredService<UserRoleService>());
+        services.AddScoped<IRoleGrantWriter>(sp => sp.GetRequiredService<UserRoleService>());
 
         // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
         // TimeProvider.System on purpose: the cutoff must use the clock that stamps iat on tokens, not

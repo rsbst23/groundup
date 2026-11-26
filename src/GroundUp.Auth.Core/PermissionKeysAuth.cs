@@ -27,6 +27,13 @@ public static class PermissionKeysAuth
     public const string RolesDelete = "auth.roles.delete";
     public const string RolesAssignSystem = "auth.roles.assign-system";
 
+    /// <summary>
+    /// Assign and remove roles other than SuperAdmin and TenantAdmin in the current tenant (GU-68).
+    /// SuperAdmin can only be granted by a SuperAdmin, and TenantAdmin only by a TenantAdmin of that
+    /// tenant or a SuperAdmin, whatever permissions the caller holds.
+    /// </summary>
+    public const string RolesAssign = "auth.roles.assign";
+
     // --- Permissions ---
     public const string PermissionsRead = "auth.permissions.read";
     public const string PermissionsWrite = "auth.permissions.write";
@@ -53,6 +60,7 @@ public static class PermissionKeysAuth
         (RolesWrite, "Write Roles", "Create and update roles and policy assignments", "auth"),
         (RolesDelete, "Delete Roles", "Remove roles", "auth"),
         (RolesAssignSystem, "Assign System Roles", "Assign or revoke system-level roles (e.g., SuperAdmin). Only SuperAdmins should hold this permission.", "auth"),
+        (RolesAssign, "Assign Roles", "Assign and remove roles other than SuperAdmin and TenantAdmin within the tenant", "auth"),
 
         (PermissionsRead, "Read Permissions", "View permission definitions", "auth"),
         (PermissionsWrite, "Write Permissions", "Assign and revoke permissions from policies", "auth"),

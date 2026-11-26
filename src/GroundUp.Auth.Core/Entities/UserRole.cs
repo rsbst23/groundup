@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Core.Entities;
 
 namespace GroundUp.Auth.Core.Entities;
@@ -37,6 +38,11 @@ public sealed class UserRole : BaseEntity, IAuditable, ITenantEntity
     /// Navigation property to the tenant scoping this assignment.
     /// </summary>
     public Tenant Tenant { get; set; } = null!;
+
+    /// <summary>
+    /// Why this assignment exists. Defaults to <see cref="RoleAssignmentSource.Manual"/>.
+    /// </summary>
+    public RoleAssignmentSource Source { get; set; } = RoleAssignmentSource.Manual;
 
     /// <inheritdoc />
     public DateTime CreatedAt { get; set; }

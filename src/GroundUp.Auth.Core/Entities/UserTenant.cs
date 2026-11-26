@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Core.Entities;
 
 namespace GroundUp.Auth.Core.Entities;
@@ -30,13 +31,14 @@ public sealed class UserTenant : BaseEntity, IAuditable, ITenantEntity
 
     /// <summary>
     /// The identity provider user identifier specific to this tenant context.
+    /// Null while the membership belongs to a pending user who has not signed in yet.
     /// </summary>
-    public string ExternalUserId { get; set; } = string.Empty;
+    public string? ExternalUserId { get; set; }
 
     /// <summary>
-    /// Whether this tenant membership is active. Defaults to true.
+    /// The membership state. Defaults to <see cref="MembershipStatus.Active"/>.
     /// </summary>
-    public bool IsActive { get; set; } = true;
+    public MembershipStatus Status { get; set; } = MembershipStatus.Active;
 
     /// <inheritdoc />
     public DateTime CreatedAt { get; set; }

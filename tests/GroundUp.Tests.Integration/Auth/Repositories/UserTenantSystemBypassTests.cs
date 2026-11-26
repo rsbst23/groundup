@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using FluentAssertions;
 using GroundUp.Auth.Core.Dtos;
 
@@ -25,8 +26,8 @@ public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
         var repoB = CreateUserTenantRepository(tenantBId);
 
         // Create memberships in both tenants
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
-        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act — call from Tenant A's context, should still return both
         var result = await repoA.GetAllMembershipsForUserAsync(userId);
@@ -49,8 +50,8 @@ public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
         var repoA = CreateUserTenantRepository(tenantAId);
         var repoB = CreateUserTenantRepository(tenantBId);
 
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
-        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act
         var result = await repoA.GetByUserIdAsync(userId);
@@ -71,8 +72,8 @@ public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
         var repoA = CreateUserTenantRepository(tenantAId);
         var repoB = CreateUserTenantRepository(tenantBId);
 
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
-        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act
         var result = await repoB.GetByUserIdAsync(userId);
@@ -95,9 +96,9 @@ public sealed class UserTenantSystemBypassTests : AuthIntegrationTestBase
         var repoB = CreateUserTenantRepository(tenantBId);
         var repoC = CreateUserTenantRepository(tenantCId);
 
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
-        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", true));
-        await repoC.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantCId, $"ext-c-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoB.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantBId, $"ext-b-{Guid.NewGuid():N}", MembershipStatus.Active));
+        await repoC.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantCId, $"ext-c-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act — call from any tenant context
         var result = await repoA.GetAllMembershipsForUserAsync(userId);

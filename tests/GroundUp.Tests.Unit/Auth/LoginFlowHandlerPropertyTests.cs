@@ -75,7 +75,7 @@ public sealed class LoginFlowHandlerPropertyTests
                 new TokenResponseDto(keycloakAccessToken, "refresh-token", 3600, idToken)));
 
         var userInfo = new ExternalUserInfo(
-            ExternalUserId: user.ExternalUserId,
+            ExternalUserId: user.ExternalUserId!,
             Email: user.Email,
             DisplayName: user.DisplayName,
             Attributes: null);
@@ -216,7 +216,7 @@ public sealed class LoginFlowHandlerPropertyTests
             IsActive: true);
 
         var memberships = input.Tenants
-            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, true))
+            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, MembershipStatus.Active))
             .ToList();
 
         var (handler, _) = CreateSut(user, memberships, input.Tenants);
@@ -266,7 +266,7 @@ public sealed class LoginFlowHandlerPropertyTests
             IsActive: true);
 
         var memberships = input.Tenants
-            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, true))
+            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, MembershipStatus.Active))
             .ToList();
 
         var (handler, _) = CreateSut(user, memberships, input.Tenants);
@@ -315,7 +315,7 @@ public sealed class LoginFlowHandlerPropertyTests
             IsActive: true);
 
         var memberships = input.Tenants
-            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, true))
+            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, MembershipStatus.Active))
             .ToList();
 
         var (handler, cookieWriter) = CreateSut(user, memberships, input.Tenants, keycloakToken);
@@ -370,7 +370,7 @@ public sealed class LoginFlowHandlerPropertyTests
             IsActive: true);
 
         var memberships = input.Tenants
-            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, true))
+            .Select(t => new UserTenantDto(Guid.NewGuid(), user.Id, t.Id, user.ExternalUserId, MembershipStatus.Active))
             .ToList();
 
         var (handler, cookieWriter) = CreateSut(user, memberships, input.Tenants, keycloakToken);

@@ -9,9 +9,10 @@ namespace GroundUp.Auth.Core.Entities;
 public sealed class User : BaseEntity, IAuditable
 {
     /// <summary>
-    /// The external identity provider user identifier (e.g., Auth0 sub claim).
+    /// The external identity provider user identifier (e.g., the <c>sub</c> claim).
+    /// Null for a pending user who was invited but has not signed in yet.
     /// </summary>
-    public string ExternalUserId { get; set; } = string.Empty;
+    public string? ExternalUserId { get; set; }
 
     /// <summary>
     /// The user's email address.
@@ -27,6 +28,12 @@ public sealed class User : BaseEntity, IAuditable
     /// Whether the user account is active. Defaults to true.
     /// </summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Set when this pending user was merged into another user who accepted their invitation.
+    /// The record is kept so references to it still resolve.
+    /// </summary>
+    public Guid? MergedIntoUserId { get; set; }
 
     /// <summary>
     /// The tenant memberships for this user.

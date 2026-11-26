@@ -40,6 +40,7 @@ public sealed class CacheInvalidationTests : AuthIntegrationTestBase
         var policy1 = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Policy1", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy1.Data!.Id, perm1Id);
         await roleRepo.AssignPolicyAsync(role1.Data!.Id, policy1.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role1.Data!.Id, tenantId));
 
         // Role 2 with perm2 (not yet assigned to user)
@@ -59,6 +60,7 @@ public sealed class CacheInvalidationTests : AuthIntegrationTestBase
         initialPermissions.Should().HaveCount(1);
 
         // Act — add role2 to user via repository
+        await SeedMembershipAsync(userId, tenantId);
         var newUserRole = await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role2.Data!.Id, tenantId));
         newUserRole.Success.Should().BeTrue();
 
@@ -93,6 +95,7 @@ public sealed class CacheInvalidationTests : AuthIntegrationTestBase
         var policy1 = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "StalePolicy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy1.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(role1.Data!.Id, policy1.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role1.Data!.Id, tenantId));
 
         // Create shared cache and permission service
@@ -136,6 +139,7 @@ public sealed class CacheInvalidationTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "EvictPolicy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, perm1Id);
         await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
 
         // Create shared cache and permission service

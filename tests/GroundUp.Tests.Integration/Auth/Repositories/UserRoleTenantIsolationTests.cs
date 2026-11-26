@@ -24,6 +24,7 @@ public sealed class UserRoleTenantIsolationTests : AuthIntegrationTestBase
         var roleResult = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "Admin", null, RoleType.Application, tenantAId, false));
 
         var userRoleRepo = CreateUserRoleRepository(tenantAId);
+        await SeedMembershipAsync(userId, tenantAId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, roleResult.Data!.Id, tenantAId));
 
         // Act
@@ -48,6 +49,7 @@ public sealed class UserRoleTenantIsolationTests : AuthIntegrationTestBase
         var roleResult = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "Admin", null, RoleType.Application, tenantAId, false));
 
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
+        await SeedMembershipAsync(userId, tenantAId);
         await userRoleRepoA.AddAsync(new UserRoleDto(Guid.Empty, userId, roleResult.Data!.Id, tenantAId));
 
         // Act — query from Tenant B's context
@@ -76,7 +78,9 @@ public sealed class UserRoleTenantIsolationTests : AuthIntegrationTestBase
         // Assign user to roles in both tenants
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
         var userRoleRepoB = CreateUserRoleRepository(tenantBId);
+        await SeedMembershipAsync(userId, tenantAId);
         await userRoleRepoA.AddAsync(new UserRoleDto(Guid.Empty, userId, roleA.Data!.Id, tenantAId));
+        await SeedMembershipAsync(userId, tenantBId);
         await userRoleRepoB.AddAsync(new UserRoleDto(Guid.Empty, userId, roleB.Data!.Id, tenantBId));
 
         // Act — query from Tenant A's context
@@ -101,6 +105,7 @@ public sealed class UserRoleTenantIsolationTests : AuthIntegrationTestBase
         var roleResult = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "Admin", null, RoleType.Application, tenantAId, false));
 
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
+        await SeedMembershipAsync(userId, tenantAId);
         var createResult = await userRoleRepoA.AddAsync(new UserRoleDto(Guid.Empty, userId, roleResult.Data!.Id, tenantAId));
         var userRoleId = createResult.Data!.Id;
 
@@ -126,6 +131,7 @@ public sealed class UserRoleTenantIsolationTests : AuthIntegrationTestBase
         var roleResult = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "Admin", null, RoleType.Application, tenantAId, false));
 
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
+        await SeedMembershipAsync(userId, tenantAId);
         var createResult = await userRoleRepoA.AddAsync(new UserRoleDto(Guid.Empty, userId, roleResult.Data!.Id, tenantAId));
         var userRoleId = createResult.Data!.Id;
 

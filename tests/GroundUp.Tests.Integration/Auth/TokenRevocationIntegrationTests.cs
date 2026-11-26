@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using System.Net;
 using FluentAssertions;
 using GroundUp.Auth.Core;
@@ -98,7 +99,7 @@ public sealed class TokenRevocationIntegrationTests : AuthFlowTestBase
         await using (var db = Fixture.CreateAuthDbContext())
         {
             var membership = await db.Set<UserTenant>().SingleAsync(m => m.UserId == userId && m.TenantId == tenantId);
-            membership.IsActive = true;
+            membership.Status = MembershipStatus.Active;
             await db.SaveChangesAsync();
         }
 

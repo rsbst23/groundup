@@ -19,6 +19,7 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         // Arrange — user has both system and application roles
         var tenantId = await SeedTenantAsync("Test Tenant", $"tenant-{Guid.NewGuid():N}");
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", "sysroles@test.com");
+        await SeedMembershipAsync(userId, tenantId);
 
         var roleRepo = CreateRoleRepository(tenantId);
         var userRoleRepo = CreateUserRoleRepository(tenantId);
@@ -50,6 +51,7 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         // Arrange
         var tenantId = await SeedTenantAsync("Test Tenant", $"tenant-{Guid.NewGuid():N}");
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", "rolename@test.com");
+        await SeedMembershipAsync(userId, tenantId);
 
         var roleRepo = CreateRoleRepository(tenantId);
         var userRoleRepo = CreateUserRoleRepository(tenantId);
@@ -73,6 +75,7 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         var tenantAId = await SeedTenantAsync("Tenant A", $"tenant-a-{Guid.NewGuid():N}");
         var tenantBId = await SeedTenantAsync("Tenant B", $"tenant-b-{Guid.NewGuid():N}");
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", "bypass@test.com");
+        await SeedMembershipAsync(userId, tenantAId);
 
         var roleRepoA = CreateRoleRepository(tenantAId);
         var userRoleRepoA = CreateUserRoleRepository(tenantAId);
@@ -96,6 +99,7 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         // Arrange
         var tenantId = await SeedTenantAsync("Test Tenant", $"tenant-{Guid.NewGuid():N}");
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", "multi-sys@test.com");
+        await SeedMembershipAsync(userId, tenantId);
 
         var roleRepo = CreateRoleRepository(tenantId);
         var userRoleRepo = CreateUserRoleRepository(tenantId);
@@ -121,6 +125,7 @@ public sealed class UserRoleSystemRolesTests : AuthIntegrationTestBase
         // Arrange — user has only application roles
         var tenantId = await SeedTenantAsync("Test Tenant", $"tenant-{Guid.NewGuid():N}");
         var userId = await SeedUserAsync($"ext-{Guid.NewGuid():N}", "nosys@test.com");
+        await SeedMembershipAsync(userId, tenantId);
 
         var roleRepo = CreateRoleRepository(tenantId);
         var userRoleRepo = CreateUserRoleRepository(tenantId);

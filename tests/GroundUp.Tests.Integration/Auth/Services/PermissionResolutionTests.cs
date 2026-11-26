@@ -49,6 +49,7 @@ public sealed class PermissionResolutionTests : AuthIntegrationTestBase
         (await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id)).Success.Should().BeTrue();
 
         // Assign role to user
+        await SeedMembershipAsync(userId, tenantId);
         var userRole = await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
         userRole.Success.Should().BeTrue();
 
@@ -93,7 +94,9 @@ public sealed class PermissionResolutionTests : AuthIntegrationTestBase
         await roleRepo.AssignPolicyAsync(role2.Data!.Id, policy2.Data!.Id);
 
         // Assign both roles to user
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role1.Data!.Id, tenantId));
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role2.Data!.Id, tenantId));
 
         // Act
@@ -124,6 +127,7 @@ public sealed class PermissionResolutionTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Check Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
 
         // Act

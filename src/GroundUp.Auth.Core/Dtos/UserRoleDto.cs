@@ -1,3 +1,5 @@
+using GroundUp.Auth.Core.Enums;
+
 namespace GroundUp.Auth.Core.Dtos;
 
 /// <summary>
@@ -8,9 +10,11 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="RoleId">The role identifier.</param>
 /// <param name="TenantId">The tenant identifier scoping this role assignment.</param>
 /// <param name="RoleName">The display name of the assigned role. Populated by system role queries.</param>
+/// <param name="Source">Why this assignment exists.</param>
 public record UserRoleDto(
     Guid Id,
     Guid UserId,
     Guid RoleId,
     Guid TenantId,
-    string? RoleName = null);
+    string? RoleName = null,
+    RoleAssignmentSource Source = RoleAssignmentSource.Manual);

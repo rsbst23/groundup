@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using FluentAssertions;
 using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
@@ -6,6 +7,7 @@ using GroundUp.Auth.Services;
 using GroundUp.Auth.Services.Membership;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
+using GroundUp.Events;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -25,6 +27,7 @@ public sealed class MembershipServiceTests
     private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
     private readonly IAuthSessionService _sessions = Substitute.For<IAuthSessionService>();
     private readonly ITenantRepository _tenants = Substitute.For<ITenantRepository>();
+    private readonly IEventBus _eventBus = Substitute.For<IEventBus>();
     private readonly MembershipService _sut;
 
     private readonly Guid _target = Guid.NewGuid();
@@ -36,7 +39,8 @@ public sealed class MembershipServiceTests
 
         _sut = new MembershipService(
             _currentUser, _tenantContext, _userTenants, new LastAdminGuard(_userRoles),
-            _store, _cache, _sessions, _tenants, NullLogger<MembershipService>.Instance);
+            new TenantAccessRevoker(_store, _cache, NullLogger<TenantAccessRevoker>.Instance, _eventBus),
+            _sessions, _tenants, NullLogger<MembershipService>.Instance);
     }
 
     // ── Arrange helpers ───────────────────────────────────────────
@@ -44,7 +48,7 @@ public sealed class MembershipServiceTests
     private void GivenMemberships(params (Guid TenantId, bool IsActive)[] memberships)
         => _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships
-                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, "ext", m.IsActive))
+                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, "ext", m.IsActive ? MembershipStatus.Active : MembershipStatus.Inactive))
                 .ToList()));
 
     private void GivenAdmins(params Guid[] adminUserIds)
@@ -53,14 +57,14 @@ public sealed class MembershipServiceTests
                 .Select(id => new UserRoleDto(Guid.NewGuid(), id, Guid.NewGuid(), _target, "TenantAdmin"))
                 .ToList()));
 
-    private void GivenDeactivation(OperationResult result)
+    private void GivenDeactivation(OperationResult<List<UserRoleDto>> result)
         => _userTenants.DeactivateMembershipAsync(UserId, _target, Arg.Any<CancellationToken>()).Returns(result);
 
     private void GivenLeavable()
     {
         GivenMemberships((_target, true));
         GivenAdmins(UserId, Guid.NewGuid()); // two admins: leaving is allowed
-        GivenDeactivation(OperationResult.Ok());
+        GivenDeactivation(OperationResult<List<UserRoleDto>>.Ok([]));
     }
 
     private void GivenCachedPermissions(Guid tenantId)
@@ -137,7 +141,7 @@ public sealed class MembershipServiceTests
     {
         GivenMemberships((_target, true));
         GivenAdmins();
-        GivenDeactivation(OperationResult.Fail("A conflict occurred while leaving the tenant.", 409));
+        GivenDeactivation(OperationResult<List<UserRoleDto>>.Fail("A conflict occurred while leaving the tenant.", 409));
         GivenCachedPermissions(_target);
 
         var result = await _sut.LeaveTenantAsync(_target, null);
@@ -153,7 +157,7 @@ public sealed class MembershipServiceTests
     {
         GivenMemberships((_target, true));
         GivenAdmins(Guid.NewGuid());
-        GivenDeactivation(OperationResult.Ok());
+        GivenDeactivation(OperationResult<List<UserRoleDto>>.Ok([]));
 
         var result = await _sut.LeaveTenantAsync(_target, null);
 
@@ -273,6 +277,34 @@ public sealed class MembershipServiceTests
         _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Fail("db", 500));
         (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+    }
+
+    private void GivenStatuses(params (Guid TenantId, MembershipStatus Status)[] memberships)
+        => _userTenants.GetAllMembershipsForUserAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships
+                .Select(m => new UserTenantDto(Guid.NewGuid(), UserId, m.TenantId, null, m.Status))
+                .ToList()));
+
+    [Fact]
+    public async Task IsActiveMemberAsync_PendingMembership_False()
+    {
+        GivenStatuses((_target, MembershipStatus.Pending));
+
+        (await _sut.IsActiveMemberAsync(UserId, _target)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetMyTenantsAsync_PendingMembership_NotListed()
+    {
+        var active = Guid.NewGuid();
+        GivenStatuses((_target, MembershipStatus.Pending), (active, MembershipStatus.Active));
+        GivenTenants(Standard(active, "Active"));
+
+        var result = await _sut.GetMyTenantsAsync();
+
+        result.Data.Should().ContainSingle().Which.Id.Should().Be(active);
+        await _tenants.Received(1).GetByIdsBypassFilterAsync(
+            Arg.Is<IEnumerable<Guid>>(ids => ids.SequenceEqual(new[] { active })), Arg.Any<CancellationToken>());
     }
 
     // ── GetMyTenantsAsync ─────────────────────────────────────────

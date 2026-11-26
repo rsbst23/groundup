@@ -5,6 +5,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Core.Validators;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
@@ -19,7 +20,7 @@ public sealed class OrganizationProvisioningServiceTests
     private readonly ITenantRepository _tenantRepository = Substitute.For<ITenantRepository>();
     private readonly IUserTenantRepository _userTenantRepository = Substitute.For<IUserTenantRepository>();
     private readonly IRoleRepository _roleRepository = Substitute.For<IRoleRepository>();
-    private readonly IUserRoleRepository _userRoleRepository = Substitute.For<IUserRoleRepository>();
+    private readonly IRoleGrantWriter _roleGrantWriter = Substitute.For<IRoleGrantWriter>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly TenantContext _tenantContext = new();
     private readonly ILogger<OrganizationProvisioningService> _logger =
@@ -41,7 +42,7 @@ public sealed class OrganizationProvisioningServiceTests
             _tenantRepository,
             _userTenantRepository,
             _roleRepository,
-            _userRoleRepository,
+            _roleGrantWriter,
             _unitOfWork,
             _tenantContext,
             _logger,
@@ -127,12 +128,38 @@ public sealed class OrganizationProvisioningServiceTests
         await _sut.ProvisionAsync(CreateRequest());
 
         // Assert
-        await _userRoleRepository.Received(1).AddAsync(
-            Arg.Is<UserRoleDto>(ur =>
-                ur.UserId == TestUserId &&
-                ur.RoleId == TestRoleId &&
-                ur.TenantId == TestTenantId),
-            Arg.Any<CancellationToken>());
+        await _roleGrantWriter.Received(1).GrantAsync(
+            TestUserId, TestRoleId, TestTenantId, RoleAssignmentSource.Provisioning,
+            true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_ValidRequest_PublishesTheGrantAfterTheTransaction()
+    {
+        // Act
+        await _sut.ProvisionAsync(CreateRequest());
+
+        // Assert: deferred inside the transaction, published once afterwards
+        Received.InOrder(() =>
+        {
+            _unitOfWork.ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>());
+            _roleGrantWriter.PublishGrantedAsync(
+                Arg.Is<RoleGrantResult>(g => g.Assignment.RoleId == TestRoleId && g.Created), Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_TransactionRolledBack_PublishesNothing()
+    {
+        // Arrange: every attempt reports a rolled-back transaction
+        _unitOfWork.ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult.Fail("Unique constraint violation", 409));
+
+        // Act
+        await _sut.ProvisionAsync(CreateRequest());
+
+        // Assert
+        await _roleGrantWriter.DidNotReceiveWithAnyArgs().PublishGrantedAsync(default!, default);
     }
 
     [Fact]
@@ -338,8 +365,7 @@ public sealed class OrganizationProvisioningServiceTests
             Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>());
         await _roleRepository.DidNotReceive().AddAsync(
             Arg.Any<RoleDto>(), Arg.Any<CancellationToken>());
-        await _userRoleRepository.DidNotReceive().AddAsync(
-            Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>());
+        await _roleGrantWriter.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
     }
 
     #endregion
@@ -374,16 +400,15 @@ public sealed class OrganizationProvisioningServiceTests
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>();
-        await _userRoleRepository.DidNotReceive().AddAsync(
-            Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>());
+        await _roleGrantWriter.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
     }
 
     [Fact]
     public async Task ProvisionAsync_RoleAssignmentFails_ThrowsSoTheTransactionRollsBack()
     {
         // Arrange
-        _userRoleRepository.AddAsync(Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<UserRoleDto>.Fail("Database unavailable", 500));
+        _roleGrantWriter.GrantAsync(default, default, default, default, default, default)
+            .ReturnsForAnyArgs(OperationResult<RoleGrantResult>.Fail("Database unavailable", 500));
 
         // Act
         Func<Task> act = () => _sut.ProvisionAsync(CreateRequest());
@@ -519,8 +544,11 @@ public sealed class OrganizationProvisioningServiceTests
             .Returns(callInfo =>
                 OperationResult<RoleDto>.Ok(callInfo.ArgAt<RoleDto>(0) with { Id = TestRoleId }));
 
-        _userRoleRepository.AddAsync(Arg.Any<UserRoleDto>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => OperationResult<UserRoleDto>.Ok(callInfo.ArgAt<UserRoleDto>(0)));
+        _roleGrantWriter.GrantAsync(default, default, default, default, default, default)
+            .ReturnsForAnyArgs(callInfo => OperationResult<RoleGrantResult>.Ok(new RoleGrantResult(
+                new UserRoleDto(Guid.NewGuid(), callInfo.ArgAt<Guid>(0), callInfo.ArgAt<Guid>(1), callInfo.ArgAt<Guid>(2),
+                    Source: callInfo.ArgAt<RoleAssignmentSource>(3)),
+                Created: true)));
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Data.Abstractions;
 using Microsoft.Extensions.Logging;
 
@@ -16,7 +17,7 @@ namespace GroundUp.Auth.Services;
 /// Logic was extracted from <see cref="NewOrganizationFlowHandler"/> so the sign-up callback
 /// and the authenticated organization-creation endpoint share one implementation.
 /// </summary>
-public sealed class OrganizationProvisioningService : IOrganizationProvisioningService
+internal sealed class OrganizationProvisioningService : IOrganizationProvisioningService
 {
     /// <summary>
     /// Maximum number of slug attempts (the original slug plus disambiguated variants) before giving up.
@@ -26,7 +27,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
     private readonly ITenantRepository _tenantRepository;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly IRoleRepository _roleRepository;
-    private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IRoleGrantWriter _roleGrantWriter;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<OrganizationProvisioningService> _logger;
@@ -41,7 +42,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         ITenantRepository tenantRepository,
         IUserTenantRepository userTenantRepository,
         IRoleRepository roleRepository,
-        IUserRoleRepository userRoleRepository,
+        IRoleGrantWriter roleGrantWriter,
         IUnitOfWork unitOfWork,
         TenantContext tenantContext,
         ILogger<OrganizationProvisioningService> logger,
@@ -52,7 +53,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         _tenantRepository = tenantRepository;
         _userTenantRepository = userTenantRepository;
         _roleRepository = roleRepository;
-        _userRoleRepository = userRoleRepository;
+        _roleGrantWriter = roleGrantWriter;
         _unitOfWork = unitOfWork;
         _tenantContext = tenantContext;
         _logger = logger;
@@ -105,6 +106,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         var tenantId = Guid.Empty;
         var slug = baseSlug;
         var provisioned = false;
+        RoleGrantResult? adminGrant = null;
 
         try
         {
@@ -115,7 +117,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
                 try
                 {
                     var transactionResult = await _unitOfWork.ExecuteInTransactionAsync(
-                        ct => CreateOrganizationRowsAsync(request, slug, id => tenantId = id, ct),
+                        ct => CreateOrganizationRowsAsync(request, slug, id => tenantId = id, grant => adminGrant = grant, ct),
                         cancellationToken);
 
                     if (transactionResult.Success)
@@ -156,6 +158,11 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
                 "SLUG_COLLISION");
         }
 
+        if (adminGrant is not null)
+        {
+            await _roleGrantWriter.PublishGrantedAsync(adminGrant, cancellationToken);
+        }
+
         _logger.LogInformation(
             "Organization provisioned: TenantId={TenantId}, UserId={UserId}",
             tenantId, request.UserId);
@@ -172,6 +179,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
         OrganizationProvisioningRequest request,
         string slug,
         Action<Guid> onTenantCreated,
+        Action<RoleGrantResult> onAdminGranted,
         CancellationToken ct)
     {
         var tenantDto = new TenantDto(
@@ -202,7 +210,7 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
             UserId: request.UserId,
             TenantId: tenantId,
             ExternalUserId: request.ExternalUserId,
-            IsActive: true);
+            Status: MembershipStatus.Active);
 
         var membershipResult = await _userTenantRepository.AddAsync(membershipDto, ct);
         if (!membershipResult.Success)
@@ -226,18 +234,17 @@ public sealed class OrganizationProvisioningService : IOrganizationProvisioningS
                 $"Failed to create TenantAdmin role for tenant '{tenantId}': {roleResult.Message}");
         }
 
-        var userRoleDto = new UserRoleDto(
-            Id: Guid.NewGuid(),
-            UserId: request.UserId,
-            RoleId: roleResult.Data.Id,
-            TenantId: tenantId);
-
-        var userRoleResult = await _userRoleRepository.AddAsync(userRoleDto, ct);
-        if (!userRoleResult.Success)
+        // A grant the system makes on the creator's behalf (source Provisioning), not one checked
+        // against the creator's roles. Events wait until the transaction commits.
+        var grantResult = await _roleGrantWriter.GrantAsync(
+            request.UserId, roleResult.Data.Id, tenantId, RoleAssignmentSource.Provisioning, deferEvents: true, ct);
+        if (!grantResult.Success || grantResult.Data is null)
         {
             throw new InvalidOperationException(
-                $"Failed to assign TenantAdmin role to user '{request.UserId}' in tenant '{tenantId}': {userRoleResult.Message}");
+                $"Failed to assign TenantAdmin role to user '{request.UserId}' in tenant '{tenantId}': {grantResult.Message}");
         }
+
+        onAdminGranted(grantResult.Data);
     }
 
     /// <summary>

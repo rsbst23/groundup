@@ -17,7 +17,7 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.27")
+                .HasAnnotation("ProductVersion", "8.0.34")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -395,7 +395,6 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                         .HasColumnType("character varying(320)");
 
                     b.Property<string>("ExternalUserId")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
@@ -403,6 +402,9 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
+
+                    b.Property<Guid?>("MergedIntoUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -413,7 +415,8 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExternalUserId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"ExternalUserId\" IS NOT NULL");
 
                     b.ToTable("AuthUsers", (string)null);
                 });
@@ -432,6 +435,9 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -453,7 +459,7 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("UserId", "RoleId", "TenantId")
+                    b.HasIndex("UserId", "RoleId", "TenantId", "Source")
                         .IsUnique();
 
                     b.ToTable("AuthUserRoles", (string)null);
@@ -472,14 +478,11 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("ExternalUserId")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -503,6 +506,87 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                         .IsUnique();
 
                     b.ToTable("AuthUserTenants", (string)null);
+                });
+
+            modelBuilder.Entity("GroundUp.Core.Entities.BootstrapState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CompletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsComplete")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("BootstrapStates", t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
+                });
+
+            modelBuilder.Entity("GroundUp.Core.Entities.SetupTransactionLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SetupTransactionLogs", t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
                 });
 
             modelBuilder.Entity("GroundUp.Auth.Core.Entities.Policy", b =>

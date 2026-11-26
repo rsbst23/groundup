@@ -66,10 +66,10 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         // Assert — other tenant membership is now inactive
         var memberships = await GetAllMembershipsForUserAsync(userId);
         var leftMembership = memberships.First(m => m.TenantId == otherTenantId);
-        leftMembership.IsActive.Should().BeFalse("the membership must be deactivated after leave");
+        leftMembership.Status.Should().Be(MembershipStatus.Inactive, "the membership must be deactivated after leave");
 
         var currentMembership = memberships.First(m => m.TenantId == currentTenantId);
-        currentMembership.IsActive.Should().BeTrue("the current tenant membership must remain active");
+        currentMembership.Status.Should().Be(MembershipStatus.Active, "the current tenant membership must remain active");
 
         // Assert — no new cookie was written (user did not leave current tenant)
         var newCookie = ExtractAuthCookie(response);
@@ -110,10 +110,10 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Assert — tenant1 membership deactivated
         var memberships = await GetAllMembershipsForUserAsync(userId);
-        memberships.First(m => m.TenantId == tenant1Id).IsActive
-            .Should().BeFalse();
-        memberships.First(m => m.TenantId == tenant2Id).IsActive
-            .Should().BeTrue();
+        memberships.First(m => m.TenantId == tenant1Id).Status
+            .Should().Be(MembershipStatus.Inactive);
+        memberships.First(m => m.TenantId == tenant2Id).Status
+            .Should().Be(MembershipStatus.Active);
 
         // Assert — the cookie now holds a tenantless token for the same user and sign-in time.
         // The user is NOT moved into tenant2 even though they still belong to it.
@@ -163,8 +163,8 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Assert — membership is deactivated
         var memberships = await GetAllMembershipsForUserAsync(userId);
-        memberships.First(m => m.TenantId == tenantId).IsActive
-            .Should().BeFalse();
+        memberships.First(m => m.TenantId == tenantId).Status
+            .Should().Be(MembershipStatus.Inactive);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -222,8 +222,8 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Assert — membership was NOT deactivated
         var memberships = await GetAllMembershipsForUserAsync(userId);
-        memberships.First(m => m.TenantId == tenantId).IsActive
-            .Should().BeTrue("the last admin's membership must NOT be deactivated");
+        memberships.First(m => m.TenantId == tenantId).Status
+            .Should().Be(MembershipStatus.Active, "the last admin's membership must NOT be deactivated");
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -258,12 +258,12 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Assert — admin1's membership deactivated; admin2's still active
         var admin1Memberships = await GetAllMembershipsForUserAsync(admin1Id);
-        admin1Memberships.First(m => m.TenantId == tenantId).IsActive
-            .Should().BeFalse();
+        admin1Memberships.First(m => m.TenantId == tenantId).Status
+            .Should().Be(MembershipStatus.Inactive);
 
         var admin2Memberships = await GetAllMembershipsForUserAsync(admin2Id);
-        admin2Memberships.First(m => m.TenantId == tenantId).IsActive
-            .Should().BeTrue();
+        admin2Memberships.First(m => m.TenantId == tenantId).Status
+            .Should().Be(MembershipStatus.Active);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         // Assert — the departed admin must not count; the tenant would otherwise have no admin
         secondLeave.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var admin2Memberships = await GetAllMembershipsForUserAsync(admin2Id);
-        admin2Memberships.First(m => m.TenantId == tenantId).IsActive.Should().BeTrue();
+        admin2Memberships.First(m => m.TenantId == tenantId).Status.Should().Be(MembershipStatus.Active);
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var memberships = await GetAllMembershipsForUserAsync(memberId);
-        memberships.First(m => m.TenantId == tenantId).IsActive.Should().BeFalse();
+        memberships.First(m => m.TenantId == tenantId).Status.Should().Be(MembershipStatus.Inactive);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -404,9 +404,9 @@ public sealed class LeaveTenantTests : AuthFlowTestBase
 
         // Assert — the other memberships are untouched
         var memberships = await GetAllMembershipsForUserAsync(userId);
-        memberships.First(m => m.TenantId == leftTenantId).IsActive.Should().BeFalse();
+        memberships.First(m => m.TenantId == leftTenantId).Status.Should().Be(MembershipStatus.Inactive);
         memberships.Count(m => otherTenantIds.Contains(m.TenantId)).Should().Be(otherTenantCount);
-        memberships.Where(m => otherTenantIds.Contains(m.TenantId)).All(m => m.IsActive).Should().BeTrue();
+        memberships.Where(m => otherTenantIds.Contains(m.TenantId)).All(m => m.Status == MembershipStatus.Active).Should().BeTrue();
 
         // Assert — the new tenantless session still lists the remaining tenants, none marked current
         var listResponse = await Client.SendAsync(CreateAuthenticatedRequest(HttpMethod.Get, "/auth/me/tenants", newCookie!));

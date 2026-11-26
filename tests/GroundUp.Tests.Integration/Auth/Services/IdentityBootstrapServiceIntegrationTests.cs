@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core.Enums;
 using FluentAssertions;
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Abstractions;
@@ -77,7 +78,7 @@ public sealed class IdentityBootstrapServiceIntegrationTests
 
             var membership = await context.UserTenants.AsNoTracking()
                 .SingleAsync(ut => ut.UserId == userId && ut.TenantId == AuthRoleNames.SystemTenantId);
-            membership.IsActive.Should().BeTrue();
+            membership.Status.Should().Be(MembershipStatus.Active);
             membership.ExternalUserId.Should().Be(request.ExternalUserId);
 
             var role = await context.UserRoles.AsNoTracking().Include(ur => ur.Role)

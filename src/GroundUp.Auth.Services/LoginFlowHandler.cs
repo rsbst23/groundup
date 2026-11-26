@@ -281,7 +281,7 @@ public sealed class LoginFlowHandler : IFlowHandler
                 UserId: user.Id,
                 TenantId: defaultTenant.Id,
                 ExternalUserId: user.ExternalUserId,
-                IsActive: true);
+                Status: MembershipStatus.Active);
 
             var membershipResult = await _userTenantRepository.AddAsync(membershipDto);
             if (!membershipResult.Success)

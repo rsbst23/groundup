@@ -79,6 +79,7 @@ public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Read Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
 
         // Create proxy with real permission service
@@ -131,6 +132,7 @@ public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "Partial Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permReadId);
         await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
 
         var proxy = CreateProxiedService(tenantId, userId);
@@ -154,6 +156,7 @@ public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
         var userRoleRepo = CreateUserRoleRepository(tenantId);
 
         var adminRole = await roleRepo.AddAsync(new RoleDto(Guid.Empty, "Admin", null, RoleType.System, tenantId, false));
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, adminRole.Data!.Id, tenantId));
 
         var proxy = CreateProxiedService(tenantId, userId);
@@ -217,6 +220,7 @@ public sealed class AuthorizationProxyIntegrationTests : AuthIntegrationTestBase
         var policy = await policyRepo.AddAsync(new PolicyDto(Guid.Empty, "DI Policy", null, tenantId));
         await policyRepo.AssignPermissionAsync(policy.Data!.Id, permId);
         await roleRepo.AssignPolicyAsync(role.Data!.Id, policy.Data!.Id);
+        await SeedMembershipAsync(userId, tenantId);
         await userRoleRepo.AddAsync(new UserRoleDto(Guid.Empty, userId, role.Data!.Id, tenantId));
 
         // Build a service collection with AddAuthorized

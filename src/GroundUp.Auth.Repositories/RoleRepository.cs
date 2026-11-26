@@ -132,4 +132,22 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
                 ErrorCodes.Conflict);
         }
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: queries the DbContext directly, without the current tenant filter, so the
+    /// SuperAdmin role (System tenant) can be found. The caller checks the role's tenant.
+    /// </remarks>
+    public async Task<OperationResult<RoleDto>> FindByIdAnyTenantAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        var role = await Context.Set<Role>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == roleId, cancellationToken);
+
+        return role is null
+            ? OperationResult<RoleDto>.NotFound("Role not found.")
+            : OperationResult<RoleDto>.Ok(AuthRoleMapper.ToDto(role));
+    }
 }

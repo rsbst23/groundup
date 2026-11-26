@@ -1,5 +1,6 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
 using GroundUp.Core.Results;
@@ -47,7 +48,7 @@ public sealed class IdentityBootstrapRepository : IIdentityBootstrapRepository
     public async Task<UserDto?> FindUserByEmailAsync(string email, CancellationToken cancellationToken = default)
         => await _context.Set<User>().AsNoTracking()
             .Where(u => u.Email == email)
-            .Select(u => new UserDto(u.Id, u.ExternalUserId, u.Email, u.DisplayName, u.IsActive))
+            .Select(u => new UserDto(u.Id, u.ExternalUserId, u.Email, u.DisplayName, u.IsActive, u.MergedIntoUserId))
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
@@ -104,7 +105,7 @@ public sealed class IdentityBootstrapRepository : IIdentityBootstrapRepository
                     UserId = userId.Value,
                     TenantId = record.TenantId,
                     ExternalUserId = record.ExternalUserId,
-                    IsActive = true
+                    Status = MembershipStatus.Active
                 });
                 await _context.SaveChangesAsync(cancellationToken);
             }
@@ -118,7 +119,8 @@ public sealed class IdentityBootstrapRepository : IIdentityBootstrapRepository
                 {
                     UserId = userId.Value,
                     RoleId = record.RoleId,
-                    TenantId = record.TenantId
+                    TenantId = record.TenantId,
+                    Source = RoleAssignmentSource.Provisioning
                 });
                 await _context.SaveChangesAsync(cancellationToken);
             }

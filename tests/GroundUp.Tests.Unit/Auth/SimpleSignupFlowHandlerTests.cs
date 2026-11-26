@@ -513,7 +513,7 @@ public sealed class SimpleSignupFlowHandlerTests
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserTenantDto>>.Ok(new List<UserTenantDto>
             {
-                new(Guid.NewGuid(), TestUserId, TestDefaultTenantId, TestExternalUserId, false)
+                new(Guid.NewGuid(), TestUserId, TestDefaultTenantId, TestExternalUserId, MembershipStatus.Inactive)
             }));
     }
 
@@ -521,7 +521,7 @@ public sealed class SimpleSignupFlowHandlerTests
     {
         var memberships = new List<UserTenantDto>
         {
-            new(Guid.NewGuid(), TestUserId, TestDefaultTenantId, TestExternalUserId, IsActive: true)
+            new(Guid.NewGuid(), TestUserId, TestDefaultTenantId, TestExternalUserId, Status: MembershipStatus.Active)
         };
 
         _userTenantRepository.GetAllMembershipsForUserAsync(TestUserId, Arg.Any<CancellationToken>())

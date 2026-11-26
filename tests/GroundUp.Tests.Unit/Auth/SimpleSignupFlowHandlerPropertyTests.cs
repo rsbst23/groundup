@@ -196,7 +196,7 @@ public sealed class SimpleSignupFlowHandlerPropertyTests
         {
             var memberships = new List<UserTenantDto>
             {
-                new(Guid.NewGuid(), userId, DefaultTenantId, "ext-user-id", IsActive: true)
+                new(Guid.NewGuid(), userId, DefaultTenantId, "ext-user-id", Status: MembershipStatus.Active)
             };
             userTenantRepository.GetAllMembershipsForUserAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
                 .Returns(OperationResult<List<UserTenantDto>>.Ok(memberships));

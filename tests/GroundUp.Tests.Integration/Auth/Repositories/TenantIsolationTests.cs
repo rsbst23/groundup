@@ -232,7 +232,7 @@ public sealed class TenantIsolationTests : AuthIntegrationTestBase
         var repoA = CreateUserTenantRepository(tenantAId);
         var repoB = CreateUserTenantRepository(tenantBId);
 
-        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", true));
+        await repoA.AddAsync(new UserTenantDto(Guid.Empty, userId, tenantAId, $"ext-a-{Guid.NewGuid():N}", MembershipStatus.Active));
 
         // Act
         var result = await repoB.GetAllAsync(new FilterParams { PageSize = 50 });
@@ -251,7 +251,7 @@ public sealed class TenantIsolationTests : AuthIntegrationTestBase
         var repoA = CreateUserTenantRepository(tenantAId);
 
         var wrongTenantId = Guid.NewGuid();
-        var dto = new UserTenantDto(Guid.Empty, userId, wrongTenantId, $"ext-{Guid.NewGuid():N}", true);
+        var dto = new UserTenantDto(Guid.Empty, userId, wrongTenantId, $"ext-{Guid.NewGuid():N}", MembershipStatus.Active);
 
         // Act
         var result = await repoA.AddAsync(dto);
