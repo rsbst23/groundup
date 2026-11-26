@@ -54,4 +54,17 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
     Task<OperationResult<RoleDto>> FindByIdAnyTenantAsync(
         Guid roleId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Finds a role by name (case-insensitive) in <paramref name="tenantId"/>. System-level bypass:
+    /// targets the tenant explicitly, for sign-in callbacks that run before a tenant is selected.
+    /// </summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="name">The role name.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The role, or NotFound.</returns>
+    Task<OperationResult<RoleDto>> GetByNameAsync(
+        Guid tenantId,
+        string name,
+        CancellationToken cancellationToken = default);
 }

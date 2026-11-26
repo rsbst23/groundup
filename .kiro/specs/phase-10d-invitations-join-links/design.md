@@ -181,9 +181,10 @@ public interface IMemberManagementService
 public sealed record TenantMemberDto(Guid UserId, string Email, string DisplayName, MembershipStatus Status, IReadOnlyList<MemberRoleDto> Roles);
 public sealed record MemberRoleDto(Guid RoleId, string RoleName, IReadOnlyList<RoleAssignmentSource> Sources);
 ```
-- Registered with `AddAuthorized` by the consuming app, like the settings services. The startup check covers it (6.3).
-- Current tenant only. Pending and Active members are listed; Inactive are not.
-- `RemoveMemberAsync`: 404 if not Active or Pending, `LastAdminGuard.CanLeaveTenantAsync` (only matters for Active), `DeactivateMembershipAsync` (deletes all role rows), deleted events, `TenantAccessRevoker`. For a Pending member it also revokes their Pending invitation (Requirement 5.2). Removing yourself is allowed and behaves like leaving, except the session isn't re-issued; the client calls `/auth/leave` for that instead.
+- Registered by `AddGroundUpAuth` itself with `AddAuthorized` (as built in group 3; the implementation is internal). It is the auth module's own service, so the app has nothing to register. The startup check still covers it in case an app replaces the registration (6.3).
+- Current tenant only. Pending and Active members are listed; Inactive are not. Paged (`PaginationParams`), ordered by email; the endpoint also sets the pagination headers.
+- `RemoveMemberAsync`: 404 if not Active or Pending; the caller must be allowed to remove **each role the member holds** (`RoleGrantPolicy`, Remove), so `auth.members.manage` alone cannot remove a TenantAdmin; `LastAdminGuard.CanLeaveTenantAsync`; `DeactivateMembershipAsync` (deletes all role rows); `TenantAccessRevoker` (deleted events, revocation, cache). For a Pending member it also revokes their Pending invitation (Requirement 5.2; wired in group 4, when invitations exist). Removing yourself is allowed and behaves like leaving, except the session isn't re-issued; the client calls `/auth/leave` for that instead.
+- Endpoints (`MembersController`, `BaseController`, results as `OperationResult` JSON): `GET /api/members`, `DELETE /api/members/{userId}`, `POST` and `DELETE /api/members/{userId}/roles/{roleId}`. Under `/api`, not `/auth`, so the host/token tenant check applies to these tenant-scoped admin calls.
 
 This is a new service rather than new methods on `IMembershipService`, because `IMembershipService` holds the caller's own operations and is used by middleware without the authorization proxy. Both share `DeactivateMembershipAsync` and `TenantAccessRevoker`, so removal and leaving run the same steps (Requirement 5.2).
 
@@ -321,17 +322,18 @@ Any refusal after the state was consumed calls `MarkFailedAsync` with the reason
 
 | Method and route | Service call |
 |---|---|
-| `POST /auth/invitations` | `CreateAsync` |
-| `GET /auth/invitations` | `ListAsync` |
-| `POST /auth/invitations/{id}/resend` | `ResendAsync` |
-| `POST /auth/invitations/{id}/revoke` | `RevokeAsync` |
+| `POST /api/invitations` | `CreateAsync` |
+| `GET /api/invitations` | `ListAsync` |
+| `POST /api/invitations/{id}/resend` | `ResendAsync` |
+| `POST /api/invitations/{id}/revoke` | `RevokeAsync` |
 | `POST /auth/invitations/lookup` `{ token }` | `LookupAsync` |
 | `POST /auth/invitations/accept` `{ token, forceLogin }` | `StartAsync` → `{ redirectUrl }` |
 
+- Admin endpoints are tenant-scoped and live under `/api` (like `/api/members`), so the host/token check applies. Two controllers: `InvitationsController` (`/api/invitations`, `BaseController`, `OperationResult` JSON) and the public endpoints on a controller under `/auth`.
 - The token goes in the body, not the path or query, so it doesn't land in access logs.
-- Under `/auth`, so the host/token check exempts them (Requirement 7.2).
+- The public endpoints are under `/auth`, so the host/token check exempts them (Requirement 7.2).
 - Cookie-authenticated POSTs need `X-CSRF-Token` as today. A signed-out accept page has no cookie and needs none.
-- Results map through one private `ToActionResult(OperationResult)` helper returning `{ error, errorCode }`, matching `AuthController`.
+- Public endpoint results return `{ error, errorCode }`, matching `AuthController`.
 
 ## 6. Join links, permissions, startup check (PR C)
 
@@ -367,7 +369,7 @@ Endpoints mirror invitations under `/auth/join-links` (admin) with `POST /auth/j
 
 ## 7. Events
 
-New records in `GroundUp.Auth.Core/Events`, all deriving from `BaseEvent`:
+New records in `GroundUp.Auth.Services/Events` (not `Auth.Core`: `Auth.Core` references only `GroundUp.Core`, and the events derive from `GroundUp.Events.BaseEvent`), all deriving from `BaseEvent`:
 - `PendingUserMerged(Guid FromUserId, Guid ToUserId)`
 - `InvitationAccepted(Guid InvitationId, Guid UserId)`
 - `InvitationRevoked(Guid InvitationId, Guid UserId)`

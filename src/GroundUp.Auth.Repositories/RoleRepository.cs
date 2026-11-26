@@ -150,4 +150,21 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
             ? OperationResult<RoleDto>.NotFound("Role not found.")
             : OperationResult<RoleDto>.Ok(AuthRoleMapper.ToDto(role));
     }
+
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult<RoleDto>> GetByNameAsync(
+        Guid tenantId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = name.Trim().ToLower();
+        var role = await Context.Set<Role>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Name.ToLower() == normalized, cancellationToken);
+
+        return role is null
+            ? OperationResult<RoleDto>.NotFound("Role not found.")
+            : OperationResult<RoleDto>.Ok(AuthRoleMapper.ToDto(role));
+    }
 }

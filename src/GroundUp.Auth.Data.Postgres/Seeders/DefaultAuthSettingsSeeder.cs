@@ -88,6 +88,18 @@ public sealed class DefaultAuthSettingsSeeder : IDataSeeder
             cancellationToken);
 
         await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: "auth.application.default-role",
+            DataType: SettingDataType.String,
+            DefaultValue: "",
+            DisplayName: "Default Role",
+            Description: "The name of the role given to users who join the default tenant by signing in or signing up, and to former members who rejoin. Leave empty for no role. A name that matches no role in the tenant is skipped.",
+            Category: "Application",
+            GroupKey: "auth.application",
+            GroupDisplayName: "Auth Application",
+            AllowedLevelNames: ["system", "tenant"]),
+            cancellationToken);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
             Key: "auth.application.signup-creates-org",
             DataType: SettingDataType.Bool,
             DefaultValue: "false",

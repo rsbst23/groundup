@@ -3,6 +3,7 @@ using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Validators;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Authorization;
 using GroundUp.Auth.Services.Bootstrap;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
@@ -162,6 +163,11 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<UserRoleService>();
         services.AddScoped<IUserRoleService>(sp => sp.GetRequiredService<UserRoleService>());
         services.AddScoped<IRoleGrantWriter>(sp => sp.GetRequiredService<UserRoleService>());
+        services.AddScoped<DefaultRoleAssigner>();
+        // One resolver for every sign-in flow: finds the user and claims pending users
+        services.AddScoped<SignInUserResolver>();
+        // Member administration, behind the authorization proxy (permissions on the interface)
+        services.AddAuthorized<IMemberManagementService, MemberManagementService>();
 
         // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
         // TimeProvider.System on purpose: the cutoff must use the clock that stamps iat on tokens, not
@@ -172,7 +178,7 @@ public static class AuthServiceCollectionExtensions
         // Startup checks on cookie settings (CookieSecure outside Development, single-label domain)
         services.AddHostedService<AuthCookieStartupValidator>();
 
-        // Stops startup when ISettingsService or ISettingsAdminService is not wrapped by AddAuthorized
+        // Stops startup when the settings services or the auth admin services are not wrapped by AddAuthorized
         services.AddHostedService<SettingsAuthorizationStartupValidator>();
 
         // Cleanup sweeper (hosted service)

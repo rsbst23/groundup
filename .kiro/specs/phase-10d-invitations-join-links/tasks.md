@@ -23,14 +23,14 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [x] 2.5 `OrganizationProvisioningService` grants TenantAdmin through `IRoleGrantWriter` (source Provisioning), events after commit
   - [x] 2.6 Unit tests: the full rule matrix (caller kind × role kind × assign/remove), app rule refusal, both guards, idempotent assign/remove, events and revocation; integration: concurrent assign, invitation revoke keeps a Manual grant, removal revokes tokens, pending member role not effective, provisioning grant has source Provisioning (unit 1870 / 0; integration 442 / 0; sample 22/22)
 
-- [ ] 3. Claiming, default role and member management (design 2.7, 3, 4)
-  - [ ] 3.1 `SignInUserResolver` replaces the three `ResolveOrCreateUserAsync` copies (known identity, invitation claim, verified-email claim, new user)
-  - [ ] 3.2 `IUserRepository.MergePendingUserAsync` and the `PendingUserMerged` event
-  - [ ] 3.3 `auth.application.default-role` definition, `IRoleRepository.GetByNameAsync`, `DefaultRoleAssigner` used by Login and SimpleSignup (new and reactivated memberships)
-  - [ ] 3.4 Permission keys (`RolesAssign`, `MembersRead`, `MembersManage`, `InvitationsSend`, `JoinLinksManage`) in `PermissionKeysAuth.All`
-  - [ ] 3.5 `IMemberManagementService` (list, remove), `MembersController` (list, remove, assign and remove role via `IUserRoleService`); startup check extended; sample registration
-  - [ ] 3.6 Tests: resolver order and races, merge cases (none / Active / Inactive or Pending at U), default role assigned and missing-role skip, member list includes pending with sources, removal runs the leave steps; endpoints through the sample app
-  - PR A boundary: push, give the compare URL, title and description
+- [x] 3. Claiming, default role and member management (design 2.7, 3, 4)
+  - [x] 3.1 `SignInUserResolver` replaces the three `ResolveOrCreateUserAsync` copies (known identity, invitation claim, verified-email claim, new user)
+  - [x] 3.2 `IUserRepository.MergePendingUserAsync` and the `PendingUserMerged` event
+  - [x] 3.3 `auth.application.default-role` definition, `IRoleRepository.GetByNameAsync`, `DefaultRoleAssigner` used by Login and SimpleSignup (new and reactivated memberships)
+  - [x] 3.4 Permission keys (`RolesAssign`, `MembersRead`, `MembersManage`, `InvitationsSend`, `JoinLinksManage`) in `PermissionKeysAuth.All`
+  - [x] 3.5 `IMemberManagementService` (list, remove; removal needs the right to remove each role held), `MembersController` under `/api/members`; registered by `AddGroundUpAuth` through `AddAuthorized` (no sample registration needed); startup check extended
+  - [x] 3.6 Tests: resolver order and races, merge cases (none / Active / Inactive or Pending at U), default role assigned and missing-role skip, member list includes pending with sources, removal runs the leave steps; endpoints through the sample app; default role and verified-email claim through the real callback (unit 1893 / 0; integration 459 / 0; sample 22/22)
+  - PR boundary (PR A2): push, give the compare URL, title and description
 
 ## PR B: invitations
 
@@ -38,7 +38,8 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [ ] 4.1 `Invitation` entity, configuration (partial unique index on pending email), migration `AddInvitations`, `IInvitationRepository` (bypass lookup by hash, conditional accept)
   - [ ] 4.2 `OpaqueToken` (create, hash)
   - [ ] 4.3 Invitation settings in `DefaultAuthSettingsSeeder`; `IInvitationEmailSender`, `LoggingInvitationEmailSender`, URL template
-  - [ ] 4.4 `IInvitationService` (create, list, resend, revoke) with `CreateInvitationDto` validator; `InvitationsController` admin endpoints; startup check
+  - [ ] 4.4 `IInvitationService` (create, list, resend, revoke) with `CreateInvitationDto` validator; `InvitationsController` admin endpoints under `/api/invitations`; startup check
+  - [ ] 4.5a `RemoveMemberAsync` on a Pending member also revokes their Pending invitation
   - [ ] 4.5 Tests: create paths (new pending user, existing user, unlinked pending user reused, Inactive member back to Pending), `ALREADY_MEMBER`, `INVITATION_PENDING` (including concurrent creates), enterprise refused, URL not configured, resend rotates the token, revoke removes only Invitation-source roles, link logged only in Development
 
 - [ ] 5. Accepting an invitation (design 5.6-5.9, 5.10 public rows)
@@ -46,6 +47,7 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [ ] 5.2 `IIdentityProviderAdminService.FindUserByEmailAsync` and the Keycloak implementation
   - [ ] 5.3 `IInvitationAcceptanceService` (look-up, start with page choice, host check)
   - [ ] 5.4 `InvitationFlowHandler` and registration; public endpoints
+  - [ ] 5.4a A Pending membership activated by another path (default-tenant sign-in, join link) closes its invitation as Accepted
   - [ ] 5.5 Tests: page choice (no session found / not found / lookup failure, same-email session, different-email session, `forceLogin`), host mismatch, every callback outcome (email mismatch, verified-email setting off and on, creator lost the right, already a member, merge, revoked, expired, concurrent acceptance)
   - PR B boundary: push, give the compare URL, title and description
 

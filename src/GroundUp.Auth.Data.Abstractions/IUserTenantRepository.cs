@@ -1,4 +1,5 @@
 using GroundUp.Auth.Core.Dtos;
+using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
 
@@ -82,5 +83,17 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
     /// <returns>The saved membership, or a 409 conflict when the user already has one in that tenant.</returns>
     Task<OperationResult<UserTenantDto>> AddForTenantAsync(
         UserTenantDto membership,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists the Active and Pending members of <paramref name="tenantId"/>, ordered by email, with
+    /// their roles and each role's sources. System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="paging">Page number and size.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
+        Guid tenantId,
+        PaginationParams paging,
         CancellationToken cancellationToken = default);
 }
