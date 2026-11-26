@@ -122,4 +122,17 @@ public sealed class AuthOptions
     /// </para>
     /// </summary>
     public bool AllowInMemoryTokenRevocationStore { get; set; }
+
+    /// <summary>
+    /// Extra path prefixes the host/token reconciliation check skips, in addition to the built-in
+    /// <c>/auth</c> and <c>/tenant-selection</c>, which are always exempt. A prefix matches the path
+    /// itself and anything below it on a segment boundary, ignoring case: <c>/swagger</c> exempts
+    /// <c>/swagger</c> and <c>/swagger/index.html</c>, not <c>/swaggerx</c>.
+    /// <para>
+    /// Each exemption lets an authenticated request reach the endpoint even when the request host
+    /// belongs to a different tenant than the token. Only exempt paths that serve no tenant data,
+    /// and add development-only exemptions (for example <c>/swagger</c>) in development configuration only.
+    /// </para>
+    /// </summary>
+    public List<string> HostTokenCheckExemptPathPrefixes { get; set; } = [];
 }

@@ -15,10 +15,11 @@ namespace GroundUp.Auth.Api.Middleware;
 /// on mismatch. Runs AFTER <see cref="JwtTenantResolutionMiddleware"/> so that both
 /// values are populated.
 /// <para>
-/// Exempt paths (never denied):
+/// Exempt paths (never denied), matched on path segment boundaries:
 /// <list type="bullet">
-///   <item><c>/auth/*</c> — authentication endpoints including <c>set-tenant</c></item>
-///   <item>Tenant-selection UI path</item>
+///   <item><c>/auth</c> and below — authentication endpoints including <c>set-tenant</c></item>
+///   <item><c>/tenant-selection</c> and below — tenant-selection UI</item>
+///   <item>Any prefix in <see cref="AuthOptions.HostTokenCheckExemptPathPrefixes"/></item>
 /// </list>
 /// </para>
 /// <para>
@@ -54,8 +55,10 @@ public sealed class HostTokenReconciliationMiddleware
     /// <param name="context">The current HTTP context.</param>
     public async Task InvokeAsync(HttpContext context)
     {
-        // Exempt paths: /auth/* and tenant-selection UI — never deny these
-        if (IsExemptPath(context.Request.Path))
+        var options = context.RequestServices.GetRequiredService<IOptions<AuthOptions>>().Value;
+
+        // Exempt paths: the built-in /auth and tenant-selection prefixes plus any configured ones
+        if (IsExemptPath(context.Request.Path, options.HostTokenCheckExemptPathPrefixes))
         {
             await _next(context);
             return;
@@ -99,7 +102,6 @@ public sealed class HostTokenReconciliationMiddleware
         }
 
         // Standard tenant (RealmName null) — check if user is a member
-        var options = context.RequestServices.GetRequiredService<IOptions<AuthOptions>>().Value;
         var userIdClaim = context.User.FindFirst(options.UserIdClaimType);
 
         if (userIdClaim is null || !Guid.TryParse(userIdClaim.Value, out var userId))
@@ -126,29 +128,44 @@ public sealed class HostTokenReconciliationMiddleware
         }
     }
 
-    private static bool IsExemptPath(PathString path)
+    /// <summary>
+    /// Built-in exemptions, always applied: authentication endpoints (login, callback, me, set-tenant,
+    /// refresh, logout) and the tenant-selection UI. Configuration can add prefixes, never remove these.
+    /// </summary>
+    private static readonly string[] BuiltInExemptPrefixes = ["/auth", "/tenant-selection"];
+
+    /// <summary>
+    /// True when <paramref name="path"/> equals an exempt prefix or lies below it on a segment
+    /// boundary, ignoring case (<c>/auth</c> matches <c>/auth</c> and <c>/auth/me</c>, not <c>/authx</c>).
+    /// </summary>
+    private static bool IsExemptPath(PathString path, IReadOnlyCollection<string> configuredPrefixes)
     {
         if (!path.HasValue)
         {
             return false;
         }
 
-        var pathValue = path.Value!;
-
-        // Exempt /auth/* paths (login, callback, me, set-tenant, refresh, logout)
-        if (pathValue.StartsWith("/auth/", StringComparison.OrdinalIgnoreCase)
-            || pathValue.Equals("/auth", StringComparison.OrdinalIgnoreCase))
+        foreach (var prefix in BuiltInExemptPrefixes.Concat(configuredPrefixes))
         {
-            return true;
-        }
-
-        // Exempt tenant-selection UI path
-        if (pathValue.StartsWith("/tenant-selection", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
+            var normalized = NormalizePrefix(prefix);
+            if (normalized is not null
+                && path.StartsWithSegments(normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Returns the prefix with one leading slash and no trailing slash, or null when nothing is left.
+    /// A blank or root ("/") prefix is ignored: it would match every path and switch the check off.
+    /// </summary>
+    private static string? NormalizePrefix(string? prefix)
+    {
+        var trimmed = prefix?.Trim().Trim('/');
+        return string.IsNullOrEmpty(trimmed) ? null : "/" + trimmed;
     }
 
     private static async Task WriteJsonResponse(HttpContext context, int statusCode, string errorCode, string message)
