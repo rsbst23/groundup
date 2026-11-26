@@ -59,10 +59,7 @@ public sealed class SetupRateLimitApiFactory : GroundUpWebApplicationFactory<Pro
         services.RemoveAll<IBootstrapStateService>();
         services.AddScoped<IBootstrapStateService, RateLimitTestBootstrapStateService>();
 
-        // Register the BootstrapAdminToken auth scheme so the controller doesn't throw
-        services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, BootstrapAdminTokenAuthenticationHandler>(
-                BootstrapAdminTokenAuthenticationHandler.SchemeName, _ => { });
+        // The BootstrapAdminToken scheme is registered by AddGroundUpSetup in the app; registering it again throws.
 
         // Register rate limiter with a global limiter scoped to /setup paths
         services.AddRateLimiter(options =>

@@ -23,6 +23,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using GroundUp.Services.Settings;
 
 namespace GroundUp.Tests.Integration.Setup;
 
@@ -52,7 +53,7 @@ public sealed class FirstAdminIdempotencyIntegrationTests : IAsyncLifetime
         _client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", FirstAdminIdempotencyApiFactory.TestBootstrapToken);
 
-        // Seed the "system" setting level required by SetupWizardService.
+        // Seed the System setting level required by SetupWizardService.
         // The factory removes hosted services (including DataSeederRunner) to avoid interference,
         // so we seed the minimum required data here.
         await EnsureSystemLevelExistsAsync();
@@ -214,14 +215,14 @@ public sealed class FirstAdminIdempotencyIntegrationTests : IAsyncLifetime
         var dbContext = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
 
         var exists = await dbContext.Set<SettingLevel>()
-            .AnyAsync(l => l.Name == "system");
+            .AnyAsync(l => l.Name == DefaultSettingLevelSeeder.SystemLevelName);
 
         if (!exists)
         {
             dbContext.Set<SettingLevel>().Add(new SettingLevel
             {
                 Id = Guid.NewGuid(),
-                Name = "system",
+                Name = DefaultSettingLevelSeeder.SystemLevelName,
                 DisplayOrder = 0,
                 CreatedAt = DateTime.UtcNow
             });
@@ -261,7 +262,7 @@ public sealed class FirstAdminIdempotencyIntegrationTests : IAsyncLifetime
             Category: null,
             GroupKey: "groundup.setup",
             GroupDisplayName: "Setup",
-            AllowedLevelNames: new[] { "system" },
+            AllowedLevelNames: new[] { DefaultSettingLevelSeeder.SystemLevelName },
             IsRequired: true,
             IsSecret: false,
             IsEncrypted: false));
@@ -275,7 +276,7 @@ public sealed class FirstAdminIdempotencyIntegrationTests : IAsyncLifetime
             Category: null,
             GroupKey: "groundup.setup",
             GroupDisplayName: "Setup",
-            AllowedLevelNames: new[] { "system" },
+            AllowedLevelNames: new[] { DefaultSettingLevelSeeder.SystemLevelName },
             IsRequired: true,
             IsSecret: true,
             IsEncrypted: true));
@@ -283,7 +284,7 @@ public sealed class FirstAdminIdempotencyIntegrationTests : IAsyncLifetime
         // Get the system level ID to persist values
         var dbContext = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
         var systemLevel = await dbContext.Set<SettingLevel>()
-            .FirstAsync(l => l.Name == "system");
+            .FirstAsync(l => l.Name == DefaultSettingLevelSeeder.SystemLevelName);
 
         await settingsService.SetAsync(
             "auth.keycloak.admin-client-id", "groundup-admin-client", systemLevel.Id, null);
@@ -391,10 +392,7 @@ public sealed class FirstAdminIdempotencyApiFactory : GroundUpWebApplicationFact
         services.AddScoped<IIdentityProviderAdminService>(sp =>
             sp.GetRequiredService<StatefulFakeIdentityProviderAdminService>());
 
-        // Register the BootstrapAdminToken authentication scheme
-        services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, BootstrapAdminTokenAuthenticationHandler>(
-                BootstrapAdminTokenAuthenticationHandler.SchemeName, _ => { });
+        // The BootstrapAdminToken scheme is registered by AddGroundUpSetup in the app; registering it again throws.
 
         // Memory cache for bootstrap state — disable settings cache to avoid stale reads
         services.AddMemoryCache();

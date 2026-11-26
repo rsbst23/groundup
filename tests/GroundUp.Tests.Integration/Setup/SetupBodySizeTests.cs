@@ -53,7 +53,7 @@ public sealed class SetupBodySizeTests : IAsyncLifetime
 
     #region Oversized Payload → 413 (Req 18.5 / 21.2)
 
-    [Fact(Skip = "Requires AddGroundUpSetup() wired into Sample app (Task 27.2)")]
+    [Fact]
     public async Task PostSetupEndpoint_OversizedPayload_Returns413WithPayloadTooLargeCode()
     {
         // Arrange — factory configures MaxRequestBodyBytes = 4096 (the floor)
@@ -104,7 +104,7 @@ public sealed class SetupBodySizeTests : IAsyncLifetime
         response.StatusCode.Should().NotBe(HttpStatusCode.RequestEntityTooLarge);
     }
 
-    [Fact(Skip = "Requires AddGroundUpSetup() wired into Sample app (Task 27.2)")]
+    [Fact]
     public async Task PostSetupEndpoint_PayloadJustOverLimit_Returns413()
     {
         // Arrange — factory configures MaxRequestBodyBytes = 4096
@@ -155,7 +155,7 @@ public sealed class SetupBodySizeTests : IAsyncLifetime
             "the 4096-byte floor clamp should allow payloads under 4096 bytes even when configured lower");
     }
 
-    [Fact(Skip = "Requires AddGroundUpSetup() wired into Sample app (Task 27.2)")]
+    [Fact]
     public async Task PostSetupEndpoint_ConfiguredBelow4096_FloorClampRespected_PayloadOver4096Rejected()
     {
         // Arrange — factory configures MaxRequestBodyBytes = 1000 (below floor),
@@ -231,11 +231,7 @@ public sealed class SetupBodySizeApiFactory : GroundUpWebApplicationFactory<Prog
         services.RemoveAll<IBootstrapStateService>();
         services.AddScoped<IBootstrapStateService, SetupIncompleteBootstrapStateService>();
 
-        // Register the BootstrapAdminToken authentication scheme
-        services.AddAuthentication()
-            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
-                GroundUp.Api.Authentication.BootstrapAdminTokenAuthenticationHandler>(
-                GroundUp.Api.Authentication.BootstrapAdminTokenAuthenticationHandler.SchemeName, _ => { });
+        // The BootstrapAdminToken scheme is registered by AddGroundUpSetup in the app; registering it again throws.
 
         // Register ISetupWizardService as a no-op stub (these tests only test the body size filter)
         services.RemoveAll<GroundUp.Services.Setup.ISetupWizardService>();

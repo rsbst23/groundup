@@ -12,9 +12,11 @@ namespace GroundUp.Auth.Keycloak;
 /// to fail fast on misconfiguration.
 /// </summary>
 /// <remarks>
-/// When <c>BootstrapState.IsComplete</c> is <c>false</c> and all settings are empty
-/// (application is in setup mode), validation is skipped. If settings are partially
-/// populated during setup mode, validation runs normally.
+/// When setup is not complete (<c>BootstrapState.IsComplete</c> is <c>false</c>, or no
+/// <see cref="IBootstrapStateService"/> is registered), validation runs only once all six settings
+/// are populated. Seeders fill some defaults before the setup wizard sets the rest, so partial
+/// settings are expected during setup and must not stop startup. Once setup is complete,
+/// validation always runs.
 /// </remarks>
 internal sealed class KeycloakStartupValidator : IHostedService
 {

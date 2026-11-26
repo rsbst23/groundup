@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using GroundUp.Tests.Unit.Repositories;
+using GroundUp.Services.Settings;
 
 namespace GroundUp.Tests.Unit.Services.Setup;
 
@@ -325,7 +326,7 @@ public sealed class WizardIdempotencyAndRotationPropertyTests
         dbContext.Set<SettingLevel>().Add(new SettingLevel
         {
             Id = Guid.NewGuid(),
-            Name = "system",
+            Name = DefaultSettingLevelSeeder.SystemLevelName,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = "test"
         });

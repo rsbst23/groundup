@@ -29,7 +29,7 @@ public sealed class SetupWizardIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Ensure the "system" setting level exists (required by SetupWizardService)
+        // Ensure the System setting level exists (required by SetupWizardService)
         await _factory.EnsureSystemLevelSeededAsync();
 
         _client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
