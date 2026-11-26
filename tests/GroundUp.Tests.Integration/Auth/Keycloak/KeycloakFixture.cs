@@ -30,6 +30,14 @@ public sealed class KeycloakFixture : IAsyncLifetime
     /// <summary>The default app client ID within the test realm.</summary>
     public const string AppClientId = "groundup-app";
 
+    /// <summary>
+    /// The exact redirect URI registered on the app client, used by the authorization-code tests.
+    /// Keycloak allows a wildcard only at the end of a redirect URI, so a pattern such as
+    /// <c>http://localhost:*/auth/callback</c> matches nothing. Nothing listens on this address:
+    /// the tests read the code from the redirect's Location header.
+    /// </summary>
+    public const string AppRedirectUri = "http://localhost:5000/auth/callback";
+
     public KeycloakFixture()
     {
         // Use the Testcontainers.Keycloak builder — it handles port, health check, and startup
@@ -214,7 +222,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
             publicClient = true,
             standardFlowEnabled = true,
             directAccessGrantsEnabled = true,
-            redirectUris = new[] { "https://localhost:*/auth/callback", "http://localhost:*/auth/callback" },
+            redirectUris = new[] { AppRedirectUri },
             webOrigins = new[] { "https://localhost:*", "http://localhost:*" },
             attributes = new Dictionary<string, string>
             {

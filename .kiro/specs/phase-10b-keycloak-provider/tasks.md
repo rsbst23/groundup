@@ -155,34 +155,34 @@ Implements the concrete Keycloak provider as a new project `GroundUp.Auth.Keyclo
 - [x] 10. Checkpoint — Full build verification
   - Ensure the solution compiles cleanly with `dotnet build groundup.sln`. Ask the user if questions arise.
 
-- [ ] 11. Unit tests — property-based (FsCheck) and standard
-  - [-] 11.1 Create `ResourceAccessRoleExtractorPropertyTests.cs`
+- [x] 11. Unit tests — property-based (FsCheck) and standard
+  - [x] 11.1 Create `ResourceAccessRoleExtractorPropertyTests.cs`
     - **Property 15: Role Extraction From resource_access (Happy Path)**
     - **Property 16: Role Extraction Returns Empty for Missing or Malformed Claims**
     - **Validates: Requirements 12.1, 12.2, 12.3, 12.5**
     - Custom Arbitrary generators for resource_access JSON structures
     - _Requirements: 12.1, 12.2, 12.3, 12.5_
 
-  - [-] 11.2 Create `KeycloakAdminLinkBuilderPropertyTests.cs`
+  - [x] 11.2 Create `KeycloakAdminLinkBuilderPropertyTests.cs`
     - **Property 17: Admin Link Builder URL Pattern Correctness**
     - **Validates: Requirements 13.2, 13.3, 13.4, 13.5**
     - Generate valid PublicBaseUrl + realm name combinations, verify URL pattern
     - _Requirements: 13.2, 13.3, 13.4, 13.5_
 
-  - [-] 11.3 Create `KeycloakStartupValidatorPropertyTests.cs`
+  - [x] 11.3 Create `KeycloakStartupValidatorPropertyTests.cs`
     - **Property 3: Startup Validation Names Missing or Invalid Keys**
     - **Validates: Requirements 3.1, 3.2**
     - Generate subsets of missing/invalid settings, verify exception message names each key
     - _Requirements: 3.1, 3.2_
 
-  - [ ] 11.4 Create `AdminTokenCachePropertyTests.cs`
+  - [x] 11.4 Create `AdminTokenCachePropertyTests.cs`
     - **Property 10: Admin Token Caching With Expiry-Based Refresh**
     - **Property 11: Admin Token Failure Does Not Expose Secrets**
     - **Validates: Requirements 8.2, 8.3, 8.4**
     - Mock HttpMessageHandler, verify cache behavior with generated expiry values
     - _Requirements: 8.2, 8.3, 8.4_
 
-  - [ ] 11.5 Create `KeycloakIdentityProviderServiceTests.cs`
+  - [x] 11.5 Create `KeycloakIdentityProviderServiceTests.cs`
     - **Property 4: Token Endpoint Request Construction**
     - **Property 5: Token Response Mapping**
     - **Property 6: Non-Success Code Exchange Returns Null**
@@ -192,7 +192,7 @@ Implements the concrete Keycloak provider as a new project `GroundUp.Auth.Keyclo
     - Standard xUnit tests for ValidateTokenAsync with known JWTs
     - _Requirements: 5.1, 5.3, 5.4, 5.5, 5.6, 6.3, 6.4, 6.5, 7.2_
 
-  - [ ] 11.6 Create `KeycloakIdentityProviderAdminServiceTests.cs`
+  - [x] 11.6 Create `KeycloakIdentityProviderAdminServiceTests.cs`
     - **Property 12: Admin API URL Construction for Realm Operations**
     - **Property 13: Admin API URL Construction for Client Operations**
     - **Property 14: User Provisioning Location Header Extraction**
@@ -201,25 +201,25 @@ Implements the concrete Keycloak provider as a new project `GroundUp.Auth.Keyclo
     - Standard xUnit tests for error handling (404, 409, 5xx)
     - _Requirements: 9.1, 9.2, 9.4, 9.5, 10.1, 10.3, 11.2_
 
-  - [ ]* 11.7 Create `PollyRetryPolicyPropertyTests.cs`
+  - [x]* 11.7 Create `PollyRetryPolicyPropertyTests.cs`
     - **Property 18: Retry Occurs on 5xx, Not on 4xx**
     - **Property 19: All Retries Exhausted Returns Failure Without Throwing**
     - **Validates: Requirements 14.2, 14.3, 14.6**
     - Generate HTTP status codes, verify retry/no-retry behavior
     - _Requirements: 14.2, 14.3, 14.6_
 
-  - [ ]* 11.8 Create `KeycloakOptionsSetupTests.cs`
+  - [x]* 11.8 Create `KeycloakOptionsSetupTests.cs`
     - **Property 1: Settings-to-Options Mapping Roundtrip**
     - **Property 2: Options Refresh on Settings Change**
     - **Validates: Requirements 2.2, 2.4**
     - Mock ISettingsService, verify option values match generated settings
     - _Requirements: 2.2, 2.4_
 
-- [ ] 12. Checkpoint — Verify all unit tests pass
+- [x] 12. Checkpoint — Verify all unit tests pass
   - Run `dotnet test` for the unit test project. Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Integration tests with Testcontainers Keycloak
-  - [ ] 13.1 Create `KeycloakFixture` and `KeycloakCollection` shared fixture
+- [x] 13. Integration tests with Testcontainers Keycloak
+  - [x] 13.1 Create `KeycloakFixture` and `KeycloakCollection` shared fixture
     - Start Keycloak 26.x container via Testcontainers
     - Import `groundup` realm from `keycloak/realm.json`
     - Expose HttpClient factory pointing at container
@@ -227,17 +227,17 @@ Implements the concrete Keycloak provider as a new project `GroundUp.Auth.Keyclo
     - Implement `IAsyncLifetime` for container lifecycle
     - _Requirements: 15.1, 15.9_
 
-  - [ ] 13.2 Create `KeycloakCodeExchangeTests.cs` and `KeycloakTokenValidationTests.cs`
+  - [x] 13.2 Create `KeycloakCodeExchangeTests.cs` and `KeycloakTokenValidationTests.cs`
     - Verify code exchange end-to-end using direct-access grant
     - Verify token validation against real JWKS from container
     - _Requirements: 15.2, 6.1, 6.6_
 
-  - [ ] 13.3 Create `KeycloakRealmCrudTests.cs` and `KeycloakClientCrudTests.cs`
+  - [x] 13.3 Create `KeycloakRealmCrudTests.cs` and `KeycloakClientCrudTests.cs`
     - Realm CRUD round-trip: create → get → update → verify → delete → verify gone
     - Client CRUD round-trip: create → get → verify settings → update → delete
     - _Requirements: 15.3, 15.4_
 
-  - [ ] 13.4 Create `KeycloakUserProvisioningTests.cs` and `KeycloakRoleExtractionTests.cs`
+  - [x] 13.4 Create `KeycloakUserProvisioningTests.cs` and `KeycloakRoleExtractionTests.cs`
     - User provisioning: create with password → verify exists → set credentials → delete
     - Role extraction: create user, assign roles, get token, extract, verify
     - _Requirements: 15.5, 15.6_
@@ -247,8 +247,15 @@ Implements the concrete Keycloak provider as a new project `GroundUp.Auth.Keyclo
     - Verify startup validation throws on missing/invalid settings
     - _Requirements: 15.7, 15.8_
 
-- [ ] 14. Final checkpoint — All tests pass
+- [x] 14. Final checkpoint — All tests pass
   - Run `dotnet test` for the full solution. Ensure all tests pass, ask the user if questions arise.
+
+## Status (GU-73)
+
+- 11.7 and 11.8 were added in GU-73 (`PollyRetryPolicyPropertyTests`, `KeycloakOptionsSetupTests`); 13.2's code exchange was added as `KeycloakCodeExchangeTests` (real login form with PKCE, not a direct-access grant).
+- Planned files that live elsewhere: client CRUD is in `KeycloakRealmCrudTests.Client_CrudRoundTrip_WorksEndToEnd`; role extraction is in `KeycloakUserProvisioningTests.RoleExtraction_AssignedClientRole_ExtractsCorrectly`; token validation is in `KeycloakTokenTests`. There is no separate `KeycloakCollection` file; the collection is declared with the fixture.
+- The fixture builds the test realm through the admin API instead of importing `keycloak/realm.json`.
+- 13.5 (optional) remains open.
 
 ## Notes
 

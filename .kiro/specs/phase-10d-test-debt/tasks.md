@@ -48,9 +48,10 @@ Starting point: unit 1745 pass / 12 known failures (plus the flaky correlation I
   - [x] 5.4 Build, run all suites, commit
   - Results: unit 1793 / 0; integration 422 / 0; sample 22/22. The 10 new tests run in under a second (no real retry delays)
 
-- [ ] 6. Keycloak code exchange and cleanup
-  - [ ] 6.1 `KeycloakCodeExchangeTests`: login form with PKCE, exchange, token validation; a reused code and an invalid code return null
-  - [ ] 6.2 Phase 10b `tasks.md` checkboxes match the existing tests
-  - [ ] 6.3 CI check: every container image in the test projects is pinned; no fixed ports, sleeps or Windows-only paths in new or changed tests
-  - [ ] 6.4 Docs: cleanup SQL note for leftover `UserRole` rows (development only); CLAUDE.md and steering baselines say "all suites pass"
-  - [ ] 6.5 Build, run all suites (expected: no failures), commit. **PR 3 boundary**, then Jira GU-73
+- [x] 6. Keycloak code exchange and cleanup
+  - [x] 6.1 `KeycloakCodeExchangeTests`: login form with PKCE, exchange, token validation; a reused code and an invalid code return null
+  - [x] 6.2 Phase 10b `tasks.md` checkboxes match the existing tests
+  - [x] 6.3 CI check: every container image in the test projects is pinned; no fixed ports, sleeps or Windows-only paths in new or changed tests
+  - [x] 6.4 Docs: cleanup SQL note for leftover `UserRole` rows (development only); CLAUDE.md and steering baselines say "all suites pass"
+  - [x] 6.5 Build, run all suites (expected: no failures), commit. **PR 3 boundary**, then Jira GU-73
+  - Results: unit 1793 / 0; integration 426 / 0; sample 22/22. Found while writing 6.1: the fixture registered `http://localhost:*/auth/callback`, which Keycloak rejects (wildcards only at the end), and Keycloak's Secure session cookies are not sent back by HttpClient over HTTP; the fixture now registers an exact URI and the test carries the cookies itself. `keycloak/realm.json` (dev) has the same `localhost:*` patterns and is raised with the user. CI check: all images pinned (`postgres:16-alpine`, `keycloak:26.3`); localhost ports in tests are data only; the one fixed wait (`TokenRevocationIntegrationTests`, 1.1 s for the issued-at second) is deterministic. CLAUDE.md and steering held no baselines; steering gains a CI-readiness testing rule. Cleanup SQL in `phase-10c-token-revocation/dev-cleanup.md`
