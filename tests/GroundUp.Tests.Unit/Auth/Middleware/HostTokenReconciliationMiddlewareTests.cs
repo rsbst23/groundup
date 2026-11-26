@@ -355,7 +355,108 @@ public sealed class HostTokenReconciliationMiddlewareTests
         Assert.True(nextCalled.Value);
     }
 
+    // --- Configured exemptions ---
+
+    [Theory]
+    [InlineData("/swagger")]
+    [InlineData("/swagger/index.html")]
+    [InlineData("/SWAGGER/v1/swagger.json")]
+    public async Task InvokeAsync_ConfiguredPrefix_CallsNextDespiteMismatch(string path)
+    {
+        _options.HostTokenCheckExemptPathPrefixes.Add("/swagger");
+
+        var (nextCalled, statusCode) = await RunMismatchAsync(path, isMember: true);
+
+        Assert.True(nextCalled);
+        Assert.NotEqual(StatusCodes.Status409Conflict, statusCode);
+    }
+
+    [Theory]
+    [InlineData("/swaggerx")]
+    [InlineData("/api/swagger")]
+    [InlineData("/authx")]
+    [InlineData("/tenant-selectionx")]
+    public async Task InvokeAsync_PrefixWithoutSegmentBoundary_IsStillChecked(string path)
+    {
+        _options.HostTokenCheckExemptPathPrefixes.Add("/swagger");
+
+        var (nextCalled, statusCode) = await RunMismatchAsync(path, isMember: true);
+
+        Assert.False(nextCalled);
+        Assert.Equal(StatusCodes.Status409Conflict, statusCode);
+    }
+
+    [Theory]
+    [InlineData("swagger")]
+    [InlineData("/swagger/")]
+    [InlineData(" /swagger ")]
+    public async Task InvokeAsync_ConfiguredPrefixWithoutLeadingOrWithTrailingSlash_IsNormalized(string configured)
+    {
+        _options.HostTokenCheckExemptPathPrefixes.Add(configured);
+
+        var (nextCalled, _) = await RunMismatchAsync("/swagger/index.html", isMember: true);
+
+        Assert.True(nextCalled);
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task InvokeAsync_RootOrBlankConfiguredPrefix_IsIgnored(string configured)
+    {
+        // A root prefix would match every path and switch the check off
+        _options.HostTokenCheckExemptPathPrefixes.Add(configured);
+
+        var (nextCalled, statusCode) = await RunMismatchAsync("/api/data", isMember: true);
+
+        Assert.False(nextCalled);
+        Assert.Equal(StatusCodes.Status409Conflict, statusCode);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_EmptyConfiguredList_BuiltInExemptionsStillApply()
+    {
+        Assert.Empty(_options.HostTokenCheckExemptPathPrefixes);
+
+        var (authNext, _) = await RunMismatchAsync("/auth/me", isMember: true);
+        var (selectionNext, _) = await RunMismatchAsync("/tenant-selection", isMember: true);
+        var (dataNext, dataStatus) = await RunMismatchAsync("/api/data", isMember: true);
+
+        Assert.True(authNext);
+        Assert.True(selectionNext);
+        Assert.False(dataNext);
+        Assert.Equal(StatusCodes.Status409Conflict, dataStatus);
+    }
+
     // --- Helper methods ---
+
+    /// <summary>
+    /// Runs the middleware for a standard-tenant host/token mismatch on <paramref name="path"/>.
+    /// </summary>
+    private async Task<(bool NextCalled, int StatusCode)> RunMismatchAsync(string path, bool isMember)
+    {
+        var hostTenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        _membershipService.IsActiveMemberAsync(userId, hostTenantId, Arg.Any<CancellationToken>())
+            .Returns(isMember);
+
+        var (context, nextCalled) = CreateContext(
+            hostTenant: CreateTenantDto(hostTenantId, "host-tenant"),
+            tokenTenantId: Guid.NewGuid(),
+            userId: userId,
+            authenticated: true,
+            path: path);
+
+        var middleware = CreateMiddleware(_ =>
+        {
+            nextCalled.Value = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(context);
+        return (nextCalled.Value, context.Response.StatusCode);
+    }
 
     private HostTokenReconciliationMiddleware CreateMiddleware(RequestDelegate next)
     {

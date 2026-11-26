@@ -25,17 +25,19 @@ Starting point: unit 1745 pass / 12 known failures (plus the flaky correlation I
 
 ## PR 2: Hardening
 
-- [ ] 3. Correlation ID validation
-  - [ ] 3.1 `CorrelationIdMiddleware.IsValid` and `MaxLength = 128`; an invalid incoming id is replaced with a new GUID, and nothing is logged
-  - [ ] 3.2 Replace the flaky property with two properties (valid ids propagate unchanged, invalid ids are replaced) using explicit generators. Facts for 128 and 129 characters, tab, and CR/LF
-  - [ ] 3.3 Build, run all suites, commit
+- [x] 3. Correlation ID validation
+  - [x] 3.1 `CorrelationIdMiddleware.IsValid` and `MaxLength = 128`; an invalid incoming id is replaced with a new GUID, and nothing is logged
+  - [x] 3.2 Replace the flaky property with two properties (valid ids propagate unchanged, invalid ids are replaced) using explicit generators. Facts for 128 and 129 characters, tab, and CR/LF
+  - [x] 3.3 Build, run all suites, commit
+  - Results: unit 1769 / 0; integration 422 / 0; sample 22/22 (first fully green run). The correlation ID tests passed 5 consecutive runs at 200 cases per property
 
-- [ ] 4. Host/token exemptions and Keycloak version
-  - [ ] 4.1 `AuthOptions.HostTokenCheckExemptPathPrefixes`, added to the two built-in prefixes, with segment-boundary matching
-  - [ ] 4.2 Middleware unit tests (configured prefix, segment boundary, built-ins with an empty list, non-exempt still checked)
-  - [ ] 4.3 Sample `appsettings.Development.json` adds `/swagger`
-  - [ ] 4.4 `KeycloakFixture` on `keycloak:26.3`, with a comment pointing at the compose file. Keycloak integration tests pass
-  - [ ] 4.5 Build, run all suites, commit. **PR 2 boundary**
+- [x] 4. Host/token exemptions and Keycloak version
+  - [x] 4.1 `AuthOptions.HostTokenCheckExemptPathPrefixes`, added to the two built-in prefixes, with segment-boundary matching
+  - [x] 4.2 Middleware unit tests (configured prefix, segment boundary, built-ins with an empty list, non-exempt still checked)
+  - [x] 4.3 Sample `appsettings.Development.json` adds `/swagger`
+  - [x] 4.4 `KeycloakFixture` on `keycloak:26.3`, with a comment pointing at the compose file. Keycloak integration tests pass
+  - [x] 4.5 Build, run all suites, commit. **PR 2 boundary**
+  - Results: unit 1783 / 0; integration 422 / 0 (13 Keycloak tests on 26.3); sample 22/22. Prefixes are normalized (leading slash added, trailing slash removed); a root or blank prefix is ignored, because it would match every path and switch the check off
 
 ## PR 3: Keycloak test gaps
 

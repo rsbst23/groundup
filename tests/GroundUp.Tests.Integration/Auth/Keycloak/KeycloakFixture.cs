@@ -33,8 +33,9 @@ public sealed class KeycloakFixture : IAsyncLifetime
     public KeycloakFixture()
     {
         // Use the Testcontainers.Keycloak builder — it handles port, health check, and startup
+        // Keep in step with the image in docker-compose.keycloak.yml so tests run against the dev version
         _container = new KeycloakBuilder()
-            .WithImage("quay.io/keycloak/keycloak:26.0")
+            .WithImage("quay.io/keycloak/keycloak:26.3")
             .Build();
     }
 
