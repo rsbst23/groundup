@@ -118,6 +118,7 @@ Events → Core only
 - Test naming: MethodName_Scenario_ExpectedResult
 - Testcontainers for real Postgres (NOT EF InMemory)
 - WebApplicationFactory-based integration tests
+- All suites must pass with no known failures or skips; they will be a CI merge gate (GitHub Actions, Linux). Tests must run on a clean runner with only Docker and the .NET SDK: pinned container images, no dependence on test order or on data left by other tests, no fixed host ports, no machine-specific paths, and no sleeps to wait for background work (a short fixed wait is acceptable only to cross a clock boundary, such as a token's issued-at second)
 
 ### Logging
 - Serilog structured logging with correlation ID in every entry
