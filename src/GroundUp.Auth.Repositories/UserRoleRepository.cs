@@ -140,6 +140,22 @@ public sealed class UserRoleRepository : BaseTenantRepository<UserRole, UserRole
     }
 
     /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult<List<UserRoleDto>>> GetAllForTenantAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var dtos = await Context.Set<UserRole>()
+            .AsNoTracking()
+            .Where(ur => ur.UserId == userId && ur.TenantId == tenantId)
+            .Select(ur => new UserRoleDto(ur.Id, ur.UserId, ur.RoleId, ur.TenantId, ur.Role.Name, ur.Source))
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<UserRoleDto>>.Ok(dtos);
+    }
+
+    /// <inheritdoc />
     /// <remarks>SYSTEM BYPASS: keeps the assignment's own tenant instead of the current tenant context.</remarks>
     public async Task<OperationResult<UserRoleDto>> AddForTenantAsync(
         UserRoleDto assignment,

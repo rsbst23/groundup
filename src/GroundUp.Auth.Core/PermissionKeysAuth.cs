@@ -34,6 +34,20 @@ public static class PermissionKeysAuth
     /// </summary>
     public const string RolesAssign = "auth.roles.assign";
 
+    // --- Members, invitations, join links (GU-68) ---
+
+    /// <summary>List the tenant's members and their roles.</summary>
+    public const string MembersRead = "auth.members.read";
+
+    /// <summary>Remove members from the tenant.</summary>
+    public const string MembersManage = "auth.members.manage";
+
+    /// <summary>Create, list, resend and revoke invitations.</summary>
+    public const string InvitationsSend = "auth.invitations.send";
+
+    /// <summary>Create, list, regenerate and revoke join links.</summary>
+    public const string JoinLinksManage = "auth.joinlinks.manage";
+
     // --- Permissions ---
     public const string PermissionsRead = "auth.permissions.read";
     public const string PermissionsWrite = "auth.permissions.write";
@@ -61,6 +75,10 @@ public static class PermissionKeysAuth
         (RolesDelete, "Delete Roles", "Remove roles", "auth"),
         (RolesAssignSystem, "Assign System Roles", "Assign or revoke system-level roles (e.g., SuperAdmin). Only SuperAdmins should hold this permission.", "auth"),
         (RolesAssign, "Assign Roles", "Assign and remove roles other than SuperAdmin and TenantAdmin within the tenant", "auth"),
+        (MembersRead, "Read Members", "List the organization's members and their roles", "auth"),
+        (MembersManage, "Manage Members", "Remove members from the organization", "auth"),
+        (InvitationsSend, "Send Invitations", "Create, list, resend and revoke invitations", "auth"),
+        (JoinLinksManage, "Manage Join Links", "Create, list, regenerate and revoke join links", "auth"),
 
         (PermissionsRead, "Read Permissions", "View permission definitions", "auth"),
         (PermissionsWrite, "Write Permissions", "Assign and revoke permissions from policies", "auth"),

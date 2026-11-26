@@ -32,13 +32,13 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlySevenTimes()
+    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyEightTimes()
     {
         // Act
         await _sut.SeedAsync();
 
         // Assert
-        await _settingsService.Received(7).EnsureDefinitionAsync(
+        await _settingsService.Received(8).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }
@@ -134,6 +134,21 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_CreatesDefaultRoleSetting_AtSystemAndTenantLevels()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == "auth.application.default-role"
+                && r.DefaultValue == ""
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system", "tenant" })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SeedAsync_CreatesSignupCreatesOrgSetting()
     {
         // Act
@@ -153,8 +168,8 @@ public sealed class DefaultAuthSettingsSeederTests
         await _sut.SeedAsync();
         await _sut.SeedAsync();
 
-        // Assert — 14 total calls (7 per run), all succeed without error
-        await _settingsService.Received(14).EnsureDefinitionAsync(
+        // Assert — 16 total calls (8 per run), all succeed without error
+        await _settingsService.Received(16).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }

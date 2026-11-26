@@ -1,7 +1,16 @@
 using System.IdentityModel.Tokens.Jwt;
+using GroundUp.Auth.Core.Abstractions;
+using GroundUp.Auth.Core.Dtos;
+using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services;
+using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Membership;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Auth.Services.Session;
+using GroundUp.Core;
+using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -25,6 +34,43 @@ internal static class FlowHandlerTestDoubles
     /// </summary>
     public static CallbackSessionGuard SessionGuard(int absoluteMinutes = 480) =>
         new(PolicyProvider(absoluteMinutes), NullLogger<CallbackSessionGuard>.Instance);
+
+    /// <summary>
+    /// The real sign-in user resolver over <paramref name="userRepository"/>. No event bus.
+    /// </summary>
+    public static SignInUserResolver UserResolver(IUserRepository userRepository) =>
+        new(userRepository, AccessRevoker(), NullLogger<SignInUserResolver>.Instance);
+
+    /// <summary>
+    /// The real default-role assigner over <paramref name="settingsService"/>. Unless given, the role
+    /// repository finds no role by name and the grant writer is a substitute, so a configured default
+    /// role is logged and skipped.
+    /// </summary>
+    public static DefaultRoleAssigner DefaultRoleAssigner(
+        ISettingsService settingsService,
+        IRoleRepository? roleRepository = null,
+        IRoleGrantWriter? roleGrantWriter = null)
+    {
+        if (roleRepository is null)
+        {
+            roleRepository = Substitute.For<IRoleRepository>();
+            roleRepository.GetByNameAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(OperationResult<RoleDto>.NotFound());
+        }
+
+        return new DefaultRoleAssigner(
+            settingsService,
+            roleRepository,
+            roleGrantWriter ?? Substitute.For<IRoleGrantWriter>(),
+            new TenantContext(),
+            NullLogger<DefaultRoleAssigner>.Instance);
+    }
+
+    /// <summary>An access revoker over an in-memory store and cache, with no event bus.</summary>
+    public static TenantAccessRevoker AccessRevoker() =>
+        new(Substitute.For<ITokenRevocationStore>(),
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<TenantAccessRevoker>.Instance);
 
     /// <summary>A policy provider with the same lifetime everywhere.</summary>
     public static ISessionPolicyProvider PolicyProvider(int absoluteMinutes = 480)

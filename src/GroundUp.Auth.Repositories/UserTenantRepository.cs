@@ -4,6 +4,7 @@ using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
 using GroundUp.Core.Abstractions;
+using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -120,6 +121,58 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         }
 
         return OperationResult<UserTenantDto>.Ok(AuthUserTenantMapper.ToDto(entity), statusCode: 201);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
+        Guid tenantId,
+        PaginationParams paging,
+        CancellationToken cancellationToken = default)
+    {
+        var members = Context.Set<UserTenant>()
+            .AsNoTracking()
+            .Where(ut => ut.TenantId == tenantId
+                && (ut.Status == MembershipStatus.Active || ut.Status == MembershipStatus.Pending));
+
+        var total = await members.CountAsync(cancellationToken);
+
+        var page = await members
+            .OrderBy(ut => ut.User.Email)
+            .ThenBy(ut => ut.UserId)
+            .Skip((paging.PageNumber - 1) * paging.PageSize)
+            .Take(paging.PageSize)
+            .Select(ut => new { ut.UserId, ut.User.Email, ut.User.DisplayName, ut.Status })
+            .ToListAsync(cancellationToken);
+
+        var userIds = page.Select(m => m.UserId).ToList();
+        var assignments = await Context.Set<UserRole>()
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && userIds.Contains(ur.UserId))
+            .Select(ur => new { ur.UserId, ur.RoleId, RoleName = ur.Role.Name, ur.Source })
+            .ToListAsync(cancellationToken);
+
+        var items = page
+            .Select(m => new TenantMemberDto(
+                m.UserId,
+                m.Email,
+                m.DisplayName,
+                m.Status,
+                assignments
+                    .Where(a => a.UserId == m.UserId)
+                    .GroupBy(a => new { a.RoleId, a.RoleName })
+                    .OrderBy(g => g.Key.RoleName)
+                    .Select(g => new MemberRoleDto(g.Key.RoleId, g.Key.RoleName, g.Select(a => a.Source).OrderBy(s => s).ToList()))
+                    .ToList()))
+            .ToList();
+
+        return OperationResult<PaginatedData<TenantMemberDto>>.Ok(new PaginatedData<TenantMemberDto>
+        {
+            Items = items,
+            PageNumber = paging.PageNumber,
+            PageSize = paging.PageSize,
+            TotalRecords = total
+        });
     }
 
     private async Task<OperationResult<List<UserRoleDto>>> SetMembershipStatusAsync(

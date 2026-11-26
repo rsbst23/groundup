@@ -2,6 +2,8 @@ using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Identity;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Auth.Services.Session;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
@@ -17,18 +19,19 @@ namespace GroundUp.Auth.Services;
 /// auto-select (single membership), tenantless session with a tenant picker (2+ memberships),
 /// host-pinned login, or enterprise "not yet implemented" stub.
 /// </summary>
-public sealed class LoginFlowHandler : IFlowHandler
+internal sealed class LoginFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
     private readonly IIdTokenValidator _idTokenValidator;
     private readonly CallbackSessionGuard _sessionGuard;
-    private readonly IUserRepository _userRepository;
+    private readonly SignInUserResolver _userResolver;
     private readonly IUserTenantRepository _userTenantRepository;
     private readonly ITenantRepository _tenantRepository;
     private readonly ITokenService _tokenService;
     private readonly IAuthCookieWriter _authCookieWriter;
     private readonly IAuthFlowStateService _authFlowStateService;
     private readonly ISettingsService _settingsService;
+    private readonly DefaultRoleAssigner _defaultRoleAssigner;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<LoginFlowHandler> _logger;
@@ -40,13 +43,14 @@ public sealed class LoginFlowHandler : IFlowHandler
         IIdentityProviderService identityProviderService,
         IIdTokenValidator idTokenValidator,
         CallbackSessionGuard sessionGuard,
-        IUserRepository userRepository,
+        SignInUserResolver userResolver,
         IUserTenantRepository userTenantRepository,
         ITenantRepository tenantRepository,
         ITokenService tokenService,
         IAuthCookieWriter authCookieWriter,
         IAuthFlowStateService authFlowStateService,
         ISettingsService settingsService,
+        DefaultRoleAssigner defaultRoleAssigner,
         IHttpContextAccessor httpContextAccessor,
         TenantContext tenantContext,
         ILogger<LoginFlowHandler> logger)
@@ -54,13 +58,14 @@ public sealed class LoginFlowHandler : IFlowHandler
         _identityProviderService = identityProviderService;
         _idTokenValidator = idTokenValidator;
         _sessionGuard = sessionGuard;
-        _userRepository = userRepository;
+        _userResolver = userResolver;
         _userTenantRepository = userTenantRepository;
         _tenantRepository = tenantRepository;
         _tokenService = tokenService;
         _authCookieWriter = authCookieWriter;
         _authFlowStateService = authFlowStateService;
         _settingsService = settingsService;
+        _defaultRoleAssigner = defaultRoleAssigner;
         _httpContextAccessor = httpContextAccessor;
         _tenantContext = tenantContext;
         _logger = logger;
@@ -116,8 +121,8 @@ public sealed class LoginFlowHandler : IFlowHandler
             return FlowResult.Error("USERINFO_FAILED", "Failed to retrieve user information from identity provider.");
         }
 
-        // 4. Resolve or create user by ExternalUserId (sub)
-        var user = await ResolveOrCreateUserAsync(userInfo);
+        // 4. Resolve or create the user (claims a pending user whose email the IdP verified)
+        var user = await _userResolver.ResolveAsync(userInfo);
 
         // 5. Check for enterprise host-resolved tenant (not yet implemented)
         if (context.HostResolvedTenant is { RealmName: not null })
@@ -258,8 +263,9 @@ public sealed class LoginFlowHandler : IFlowHandler
         var previousMembership = allMemberships.FirstOrDefault(m => m.TenantId == defaultTenant.Id);
         if (previousMembership is not null)
         {
-            // The user left this tenant earlier. Rejoin through the same row (unique per user and tenant).
-            // Leaving removed their roles, so they come back with none. The default role is not assigned here.
+            // The user left this tenant earlier (or was invited to it and has not accepted yet).
+            // Rejoin through the same row (unique per user and tenant). Leaving removed their roles,
+            // so a former member gets the default role again.
             var reactivateResult = await _userTenantRepository.ReactivateMembershipAsync(user.Id, defaultTenant.Id);
             if (!reactivateResult.Success)
             {
@@ -268,6 +274,8 @@ public sealed class LoginFlowHandler : IFlowHandler
                     user.Id, defaultTenant.Id);
                 return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to rejoin the default organization.");
             }
+
+            await _defaultRoleAssigner.AssignAsync(user.Id, defaultTenant.Id);
         }
         else
         {
@@ -291,8 +299,8 @@ public sealed class LoginFlowHandler : IFlowHandler
                 return FlowResult.Error("AUTO_JOIN_FAILED", "Failed to join the default organization.");
             }
 
-            // Assign default role from cascade (if configured)
-            await AssignDefaultRoleAsync(user.Id, defaultTenant.Id);
+            // Assign the default role (if configured)
+            await _defaultRoleAssigner.AssignAsync(user.Id, defaultTenant.Id);
         }
 
         // Issue token scoped to the default tenant
@@ -414,75 +422,6 @@ public sealed class LoginFlowHandler : IFlowHandler
             user.Id, tenantList.Count);
 
         return FlowResult.TenantSelectionRequired(tenantList);
-    }
-
-    /// <summary>
-    /// Resolves an existing user by ExternalUserId or creates a new one.
-    /// Handles unique-constraint violations on ExternalUserId by re-reading the existing user.
-    /// </summary>
-    private async Task<UserDto> ResolveOrCreateUserAsync(ExternalUserInfo userInfo)
-    {
-        var existingResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId);
-        if (existingResult.Success && existingResult.Data is not null)
-        {
-            return existingResult.Data;
-        }
-
-        // Create new user
-        var newUserDto = new UserDto(
-            Id: Guid.NewGuid(),
-            ExternalUserId: userInfo.ExternalUserId,
-            Email: userInfo.Email,
-            DisplayName: userInfo.DisplayName ?? userInfo.Email,
-            IsActive: true);
-
-        var createResult = await _userRepository.AddAsync(newUserDto);
-        if (createResult.Success && createResult.Data is not null)
-        {
-            _logger.LogInformation("Login flow: created new user {UserId} for external ID {ExternalUserId}",
-                createResult.Data.Id, userInfo.ExternalUserId);
-            return createResult.Data;
-        }
-
-        // Handle unique-constraint violation (concurrent first-login): re-read existing user
-        _logger.LogInformation(
-            "Login flow: user creation conflict, re-reading for external ID {ExternalUserId}",
-            userInfo.ExternalUserId);
-        var retryResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId);
-        if (retryResult.Success && retryResult.Data is not null)
-        {
-            return retryResult.Data;
-        }
-
-        throw new InvalidOperationException(
-            $"Failed to resolve or create user for external ID '{userInfo.ExternalUserId}'.");
-    }
-
-    /// <summary>
-    /// Assigns the default role (from cascade settings) to the user in the specified tenant.
-    /// If no default role is configured or the role cannot be resolved, no role is assigned.
-    /// </summary>
-    /// <param name="userId">The user to assign the role to.</param>
-    /// <param name="tenantId">The tenant in which to assign the role.</param>
-    private async Task AssignDefaultRoleAsync(Guid userId, Guid tenantId)
-    {
-        _ = userId;    // Will be used when role lookup by name is available
-        _ = tenantId;  // Will be used when role lookup by name is available
-
-        var defaultRoleResult = await _settingsService.GetAsync<string>("auth.application.default-role");
-        if (!defaultRoleResult.Success || string.IsNullOrWhiteSpace(defaultRoleResult.Data))
-        {
-            _logger.LogDebug("Login flow: no default role configured, skipping role assignment for auto-join");
-            return;
-        }
-
-        // The default role setting contains a role name. The role must already exist in the tenant.
-        // Without a GetByNameAsync method on IRoleRepository, we cannot directly look up the role.
-        // This will be wired when role lookup by name is available. For now, log the intent.
-        _logger.LogDebug(
-            "Login flow: default role '{RoleName}' configured for auto-join but role lookup by name " +
-            "within tenant is not yet available. Role assignment skipped.",
-            defaultRoleResult.Data);
     }
 
     /// <summary>

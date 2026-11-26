@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Identity;
 using GroundUp.Auth.Services.Session;
 using GroundUp.Core;
 using Microsoft.AspNetCore.Http;
@@ -14,13 +15,13 @@ namespace GroundUp.Auth.Services;
 /// Authenticates the founding user via the identity provider, resolves or creates the GroundUp user,
 /// delegates organization creation to <see cref="IOrganizationProvisioningService"/>, then issues a token.
 /// </summary>
-public sealed class NewOrganizationFlowHandler : IFlowHandler
+internal sealed class NewOrganizationFlowHandler : IFlowHandler
 {
     private readonly IIdentityProviderService _identityProviderService;
     private readonly IIdTokenValidator _idTokenValidator;
     private readonly CallbackSessionGuard _sessionGuard;
     private readonly IAuthFlowStateService _authFlowStateService;
-    private readonly IUserRepository _userRepository;
+    private readonly SignInUserResolver _userResolver;
     private readonly IOrganizationProvisioningService _organizationProvisioningService;
     private readonly ITokenService _tokenService;
     private readonly IAuthCookieWriter _authCookieWriter;
@@ -36,7 +37,7 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         IIdTokenValidator idTokenValidator,
         CallbackSessionGuard sessionGuard,
         IAuthFlowStateService authFlowStateService,
-        IUserRepository userRepository,
+        SignInUserResolver userResolver,
         IOrganizationProvisioningService organizationProvisioningService,
         ITokenService tokenService,
         IAuthCookieWriter authCookieWriter,
@@ -48,7 +49,7 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
         _idTokenValidator = idTokenValidator;
         _sessionGuard = sessionGuard;
         _authFlowStateService = authFlowStateService;
-        _userRepository = userRepository;
+        _userResolver = userResolver;
         _organizationProvisioningService = organizationProvisioningService;
         _tokenService = tokenService;
         _authCookieWriter = authCookieWriter;
@@ -108,9 +109,9 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
             return FlowResult.Error("USERINFO_FAILED", "Failed to retrieve user information from identity provider.");
         }
 
-        // 4. Resolve or create the founding user by ExternalUserId (sub claim).
+        // 4. Resolve or create the founding user (claims a pending user whose email the IdP verified).
         //    This happens before provisioning: the provisioning service never creates users.
-        var userId = await ResolveOrCreateUserAsync(userInfo);
+        var userId = (await _userResolver.ResolveAsync(userInfo)).Id;
 
         // 5. Provision the organization (tenant, membership, TenantAdmin role, role assignment)
         var organizationName = state.OrganizationName ?? "Organization";
@@ -158,46 +159,4 @@ public sealed class NewOrganizationFlowHandler : IFlowHandler
 
         return FlowResult.Success(token);
     }
-
-    /// <summary>
-    /// Resolves an existing user by ExternalUserId or creates a new one.
-    /// Handles unique-constraint violations on ExternalUserId by re-reading the existing user.
-    /// </summary>
-    private async Task<Guid> ResolveOrCreateUserAsync(ExternalUserInfo userInfo, CancellationToken ct = default)
-    {
-        // Try to find existing user by external sub
-        var existingResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId, ct);
-
-        if (existingResult.Success && existingResult.Data is not null)
-        {
-            return existingResult.Data.Id;
-        }
-
-        // Create new user
-        var newUserDto = new UserDto(
-            Id: Guid.NewGuid(),
-            ExternalUserId: userInfo.ExternalUserId,
-            Email: userInfo.Email,
-            DisplayName: userInfo.DisplayName ?? userInfo.Email,
-            IsActive: true);
-
-        // AddAsync returns a failed result (409) on a unique-constraint violation instead of throwing
-        var createResult = await _userRepository.AddAsync(newUserDto, ct);
-        if (createResult.Success && createResult.Data is not null)
-        {
-            return createResult.Data.Id;
-        }
-
-        // Concurrent creation (another request created the same ExternalUserId): re-read the existing user
-        _logger.LogDebug("User creation failed ({StatusCode}); re-reading by ExternalUserId", createResult.StatusCode);
-        var rereadResult = await _userRepository.GetByExternalUserIdAsync(userInfo.ExternalUserId, ct);
-        if (rereadResult.Success && rereadResult.Data is not null)
-        {
-            return rereadResult.Data.Id;
-        }
-
-        throw new InvalidOperationException(
-            $"Failed to resolve or create user with ExternalUserId '{userInfo.ExternalUserId}'");
-    }
-
 }

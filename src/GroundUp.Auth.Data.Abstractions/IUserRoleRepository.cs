@@ -88,6 +88,20 @@ public interface IUserRoleRepository : IBaseRepository<UserRoleDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns every assignment row of <paramref name="userId"/> in <paramref name="tenantId"/>,
+    /// every role and source, with role names, whatever the membership status (a pending member's
+    /// roles included). System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="userId">The user identifier.</param>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<UserRoleDto>>> GetAllForTenantAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+
+    /// <summary>
     /// Inserts an assignment in the tenant named by <paramref name="assignment"/> (not the current
     /// tenant context), keeping its source. System-level bypass, used by the role service, which
     /// checks who may grant the role first.

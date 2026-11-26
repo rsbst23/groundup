@@ -68,7 +68,7 @@ public sealed class NewOrganizationFlowHandlerTests
             GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DecodingIdTokenValidator(),
             GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.SessionGuard(),
             _authFlowStateService,
-            _userRepository,
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.UserResolver(_userRepository),
             _organizationProvisioningService,
             _tokenService,
             _authCookieWriter,

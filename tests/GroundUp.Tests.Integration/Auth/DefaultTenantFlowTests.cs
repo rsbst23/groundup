@@ -4,7 +4,9 @@ using System.Text.Json;
 using FluentAssertions;
 using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Enums;
+using GroundUp.Auth.Core.Dtos;
 using Microsoft.EntityFrameworkCore;
+using NSubstitute;
 
 namespace GroundUp.Tests.Integration.Auth;
 
@@ -205,8 +207,89 @@ public sealed class DefaultTenantFlowTests : AuthFlowTestBase
         (await GetMembershipsForUserAsync(userId)).Should().ContainSingle(m => m.TenantId == DefaultTenantId);
 
         await using var context = Fixture.CreateAuthDbContext();
-        (await context.UserRoles.AsNoTracking().CountAsync(ur => ur.UserId == userId && ur.TenantId == DefaultTenantId))
-            .Should().Be(0, "rejoining must not silently restore the roles the user had before leaving");
+        var roles = await context.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == userId && ur.TenantId == DefaultTenantId)
+            .ToListAsync();
+        roles.Should().NotContain(ur => ur.RoleId == adminRoleId, "rejoining must not silently restore the roles the user had before leaving");
+        roles.Should().ContainSingle("a rejoining member gets the default role again")
+            .Which.Source.Should().Be(RoleAssignmentSource.DefaultRole);
+    }
+
+    // ── GU-68: default role and claiming pending users ─────────────
+
+    [Fact]
+    public async Task Callback_SimpleSignup_NewUser_GetsTheDefaultRole()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var sub = $"kc-defrole-{suffix}";
+        var flowState = await CreatePendingFlowStateAsync(FlowType.SimpleSignup);
+        SetupFullSuccessfulCallback(sub, flowState.Nonce, $"defrole-{suffix}@example.com");
+
+        var response = await Client.SendAsync(CreateCallbackRequest("auth-code-defrole", flowState.StateToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var user = await GetUserByExternalIdAsync(sub);
+        await using var context = Fixture.CreateAuthDbContext();
+        var role = await context.UserRoles.AsNoTracking().SingleAsync(ur => ur.UserId == user!.Id && ur.TenantId == DefaultTenantId);
+        role.RoleId.Should().Be(_defaultTenantFixture.DefaultRoleId);
+        role.Source.Should().Be(RoleAssignmentSource.DefaultRole);
+    }
+
+    [Fact]
+    public async Task Callback_Login_VerifiedEmailOfAPendingUser_ClaimsThatUser()
+    {
+        // An invited person (pending user, no identity yet) signs in normally with the invited email
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var email = $"claim-{suffix}@example.com";
+        var pendingId = await SeedPendingUserAsync(email);
+        var sub = $"kc-claim-{suffix}";
+        var flowState = await CreatePendingFlowStateAsync(FlowType.Login);
+        SetupSuccessfulCodeExchange(sub, flowState.Nonce, email);
+        SetupUserInfoWithVerifiedEmail(sub, email, verified: true);
+
+        var response = await Client.SendAsync(CreateCallbackRequest("auth-code-claim", flowState.StateToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var user = await GetUserByExternalIdAsync(sub);
+        user!.Id.Should().Be(pendingId, "the pending user is linked instead of a new user being created");
+    }
+
+    [Fact]
+    public async Task Callback_Login_UnverifiedEmailOfAPendingUser_CreatesANewUser()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var email = $"noclaim-{suffix}@example.com";
+        var pendingId = await SeedPendingUserAsync(email);
+        var sub = $"kc-noclaim-{suffix}";
+        var flowState = await CreatePendingFlowStateAsync(FlowType.Login);
+        SetupSuccessfulCodeExchange(sub, flowState.Nonce, email);
+        SetupUserInfoWithVerifiedEmail(sub, email, verified: false);
+
+        var response = await Client.SendAsync(CreateCallbackRequest("auth-code-noclaim", flowState.StateToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var user = await GetUserByExternalIdAsync(sub);
+        user!.Id.Should().NotBe(pendingId, "an unverified email is no proof of owning the pending user");
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.Users.AsNoTracking().SingleAsync(u => u.Id == pendingId)).ExternalUserId.Should().BeNull();
+    }
+
+    private void SetupUserInfoWithVerifiedEmail(string sub, string email, bool verified)
+    {
+        var userInfo = new ExternalUserInfo(sub, email, "Claimed User",
+            new Dictionary<string, string> { ["email_verified"] = verified ? "true" : "false" });
+        Fixture.MockIdentityProviderService
+            .GetUserInfoAsync(Arg.Any<string>())
+            .Returns(Task.FromResult<ExternalUserInfo?>(userInfo));
+    }
+
+    private async Task<Guid> SeedPendingUserAsync(string email)
+    {
+        await using var context = Fixture.CreateAuthDbContext();
+        var user = new GroundUp.Auth.Core.Entities.User { ExternalUserId = null, Email = email, DisplayName = email, IsActive = true };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        return user.Id;
     }
 
     /// <summary>All membership rows (active or not) for a user in a tenant.</summary>

@@ -29,4 +29,48 @@ public interface IUserRepository : IBaseRepository<UserDto>
     Task<OperationResult<UserDto>> GetByEmailAsync(
         string email,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the pending users with this email (case-insensitive): no identity-provider id yet and
+    /// not merged into another user.
+    /// </summary>
+    /// <param name="email">The email address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<UserDto>>> GetUnlinkedByEmailAsync(
+        string email,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Links a pending user to an identity-provider identity: sets <c>ExternalUserId</c> on the user
+    /// and on its memberships that have none, and replaces the placeholder display name (the email)
+    /// with <paramref name="displayName"/>. Only succeeds while the user is still unlinked, so two
+    /// concurrent claims cannot both win.
+    /// </summary>
+    /// <param name="userId">The pending user.</param>
+    /// <param name="externalUserId">The identity-provider subject.</param>
+    /// <param name="displayName">The display name from the identity provider, if any.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The linked user, or a 409 conflict when it was already linked (or the identity belongs to another user).</returns>
+    Task<OperationResult<UserDto>> LinkIdentityAsync(
+        Guid userId,
+        string externalUserId,
+        string? displayName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Merges pending user <paramref name="fromUserId"/> into <paramref name="toUserId"/> in one save.
+    /// For each of the pending user's memberships: when the target has none in that tenant, the
+    /// membership moves to the target; when the target is an Active member, the pending membership
+    /// and its roles are dropped (the target's roles do not change); otherwise the target's
+    /// membership takes the pending status and the pending roles move to the target. The pending user
+    /// is kept, marked as merged and inactive.
+    /// </summary>
+    /// <param name="fromUserId">The pending user.</param>
+    /// <param name="toUserId">The existing user.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The tenants whose memberships or roles changed for the target.</returns>
+    Task<OperationResult<List<Guid>>> MergePendingUserAsync(
+        Guid fromUserId,
+        Guid toUserId,
+        CancellationToken cancellationToken = default);
 }
