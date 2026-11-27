@@ -19,13 +19,13 @@ Found while checking the requirements and design against the code:
 
 ## Tasks
 
-- [ ] 1. Project, tooling and skeleton (design: Versions, Project layout, Dev server and proxy)
-  - [ ] 1.1 `samples/GroundUp.Sample.Web`: `package.json` with exact versions, `.nvmrc`, `engines`, `.env.example`, tsconfig files (strict), `eslint.config.js`, `index.html`, Vitest config; `.gitignore` entries
-  - [ ] 1.2 `vite.config.ts`: router plugin, React plugin, port 5173 strict, allowed hosts, proxy for the five prefixes with Host kept
-  - [ ] 1.3 Providers (`main.tsx`, `theme.ts`, `queryClient.ts` stub, `router.ts`), root route with `AppLayout` and `NavMenu`, Home, the nine placeholder routes, not-found page; devtools in development only; `routeTree.gen.ts` generated and committed
-  - [ ] 1.4 One route with a zod 4 search schema (for example `/data?page=`) to confirm Standard Schema works without the adapter; fall back to zod 3 and the adapter if not, and record which
-  - [ ] 1.5 `routes.test.ts`: no route starts with a proxied prefix
-  - [ ] 1.6 Check: `npm install`, `npm run build`, `npm run lint`, `npm test`; `npm run dev` with the API running opens Home, `/swagger` loads through the proxy, a page reload on a placeholder route works
+- [x] 1. Project, tooling and skeleton (design: Versions, Project layout, Dev server and proxy)
+  - [x] 1.1 `samples/GroundUp.Sample.Web`: `package.json` with exact versions, `.nvmrc`, `engines`, `.env.example`, tsconfig files (strict; a separate `tsconfig.test.json` gives the tests Node types), `eslint.config.js`, `index.html`, Vitest config; `.gitignore` entries
+  - [x] 1.2 `vite.config.ts`: router plugin (test files ignored as routes), React plugin, port 5173 strict, allowed hosts, proxy for the five prefixes (`src/proxiedPrefixes.ts`) with Host kept; chunk warning limit 800 kB (MUI makes the main chunk about 550 kB, 175 kB gzipped)
+  - [x] 1.3 Providers (`main.tsx`, `theme.ts`, `queryClient.ts` stub, `router.ts`), root route with `AppLayout` and `NavMenu`, Home, the placeholder routes, not-found page; devtools in development only; `routeTree.gen.ts` generated and committed
+  - [x] 1.4 `/data` validates `?page=` with a zod 4 schema passed straight to `validateSearch`: types check and a bad value falls back to 1, so no adapter and no zod 3
+  - [x] 1.5 `routes.test.ts`: no route starts with a proxied prefix (11 tests)
+  - [x] 1.6 Check: build, lint (0 problems) and tests pass. With the API running: Home and placeholder routes load (and reload) through port 5173; `/health` and `/swagger` are proxied; `POST /auth/login` through the proxy gives `redirect_uri=http://localhost:5173/auth/callback` (Host kept); a browser-style GET of `/auth/callback` reaches the API (400 without a code), not the app
 
 - [ ] 2. API client (design: API client)
   - [ ] 2.1 `api/errors.ts` (`ApiError`, `parseErrorBody` for every body shape) and `api/operationResult.ts` (`isOperationResult`, `unwrap`)
