@@ -35,14 +35,14 @@ Found while checking the requirements and design against the code:
   - [x] 2.5 Tests: `errors.test.ts`, `csrf.test.ts`, `inspector.test.ts`, `client.test.ts`, with a shared fetch mock in `api/testing.ts` (53 tests in all, including the 11 route tests)
   - [x] 2.6 Check: build, lint (0 problems), tests (53 / 0)
 
-- [ ] 3. Session, components and the `/auth/me` change (design: Server state, Components, API change)
-  - [ ] 3.1 API: `AuthController.Me` returns `issuedAt`, `expiresAt`, `authTime`; `AuthControllerTests` for present, missing and unparseable claims
-  - [ ] 3.2 `api/types.ts`, `api/auth.ts` (`getMe`, `getMyTenants`); `features/session/sessionQuery.ts` (`sessionQueryOptions` with 401 as null, `myTenantsQueryOptions`, `useSession`, `onSessionChanged`); `queryClient.ts` retry rules and the 401 handler; root loader `ensureQueryData`
-  - [ ] 3.3 `ErrorPanel` (with the `REAUTH_REQUIRED` action), `SessionBanner` (countdown), `RequestInspector` drawer with badge, clear and copy
-  - [ ] 3.4 Root `errorComponent` for an unreachable API; Home links (Swagger, Keycloak admin, both manuals, current host) and the Checks card (`GET /api/members`, `POST /auth/refresh`)
-  - [ ] 3.5 `keycloak/realm.json`: port 5173 in redirect URIs, web origins and post-logout URIs
-  - [ ] 3.6 Tests: `sessionQuery.test.ts` (401 gives null; `onSessionChanged` clears CSRF and invalidates)
-  - [ ] 3.7 Check: npm build, lint, test; .NET build and all three suites
+- [x] 3. Session, components and the `/auth/me` change (design: Server state, Components, API change)
+  - [x] 3.1 API: `AuthController.Me` returns `issuedAt`, `expiresAt`, `authTime`; `AuthControllerTests` for present, missing and unparseable claims
+  - [x] 3.2 `api/types.ts`, `api/auth.ts` (`getMe`, `getMyTenants`, `refreshSession`); `features/session/sessionQuery.ts` (`sessionQueryOptions` with 401 as null, `myTenantsQueryOptions`, `useSession`, `onSessionChanged`, `markSignedOut`); `queryClient.ts` retry rules and the 401 handler; root loader `ensureQueryData`. Found: `/auth/me/tenants` answers 401 for an identity-provider token on the tenant picker while `/auth/me` answers 200, so the tenants query treats 401 as an empty list and the 401 handler ignores session queries (otherwise the picker state would show as signed out)
+  - [x] 3.3 `ErrorPanel` (with the `REAUTH_REQUIRED` action), `SessionBanner` (countdown; `formatRemaining` in its own file), `RequestInspector` drawer with badge, clear and copy (`useInspectorEntries` hook in its own file)
+  - [x] 3.4 Root `errorComponent` for an unreachable API; Home links and the Checks card (`GET /api/members`, `POST /auth/refresh`, which refreshes the session after success)
+  - [x] 3.5 `keycloak/realm.json`: port 5173 in redirect URIs, web origins and post-logout URIs
+  - [x] 3.6 Tests: `sessionQuery.test.ts` (401 gives null; tenants 401 gives an empty list; `onSessionChanged` drops CSRF and refetches; another query's 401 marks signed out; retry rules; countdown format)
+  - [x] 3.7 Check: npm build, lint (0 problems), tests 63 / 0; .NET build (no new warnings), unit 1942 / 0, integration 525 / 0, sample 22/22
 
 - [ ] 4. Documentation and the full check
   - [ ] 4.1 `README.md`: start-up steps, URL, folder layout and rules (no `fetch` in pages, feature folders, no route under a proxied prefix, add new API paths to the proxy, CSRF and sign-in reload)

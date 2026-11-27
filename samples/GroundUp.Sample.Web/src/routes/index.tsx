@@ -3,6 +3,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { createFileRoute } from '@tanstack/react-router';
+import { ChecksCard } from '../features/home/ChecksCard';
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -41,6 +42,7 @@ function Home() {
           </Link>
         </Stack>
       </Paper>
+      <ChecksCard />
     </Stack>
   );
 }

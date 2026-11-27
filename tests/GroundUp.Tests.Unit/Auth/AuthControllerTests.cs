@@ -461,6 +461,65 @@ public sealed class AuthControllerTests
         roles.Should().Contain("ProjectManager");
     }
 
+    [Fact]
+    public void Me_TokenTimeClaims_ReturnsIssuedAtExpiresAtAndAuthTimeInUtc()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("iat", "1795800000"),
+            new Claim("exp", "1795800900"),
+            new Claim("auth_time", "1795799000")
+        });
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+
+        // Assert
+        body["issuedAt"].Should().Be(DateTimeOffset.FromUnixTimeSeconds(1795800000));
+        body["expiresAt"].Should().Be(DateTimeOffset.FromUnixTimeSeconds(1795800900));
+        body["authTime"].Should().Be(DateTimeOffset.FromUnixTimeSeconds(1795799000));
+        ((DateTimeOffset)body["expiresAt"]!).Offset.Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void Me_NoAuthTimeClaim_ReturnsNullAuthTime()
+    {
+        // Arrange — a Keycloak principal on the tenant picker has iat and exp but may lack auth_time
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", "keycloak-sub-12345"),
+            new Claim("iat", "1795800000"),
+            new Claim("exp", "1795800300")
+        });
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+
+        // Assert
+        body["authTime"].Should().BeNull();
+        body["expiresAt"].Should().Be(DateTimeOffset.FromUnixTimeSeconds(1795800300));
+    }
+
+    [Fact]
+    public void Me_UnparseableTimeClaim_ReturnsNull()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[]
+        {
+            new Claim("sub", TestUserId.ToString()),
+            new Claim("exp", "not-a-number")
+        });
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+
+        // Assert
+        body["expiresAt"].Should().BeNull();
+        body["issuedAt"].Should().BeNull();
+    }
+
     #endregion
 
     #region POST /auth/set-tenant
