@@ -44,10 +44,11 @@ Found while checking the requirements and design against the code:
   - [x] 3.6 Tests: `sessionQuery.test.ts` (401 gives null; tenants 401 gives an empty list; `onSessionChanged` drops CSRF and refetches; another query's 401 marks signed out; retry rules; countdown format)
   - [x] 3.7 Check: npm build, lint (0 problems), tests 63 / 0; .NET build (no new warnings), unit 1942 / 0, integration 525 / 0, sample 22/22
 
-- [ ] 4. Documentation and the full check
-  - [ ] 4.1 `README.md`: start-up steps, URL, folder layout and rules (no `fetch` in pages, feature folders, no route under a proxied prefix, add new API paths to the proxy, CSRF and sign-in reload)
-  - [ ] 4.2 `TESTING.md`: how to use it, state table, Before You Start (including the three Keycloak URIs for an existing realm), Part 1 (design: Testing manual), parts to come
-  - [ ] 4.3 ARCHITECTURE.md: the `/auth/me` session fields; one line on the sample web app under the sample section; the API guide's Before You Start points to the web app manual
-  - [ ] 4.4 Run TESTING.md Part 1 by hand against the running API and Keycloak; record the result here
-  - [ ] 4.5 Full check (npm build, lint, test; .NET suites); push; give the PR compare URL, title and description
+- [x] 4. Documentation and the full check
+  - [x] 4.0 Found in Rob's run of task 3: calls the app cancels itself (React's development double render) showed as status 0, which looks like a failure. The inspector now records them as cancelled and shows "cancelled" with an explanation
+  - [x] 4.1 `README.md`: start-up steps (F5 "API + Web app" or by hand), URL, scripts, folder layout and rules (no `fetch` in pages, feature folders, no route under a proxied prefix, add new API paths to the proxy, typed search parameters, `onSessionChanged`, CSRF and sign-in reload, masking)
+  - [x] 4.2 `TESTING.md`: how to use it, state table, Before You Start (including the three Keycloak URIs for an existing realm), Part 1 (layout, signed out, sign-in through Swagger on 5173, Requests panel, an error with its correlation ID, cookie POST with CSRF, API not running), parts to come, troubleshooting
+  - [x] 4.3 ARCHITECTURE.md: `GroundUp.Sample.Web` under the projects, the `/auth/me` session fields in the sessions section; the API guide's Before You Start points to the web app manual
+  - [x] 4.4 Part 1 by hand (Rob, 2026-11-27, Keycloak 26.3): layout and navigation, reload, search parameter, not found; sign-in through Swagger on port 5173 with the three Keycloak URIs added by hand; banner (email, tenant, TenantAdmin, countdown) and the tenantless state ("No current tenant", no roles); Requests panel; `GET /api/members` 403 while tenantless and 200 with a tenant; cookie POST succeeded with `x-csrf-token: ***` and `{ token: *** }`. Not yet run by hand: 1.2 (signed out after logout), the "cancelled" label (added after the run) and 1.7 (API not running)
+  - [x] 4.5 Full check: npm build, lint (0 problems), tests 64 / 0; .NET unchanged since task 3 (unit 1942 / 0, integration 525 / 0, sample 22/22); pushed
   - [ ] 4.6 Jira: GU-86 comment; Done after merge
