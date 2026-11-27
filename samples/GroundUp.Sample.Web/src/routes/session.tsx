@@ -1,11 +1,16 @@
-import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 import { useQueryClient } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { useEffect } from 'react';
-import { Placeholder } from '../components/Placeholder';
-import { onSessionChanged } from '../features/session/sessionQuery';
-import { isCallbackLanding, sessionSearchSchema, type SessionSearch } from '../features/session/sessionSearch';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useEffect, useRef, useState } from 'react';
+import { CallbackOutcome } from '../features/session/components/CallbackOutcome';
+import { CreateOrganizationForm } from '../features/session/components/CreateOrganizationForm';
+import { OrganizationsPanel } from '../features/session/components/OrganizationsPanel';
+import { SessionDetails } from '../features/session/components/SessionDetails';
+import { SignedOutPanel } from '../features/session/components/SignedOutPanel';
+import { SignOutPanel } from '../features/session/components/SignOutPanel';
+import { onSessionChanged, useSession } from '../features/session/sessionQuery';
+import { isCallbackLanding, sessionSearchSchema } from '../features/session/sessionSearch';
 
 export const Route = createFileRoute('/session')({
   validateSearch: sessionSearchSchema,
@@ -14,51 +19,53 @@ export const Route = createFileRoute('/session')({
 
 function SessionPage() {
   const search = Route.useSearch();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const landed = isCallbackLanding(search);
+  const { me, tenants, currentTenant, isLoading } = useSession();
 
-  // The callback just set (or kept) the cookie: load the session again
+  // The outcome is kept in state, so the message stays after it is removed from the address
+  const [outcome] = useState(search);
+  const handled = useRef(false);
+
   useEffect(() => {
-    if (landed) {
-      void onSessionChanged(queryClient);
+    if (handled.current || !isCallbackLanding(outcome)) {
+      return;
     }
-  }, [landed, queryClient]);
+    handled.current = true; // React's development double render must not navigate twice
+
+    void (async () => {
+      await onSessionChanged(queryClient);
+      if (outcome.result === 'signed_in' && outcome.next) {
+        await navigate({ href: outcome.next, replace: true });
+      } else {
+        await navigate({ to: '/session', search: {}, replace: true });
+      }
+    })();
+  }, [outcome, navigate, queryClient]);
+
+  if (isLoading) {
+    return <Typography color="text.secondary">Loading the session…</Typography>;
+  }
+
+  const choosing = me !== null && me.tenantId === null && tenants.length > 0;
+  const organizations = me && (
+    <OrganizationsPanel tenants={tenants} currentTenantId={me.tenantId} choosing={choosing} />
+  );
 
   return (
     <Stack spacing={2}>
-      {landed && <CallbackOutcome search={search} />}
-      <Placeholder
-        title="Session"
-        story="GU-89"
-        description="Sign up, sign in, the tenant picker, switching and leaving tenants, refresh and sign-out."
-      />
+      {isCallbackLanding(outcome) && <CallbackOutcome outcome={outcome} />}
+      {!me ? (
+        <SignedOutPanel />
+      ) : (
+        <>
+          {choosing && organizations}
+          <SessionDetails me={me} currentTenant={currentTenant} />
+          {!choosing && organizations}
+          <CreateOrganizationForm />
+          <SignOutPanel />
+        </>
+      )}
     </Stack>
   );
-}
-
-/** What the sign-in callback reported when it sent the browser back here (GU-87). */
-function CallbackOutcome({ search }: { search: SessionSearch }) {
-  if (search.error) {
-    return (
-      <Alert severity="error">
-        The sign-in did not complete: <strong>{search.error}</strong>
-        {search.idpError && <> (identity provider: {search.idpError})</>}
-      </Alert>
-    );
-  }
-
-  switch (search.result) {
-    case 'signed_in':
-      return (
-        <Alert severity="success">
-          Signed in{search.alreadyMember ? '. You were already a member, so nothing changed.' : '.'}
-        </Alert>
-      );
-    case 'tenant_picker':
-      return <Alert severity="info">Signed in. Choose an organization to continue (the picker comes with GU-89).</Alert>;
-    case 'no_tenant':
-      return <Alert severity="info">Signed in. You do not belong to any organization yet.</Alert>;
-    default:
-      return null;
-  }
 }

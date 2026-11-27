@@ -1,27 +1,17 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
-import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
 import { formatRemaining } from '../features/session/formatRemaining';
 import { useSession } from '../features/session/sessionQuery';
-
-function useNow(enabled: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!enabled) {
-      return undefined;
-    }
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [enabled]);
-  return now;
-}
+import { useNow } from '../features/session/useNow';
+import { useStartSignIn } from '../features/session/useStartSignIn';
 
 /** Who is signed in, the current tenant, roles and the token's expiry, on every page. */
 export function SessionBanner() {
   const { me, currentTenant, isLoading } = useSession();
+  const startSignIn = useStartSignIn();
   const now = useNow(Boolean(me?.expiresAt));
 
   if (isLoading) {
@@ -32,7 +22,10 @@ export function SessionBanner() {
     return (
       <Paper variant="outlined" sx={{ px: 2, py: 1, mb: 2 }}>
         <Typography variant="body2">
-          Not signed in. <Link to="/session">Sign in</Link>
+          Not signed in.{' '}
+          <Button size="small" loading={startSignIn.isPending} onClick={() => startSignIn.mutate({ kind: 'login' })}>
+            Sign in
+          </Button>
         </Typography>
       </Paper>
     );

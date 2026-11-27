@@ -8,6 +8,7 @@ import Typography from '@mui/material/Typography';
 import { useState, type ReactNode } from 'react';
 import { NavMenu } from './NavMenu';
 import { RequestInspector } from './RequestInspector';
+import { SessionButton } from './SessionButton';
 import { useInspectorEntries } from './useInspectorEntries';
 import { SessionBanner } from './SessionBanner';
 
@@ -32,6 +33,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           <Typography variant="body2" title="The host this app is served from" sx={{ mr: 2 }}>
             {window.location.host}
           </Typography>
+          <Box sx={{ mr: 2 }}>
+            <SessionButton />
+          </Box>
           <Badge badgeContent={requestCount} color="secondary" max={99}>
             <Button color="inherit" variant="outlined" size="small" onClick={() => setInspectorOpen(true)}>
               Requests
