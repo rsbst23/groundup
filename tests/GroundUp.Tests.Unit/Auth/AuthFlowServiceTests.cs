@@ -106,6 +106,62 @@ public sealed class AuthFlowServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.com")]
+    [InlineData("//evil.example.com")]
+    [InlineData("/auth/callback")]
+    public async Task InitiateFlowAsync_InvalidReturnUrl_RefusedBeforeAnythingIsCreated(string returnUrl)
+    {
+        // Arrange
+        var httpContext = CreateHttpContext();
+
+        // Act
+        var result = await _sut.InitiateFlowAsync(
+            new FlowInitiationRequest(FlowType.Login, ReturnUrl: returnUrl), httpContext);
+
+        // Assert — refused with the code, before the URL is built, the state is saved or a cookie is set
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.InvalidReturnUrl);
+        await _authUrlBuilder.DidNotReceiveWithAnyArgs().BuildAuthorizationUrlAsync(default!, default);
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().InitiateAsync(default!, default);
+        httpContext.Response.Headers.SetCookie.ToString().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_ValidReturnUrl_StoredOnTheFlowState()
+    {
+        // Arrange
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        var result = await _sut.InitiateFlowAsync(
+            new FlowInitiationRequest(FlowType.Login, ReturnUrl: "/invite/abc?org=acme"), CreateHttpContext());
+
+        // Assert
+        result.Success.Should().BeTrue();
+        await _authFlowStateService.Received(1).InitiateAsync(
+            Arg.Is<InitiateAuthFlowRequest>(r => r.ReturnUrl == "/invite/abc?org=acme"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_BlankReturnUrl_StoredAsNone()
+    {
+        // Arrange
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(new FlowInitiationRequest(FlowType.Login, ReturnUrl: "  "), CreateHttpContext());
+
+        // Assert
+        await _authFlowStateService.Received(1).InitiateAsync(
+            Arg.Is<InitiateAuthFlowRequest>(r => r.ReturnUrl == null),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task InitiateFlowAsync_ValidRequest_CreatesStateWithAllFieldsPopulated()
     {

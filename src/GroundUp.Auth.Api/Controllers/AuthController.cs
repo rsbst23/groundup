@@ -72,19 +72,24 @@ public sealed class AuthController : ControllerBase
     /// When true, the identity provider asks for credentials even if its single sign-on session is
     /// still alive. Use after a <c>401 REAUTH_REQUIRED</c> response.
     /// </param>
+    /// <param name="returnUrl">
+    /// Optional path on this site (for example <c>/session</c>). The callback then redirects there with
+    /// the outcome instead of answering with JSON. Anything else is refused with <c>400 INVALID_RETURN_URL</c>.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HTTP 200 with <c>{ redirectUrl }</c> pointing to the Keycloak authorization endpoint.</returns>
     [HttpPost("login")]
     public async Task<IActionResult> Login(
         [FromQuery] bool forceLogin = false,
+        [FromQuery] string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
-        var request = new FlowInitiationRequest(FlowType.Login, ForceLogin: forceLogin);
+        var request = new FlowInitiationRequest(FlowType.Login, ForceLogin: forceLogin, ReturnUrl: returnUrl);
         var result = await _authFlowService.InitiateFlowAsync(request, HttpContext, cancellationToken);
 
         if (!result.Success)
         {
-            return StatusCode(result.StatusCode, new { error = result.Message });
+            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
         }
 
         return Ok(new { redirectUrl = result.Data!.RedirectUrl });
@@ -96,11 +101,13 @@ public sealed class AuthController : ControllerBase
     /// Returns the Keycloak authorization URL as JSON for the client to navigate to.
     /// </summary>
     /// <param name="request">Optional request body containing the organization name.</param>
+    /// <param name="returnUrl">Optional path on this site to return to after sign-up (see <see cref="Login"/>).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HTTP 200 with <c>{ redirectUrl }</c> pointing to the Keycloak authorization endpoint.</returns>
     [HttpPost("signup")]
     public async Task<IActionResult> Signup(
         [FromBody] SignupRequestDto? request = null,
+        [FromQuery] string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
         var organizationName = request?.OrganizationName;
@@ -114,12 +121,12 @@ public sealed class AuthController : ControllerBase
             ? FlowType.SimpleSignup
             : FlowType.NewOrganization;
 
-        var flowRequest = new FlowInitiationRequest(flowType, OrganizationName: organizationName);
+        var flowRequest = new FlowInitiationRequest(flowType, OrganizationName: organizationName, ReturnUrl: returnUrl);
         var result = await _authFlowService.InitiateFlowAsync(flowRequest, HttpContext, cancellationToken);
 
         if (!result.Success)
         {
-            return StatusCode(result.StatusCode, new { error = result.Message });
+            return StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });
         }
 
         return Ok(new { redirectUrl = result.Data!.RedirectUrl });

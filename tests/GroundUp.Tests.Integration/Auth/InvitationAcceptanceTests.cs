@@ -66,6 +66,34 @@ public sealed class InvitationAcceptanceTests : AuthFlowTestBase
     }
 
     [Fact]
+    public async Task Accept_WithReturnUrl_StoresItOnTheFlowState()
+    {
+        var invite = await InviteAsync();
+
+        var response = await Client.SendAsync(
+            CreateJsonPost("/auth/invitations/accept?returnUrl=%2Finvite%2Fdone%3Fx%3D1", new { token = invite.Token }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.AuthFlowStates.SingleAsync(s => s.InvitationId == invite.Id)).ReturnUrl.Should().Be("/invite/done?x=1");
+    }
+
+    [Fact]
+    public async Task Accept_InvalidReturnUrl_RefusedAndNoFlowStateCreated()
+    {
+        var invite = await InviteAsync();
+
+        var response = await Client.SendAsync(
+            CreateJsonPost("/auth/invitations/accept?returnUrl=%2F%2Fevil.example.com", new { token = invite.Token }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("errorCode").GetString().Should().Be(AuthErrorCodes.InvalidReturnUrl);
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.AuthFlowStates.AnyAsync(s => s.InvitationId == invite.Id)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Accept_NoSessionAndAnExistingAccount_OpensSignIn()
     {
         var invite = await InviteAsync();

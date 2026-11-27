@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentAssertions;
 using GroundUp.Auth.Api;
 using GroundUp.Auth.Api.Controllers;
+using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
@@ -104,9 +105,62 @@ public sealed class AuthControllerTests
         objectResult.StatusCode.Should().Be(500);
     }
 
+    [Fact]
+    public async Task Login_WithReturnUrl_PassesItToTheFlowService()
+    {
+        // Arrange
+        _authFlowService.InitiateFlowAsync(Arg.Any<FlowInitiationRequest>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowInitiationResult>.Ok(new FlowInitiationResult(TestRedirectUrl, TestFlowStateId)));
+
+        // Act
+        await _sut.Login(forceLogin: true, returnUrl: "/session");
+
+        // Assert
+        await _authFlowService.Received(1).InitiateFlowAsync(
+            Arg.Is<FlowInitiationRequest>(r => r.ReturnUrl == "/session" && r.ForceLogin && r.FlowType == FlowType.Login),
+            Arg.Any<HttpContext>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Login_InvalidReturnUrl_ReturnsTheStatusAndErrorCode()
+    {
+        // Arrange
+        _authFlowService.InitiateFlowAsync(Arg.Any<FlowInitiationRequest>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowInitiationResult>.Fail(
+                "The return URL must be a path on this site.", 400, AuthErrorCodes.InvalidReturnUrl));
+
+        // Act
+        var result = await _sut.Login(returnUrl: "https://evil.example.com");
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(400);
+        GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be(AuthErrorCodes.InvalidReturnUrl);
+    }
+
     #endregion
 
     #region POST /auth/signup
+
+    [Theory]
+    [InlineData(null, FlowType.SimpleSignup)]
+    [InlineData("Acme", FlowType.NewOrganization)]
+    public async Task Signup_WithReturnUrl_PassesItToTheFlowService(string? organizationName, FlowType expectedFlowType)
+    {
+        // Arrange
+        _authFlowService.InitiateFlowAsync(Arg.Any<FlowInitiationRequest>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowInitiationResult>.Ok(new FlowInitiationResult(TestRedirectUrl, TestFlowStateId)));
+
+        // Act
+        await _sut.Signup(new SignupRequestDto(organizationName), returnUrl: "/session");
+
+        // Assert
+        await _authFlowService.Received(1).InitiateFlowAsync(
+            Arg.Is<FlowInitiationRequest>(r => r.ReturnUrl == "/session" && r.FlowType == expectedFlowType),
+            Arg.Any<HttpContext>(),
+            Arg.Any<CancellationToken>());
+    }
 
     [Fact]
     public async Task Signup_WithoutOrganizationName_InitiatesFlowAndReturns200()

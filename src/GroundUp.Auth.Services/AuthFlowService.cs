@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
@@ -64,6 +65,15 @@ public sealed class AuthFlowService : IAuthFlowService
         CancellationToken cancellationToken = default)
     {
         var options = _authOptions.Value;
+
+        // The return URL must be a path on this site, checked before anything is created (no open redirect)
+        if (!ReturnUrlRules.TryNormalize(request.ReturnUrl, options.CallbackPath, out var returnUrl))
+        {
+            _logger.LogInformation("Auth flow refused: the return URL is not a path on this site");
+            return OperationResult<FlowInitiationResult>.Fail(
+                "The return URL must be a path on this site.", 400, AuthErrorCodes.InvalidReturnUrl);
+        }
+
         var tenant = _hostResolvedTenant.Tenant;
 
         // Determine realm override for enterprise tenants
@@ -116,7 +126,7 @@ public sealed class AuthFlowService : IAuthFlowService
             InvitationId: request.InvitationId,
             JoinLinkId: request.JoinLinkId,
             Realm: realmOverride,
-            ReturnUrl: request.ReturnUrl,
+            ReturnUrl: returnUrl,
             StateToken: authUrl.StateToken,
             CodeVerifier: authUrl.CodeVerifier,
             RedirectUri: authUrl.RedirectUri,

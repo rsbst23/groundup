@@ -67,7 +67,7 @@ internal sealed class InvitationAcceptanceService : IInvitationAcceptanceService
 
     /// <inheritdoc />
     public async Task<OperationResult<FlowInitiationResult>> StartAsync(
-        string token, bool forceLogin, HttpContext httpContext, CancellationToken cancellationToken = default)
+        string token, bool forceLogin, string? returnUrl, HttpContext httpContext, CancellationToken cancellationToken = default)
     {
         var invitation = await FindAsync(token, cancellationToken);
         if (invitation is null)
@@ -106,6 +106,7 @@ internal sealed class InvitationAcceptanceService : IInvitationAcceptanceService
         return await _authFlowService.InitiateFlowAsync(
             new FlowInitiationRequest(
                 FlowType.Invitation,
+                ReturnUrl: returnUrl,
                 ForceLogin: page == Page.ForcedSignIn,
                 InvitationId: invitation.Id,
                 LoginHint: invitation.Email,

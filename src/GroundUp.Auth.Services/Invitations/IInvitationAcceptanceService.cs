@@ -21,6 +21,7 @@ public interface IInvitationAcceptanceService
     /// server picks the page: sign-in when the invited email has an account, registration when not,
     /// a forced sign-in when the current session belongs to another email or <paramref name="forceLogin"/>
     /// is set. The invited email is pre-filled. The response does not reveal whether an account exists.
+    /// <paramref name="returnUrl"/> is an optional path on this site the callback redirects to (GU-87).
     /// </summary>
     /// <returns>
     /// The flow; 404 for an unknown token; 410 <c>INVITATION_NO_LONGER_VALID</c> or
@@ -28,5 +29,5 @@ public interface IInvitationAcceptanceService
     /// 422 <c>ENTERPRISE_NOT_SUPPORTED</c>.
     /// </returns>
     Task<OperationResult<FlowInitiationResult>> StartAsync(
-        string token, bool forceLogin, HttpContext httpContext, CancellationToken cancellationToken = default);
+        string token, bool forceLogin, string? returnUrl, HttpContext httpContext, CancellationToken cancellationToken = default);
 }
