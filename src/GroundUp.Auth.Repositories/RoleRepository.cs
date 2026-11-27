@@ -170,6 +170,34 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A role still referenced by a member's grant, an invitation, a join link or a tenant's default
+    /// role cannot be deleted (the foreign keys restrict it). That rejection is returned as 409
+    /// <c>CONFLICT</c> instead of an exception, so the role service can report it (GU-95).
+    /// </remarks>
+    public override async Task<OperationResult> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.DeleteAsync(id, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            foreach (var entry in Context.ChangeTracker.Entries<Role>().Where(e => e.Entity.Id == id).ToList())
+            {
+                DiscardRejectedChanges(entry.Entity);
+            }
+
+            return OperationResult.Fail(
+                "The role is still in use and cannot be deleted.",
+                409,
+                ErrorCodes.Conflict);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<OperationResult<RoleUsageDto>> GetUsageAsync(
         Guid roleId,
         CancellationToken cancellationToken = default)

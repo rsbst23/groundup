@@ -170,6 +170,10 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<SignInUserResolver>();
         // Member administration, behind the authorization proxy (permissions on the interface)
         services.AddAuthorized<IMemberManagementService, MemberManagementService>();
+        // Role administration (GU-95), behind the authorization proxy
+        services.AddScoped<IValidator<CreateRoleDto>, CreateRoleDtoValidator>();
+        services.AddScoped<IValidator<UpdateRoleDto>, UpdateRoleDtoValidator>();
+        services.AddAuthorized<IRoleService, RoleService>();
         // Invitations (GU-68). The logging email sender is a placeholder until Notifications (GU-64);
         // an application replaces it by registering its own IInvitationEmailSender.
         services.AddScoped<IValidator<CreateInvitationDto>, CreateInvitationDtoValidator>();

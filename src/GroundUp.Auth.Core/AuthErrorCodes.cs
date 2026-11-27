@@ -48,4 +48,18 @@ public static class AuthErrorCodes
 
     /// <summary>Invitations and join links are not available for enterprise tenants yet (GU-69).</summary>
     public const string EnterpriseNotSupported = "ENTERPRISE_NOT_SUPPORTED";
+
+    /// <summary>Another role of the tenant has the same name, ignoring case (GU-95).</summary>
+    public const string RoleNameTaken = "ROLE_NAME_TAKEN";
+
+    /// <summary>
+    /// The role cannot be deleted because members hold it, invitations or join links grant it, or it
+    /// is the tenant's default role. The response's <c>errors</c> list the reasons (GU-95).
+    /// </summary>
+    public const string RoleInUse = "ROLE_IN_USE";
+
+    /// <summary>
+    /// The role is built in (TenantAdmin): it cannot be renamed, deleted or made the default role (GU-95).
+    /// </summary>
+    public const string RoleIsBuiltIn = "ROLE_IS_BUILT_IN";
 }

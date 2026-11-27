@@ -23,12 +23,12 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/r
   - [x] 1.4 Tests: `RoleIndexMigrationTests` (duplicates in one tenant stop with the name and tenant; same names in two tenants apply; a case-only duplicate is refused by the index; a held role and the default role cannot be deleted; `Down`); `RoleUsageRepositoryTests` (unused, every usage kind counted and the non-counting statuses skipped, another tenant's role 404, default role set/read/clear, unknown tenant 404, a tenant update keeps the default role)
   - [x] 1.5 Check: build, unit 2010 / 0, integration 551 / 0, sample 22/22
 
-- [ ] 2. Service, controller, registration (design 3, 4, 6)
-  - [ ] 2.1 `AuthErrorCodes` (`ROLE_NAME_TAKEN`, `ROLE_IN_USE`, `ROLE_IS_BUILT_IN`); `TenantRoleDto`
-  - [ ] 2.2 `IRoleService` / `RoleService` (rules, delete transaction, events)
-  - [ ] 2.3 `RolesController`; `AddAuthorized<IRoleService, RoleService>()`; the startup check includes it
-  - [ ] 2.4 Unit tests (`RoleServiceTests`, attributes)
-  - [ ] 2.5 Check: build, all three suites
+- [x] 2. Service, controller, registration (design 3, 4, 6)
+  - [x] 2.1 `AuthErrorCodes` (`ROLE_NAME_TAKEN`, `ROLE_IN_USE`, `ROLE_IS_BUILT_IN`); `TenantRoleDto`
+  - [x] 2.2 `IRoleService` / `RoleService` (rules, delete transaction, events). The System tenant: list empty, role ids 404, create and clear-default 403. Found: `BaseTenantRepository.DeleteAsync` does not catch `DbUpdateException`, so a delete stopped by the `RESTRICT` foreign key threw; `RoleRepository.DeleteAsync` now returns 409 for it (the service maps it to `ROLE_IN_USE`). The invitation reason says "pending or expired", because expired invitations are counted
+  - [x] 2.3 `RolesController`; `AddAuthorized<IRoleService, RoleService>()` and the two validators; the startup check includes it
+  - [x] 2.4 Unit tests (`RoleServiceTests`: tenant required for every method, System tenant, each rule, reasons, transaction order, events, no event bus, attributes)
+  - [x] 2.5 Check: build, unit 2073 / 0, integration 551 / 0, sample 22/22
 
 - [ ] 3. Default role on joining (design 5) and the API tests
   - [ ] 3.1 `DefaultRoleAssigner` reads `Tenant.DefaultRoleId`; the seeder no longer ensures the setting
