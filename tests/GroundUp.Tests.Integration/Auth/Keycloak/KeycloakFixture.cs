@@ -203,7 +203,8 @@ public sealed class KeycloakFixture : IAsyncLifetime
         {
             realm = TestRealmName,
             enabled = true,
-            registrationAllowed = false,
+            // Registration on, as in the dev realm: the invitation tests open the real registration page
+            registrationAllowed = true,
             loginWithEmailAllowed = true,
             duplicateEmailsAllowed = false,
             verifyEmail = false,

@@ -58,10 +58,11 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [x] 6.2 `IJoinLinkService` (create, list, regenerate, revoke), `IJoinLinkAcceptanceService`, `JoinLinkFlowHandler`, controller, startup check
   - [x] 6.3 Tests: new, former, pending (invitation closed) and active members; revoked, expired and used-up links; regenerate kills the old token; concurrent last use never exceeds the maximum; host mismatch, forceLogin, creator lost the right, token shown only on create/regenerate (unit 1939 / 0; integration 509 / 0; sample 22/22)
 
-- [ ] 7. End-to-end checks and documentation
-  - [ ] 7.1 Keycloak end-to-end tests (`KeycloakFixture`, PKCE login form): invitation with registration, invitation with sign-in, different-session forced sign-in, join link sign-in
-  - [ ] 7.2 Sample app registration and Swagger check
-  - [ ] 7.3 `realm.json` redirect URI check and fix if needed
-  - [ ] 7.4 ARCHITECTURE.md, BUILD_PHASES.md, MANUAL_TESTING.md (invitations and join links part)
+- [x] 7. End-to-end checks and documentation
+  - [x] 7.1 Keycloak end-to-end tests (`KeycloakInvitationPagesTests`, real Keycloak 26.3): `prompt=create` registration returns a code with an unverified email; `login_hint` fills in the sign-in page; with a live session no prompt returns at once while `prompt=login` asks again. The flow handlers after the callback are covered by the mock-IdP integration tests (groups 5 and 6); the full browser journey is in MANUAL_TESTING.md Parts 15 and 16
+  - [x] 7.2 Sample app registration and Swagger check: no sample changes needed (`AddGroundUpAuth` registers the services); `SwaggerJson_MembershipEndpoints_ArePresent` checks all 13 paths
+  - [x] 7.3 `realm.json`: port wildcards replaced by explicit ports 5000, 5001, 5117, 7295 for redirect URIs, web origins and post-logout URIs (checked by importing into a throwaway Keycloak 26.3: port 5000 accepted, 5999 rejected)
+  - [x] 7.4a Test fixture fix: `AuthFlowTestFixture` replaced `IUnitOfWork` with a test-only version that ran no transaction (and matched exception messages), so a rolled-back invitation still left its pending membership in the integration tests. The fixture now uses the production `AuthDbContextUnitOfWork`. Production code was not affected (unit 1939 / 0; integration 525 / 0; sample 22/22)
+  - [x] 7.4 ARCHITECTURE.md ("Members, Invitations and Join Links", revocation paths), BUILD_PHASES.md (10d as built), MANUAL_TESTING.md (Parts 15 and 16, reset script, troubleshooting)
   - [ ] 7.5 Jira (GU-68 comment, Done after merge)
   - PR C boundary: push, give the compare URL, title and description

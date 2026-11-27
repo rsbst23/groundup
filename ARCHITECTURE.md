@@ -204,7 +204,7 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 - The user's cached permissions for that tenant are evicted at the same time.
 - **Guarantee:** immediate on the application instance that handled the leave. Other instances accept such a token until it expires, at most the token lifetime (default 15 minutes, maximum 120), until the caching module (Phase 15, GU-47) replaces the in-memory `ITokenRevocationStore` with a shared one. A restart forgets revocations; the same token-lifetime bound applies.
 - **Production guard:** in the Production environment the app refuses to start with the in-memory store unless `GroundUp:Auth:AllowInMemoryTokenRevocationStore` is `true`. Set it only for a single-instance deployment.
-- Every path that ends access goes through `IMembershipService` (`GroundUp.Auth.Services`). Today that is leaving a tenant; admin removal of a member and user deactivation (GU-68) must be added there.
+- Every path that ends access calls `TenantAccessRevoker` (`GroundUp.Auth.Services.Membership`) after the change is saved: leaving a tenant (`IMembershipService`), an admin removing a member or a role (`IMemberManagementService`, `IUserRoleService`), revoking an invitation, and merging a pending user record into the signed-in user. A new path that ends access must call it too. User deactivation is not built yet.
 
 **Keycloak's own limits are the outer boundary.** The realm's **SSO Session Idle** and **SSO Session Max** (Realm settings → Sessions) apply to every user of the shared realm and cannot be set per tenant. They are the system administrator's responsibility in the Keycloak admin console, and they are the values a compliance reviewer will look at alongside the two settings above. `keycloak/realm.json` sets 30 minutes idle and 8 hours maximum for development, equal to the default absolute lifetime; the organization's own session policy decides the final numbers. If `auth.session.absolute-lifetime-minutes` is raised above the realm's SSO Session Max, Keycloak's limit becomes the real one. GroundUp does not read the realm values at startup to warn about this (that would need an admin API call at every start); keep the two in step by policy.
 
@@ -220,3 +220,46 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 A single-label default domain such as `localhost` logs a warning: browsers drop the cookie on subdomain hosts, so subdomain tenants need a domain such as `groundup.test`.
 
 **CSRF.** A POST, PUT, PATCH or DELETE authenticated by the `AuthToken` cookie must send the token from `GET /auth/csrf` in the `X-CSRF-Token` header, or it gets `403 CSRF_VALIDATION_FAILED`. A browser client calls `/auth/csrf` once after sign-in, keeps the token in memory, and calls it again after a 403. Requests with an `Authorization: Bearer` header (mobile apps, services, MCP clients) need no CSRF token.
+
+## Members, Invitations and Join Links (GU-68)
+
+**Membership status.** `UserTenant.Status` is `Active`, `Inactive` or `Pending`. A pending membership is created when someone is invited; it becomes `Active` when they accept. Only roles held through an `Active` membership count for permissions. Each role grant records its `Source` (`Manual`, `Invitation`, `JoinLink`, `DefaultRole`, `Provisioning`), so the same role can be held for more than one reason and removing one grant leaves the others.
+
+**Role assignment rules.** Every role grant and removal goes through `IUserRoleService` (or its internal writer, which the flows use after the same checks):
+
+| Role | Who can grant or remove it |
+|---|---|
+| SuperAdmin | a SuperAdmin |
+| TenantAdmin | a TenantAdmin of that tenant, or a SuperAdmin |
+| Any other role | a holder of `auth.roles.assign`, while the current tenant is the role's tenant |
+
+Applications can add rules with `IRoleAssignmentRule`. The last TenantAdmin of a tenant cannot be removed (`LAST_ADMIN`), and nor can the last SuperAdmin (`LAST_SUPERADMIN`). Removing a member needs the right to remove each role they hold.
+
+**Admin endpoints** (under `/api`, so the host and token tenant must match):
+
+| Endpoint | Permission |
+|---|---|
+| `GET /api/members`, `DELETE /api/members/{userId}` | `auth.members.read`, `auth.members.manage` |
+| `POST`/`DELETE /api/members/{userId}/roles/{roleId}` | the role rules above |
+| `POST`/`GET /api/invitations`, `POST /api/invitations/{id}/resend`, `.../revoke` | `auth.invitations.send`, plus the right to grant the invitation's role |
+| `POST`/`GET /api/join-links`, `POST /api/join-links/{id}/regenerate`, `.../revoke` | `auth.joinlinks.manage`, plus the right to grant the link's role |
+
+**Public endpoints** (no sign-in needed): `POST /auth/invitations/lookup` and `/auth/invitations/accept`, `POST /auth/join-links/lookup` and `/auth/join-links/join`. Each takes `{ token, forceLogin }`. Lookup returns whether the token is usable, the organization and role names, or a reason (`not_found`, `revoked`, `expired`, `accepted`, `used_up`). Accept and join return the identity provider URL; the sign-in comes back through `/auth/callback`.
+
+**Tokens.** Invitation and join link tokens are random and stored only as a hash. An invitation token is only ever sent by email; the API never returns it. A join link token is returned once, on create and on regenerate. Resend and regenerate replace the token, so the old link stops working.
+
+**Invitations.**
+- Settings: `auth.invitations.lifetime-hours` (1 to 720, default 168; System and tenant levels), `auth.invitations.accept-url` (the client's accept page with `{token}` and optional `{tenantSlug}`; invitations cannot be sent while it is empty, `INVITATION_URL_NOT_CONFIGURED`) and `auth.invitations.require-verified-email` (default false).
+- The invitation is accepted only by a user whose identity provider email matches the invited email (`INVITATION_EMAIL_MISMATCH`). By default the invitation link counts as proof of the email; with `require-verified-email` the provider must also have verified it (`EMAIL_NOT_VERIFIED`).
+- If the invited email has no account in the identity provider, accept opens the registration page with the email filled in. If someone else is signed in, `forceLogin` makes the provider ask for credentials.
+- A revoked, expired or used invitation returns `410` (`INVITATION_NO_LONGER_VALID` or `INVITATION_ALREADY_USED`). Revoking an invitation removes the membership still waiting on it. An expired invitation keeps its pending membership until it is resent or revoked.
+- When the invitee signs in with an account whose record differs from the pending one, the pending record is merged into it (`User.MergedIntoUserId`) and kept for auditing.
+
+**Join links.** Anyone with the link can join the tenant with the link's role. A link can have an expiry and a maximum number of uses; the last use is counted atomically, so concurrent joins never exceed the maximum. A revoked, expired or used-up link returns `410 JOIN_LINK_NO_LONGER_VALID`. People who already joined keep their membership when a link is revoked. An active member who uses a link is signed in and nothing changes (no use is counted, no role is added). A former or pending member becomes active and gets the link's role; a pending member keeps the invitation's roles too.
+
+**Both flows:**
+- A link opened on another tenant's host returns `403 INVITATION_WRONG_ORGANIZATION`.
+- Enterprise tenants are refused (`422 ENTERPRISE_NOT_SUPPORTED`) until GU-69.
+- If the person who created the invitation or link has since lost the right to grant its role, acceptance fails with `403`.
+- Invitation emails go through `IInvitationEmailSender`. The default `LoggingInvitationEmailSender` sends nothing: in Development it logs the accept link (so you can test without email), elsewhere it logs a warning without the link. Register a real sender until the Notifications module provides one (GU-64).
+- `AddGroundUpAuth` registers `IMemberManagementService`, `IInvitationService` and `IJoinLinkService` with `AddAuthorized`. If an application replaces one of them without `AddAuthorized`, the app refuses to start, because the permission attributes would have no effect.

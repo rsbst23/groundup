@@ -78,4 +78,33 @@ public sealed class SwaggerEndpointTests
         paths.TryGetProperty("/api/Projects", out _).Should().BeTrue("Projects endpoint should exist");
         paths.TryGetProperty("/api/Projects/{id}", out _).Should().BeTrue("Projects item endpoint should exist");
     }
+
+    [Theory]
+    [InlineData("/api/members")]
+    [InlineData("/api/members/{userId}")]
+    [InlineData("/api/members/{userId}/roles/{roleId}")]
+    [InlineData("/api/invitations")]
+    [InlineData("/api/invitations/{invitationId}/resend")]
+    [InlineData("/api/invitations/{invitationId}/revoke")]
+    [InlineData("/auth/invitations/lookup")]
+    [InlineData("/auth/invitations/accept")]
+    [InlineData("/api/join-links")]
+    [InlineData("/api/join-links/{joinLinkId}/regenerate")]
+    [InlineData("/api/join-links/{joinLinkId}/revoke")]
+    [InlineData("/auth/join-links/lookup")]
+    [InlineData("/auth/join-links/join")]
+    public async Task SwaggerJson_MembershipEndpoints_ArePresent(string path)
+    {
+        // Arrange
+        var client = _factory.CreateClient();
+
+        // Act
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+        var content = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(content);
+
+        // Assert
+        doc.RootElement.GetProperty("paths").TryGetProperty(path, out _)
+            .Should().BeTrue($"{path} should appear in the OpenAPI document");
+    }
 }
