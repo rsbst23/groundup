@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isAppPath } from './returnTo';
 
 /**
  * The query values the sign-in callback adds when it returns to the app (GU-87):
@@ -13,6 +14,8 @@ export const sessionSearchSchema = z.object({
     .catch(undefined),
   error: z.string().regex(/^[A-Z_]{1,64}$/).optional().catch(undefined),
   idpError: z.string().regex(/^[a-z_]{1,64}$/).optional().catch(undefined),
+  // The page the sign-in started from (GU-89); only a path in this app is kept.
+  next: z.string().refine(isAppPath).optional().catch(undefined),
 });
 
 export type SessionSearch = z.infer<typeof sessionSearchSchema>;

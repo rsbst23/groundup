@@ -36,6 +36,14 @@ describe('sessionSearchSchema', () => {
   it('is empty without any values', () => {
     expect(sessionSearchSchema.parse({})).toEqual({});
   });
+
+  it('keeps next for a path in this app', () => {
+    expect(sessionSearchSchema.parse({ result: 'signed_in', next: '/data?page=2' }).next).toBe('/data?page=2');
+  });
+
+  it.each(['//evil.example.com', 'https://evil.example.com', '/api/members', 42])('drops next %s', (next) => {
+    expect(sessionSearchSchema.parse({ next }).next).toBeUndefined();
+  });
 });
 
 describe('isCallbackLanding', () => {

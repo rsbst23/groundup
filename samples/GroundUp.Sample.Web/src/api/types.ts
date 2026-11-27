@@ -24,3 +24,26 @@ export interface MyTenantDto {
   current?: boolean;
   subdomain?: string | null;
 }
+
+/** POST /auth/login and /auth/signup: the Keycloak address to send the whole page to. */
+export interface SignInStartDto {
+  redirectUrl: string;
+}
+
+/** POST /auth/organizations (201). */
+export interface CreatedOrganizationDto {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** POST /auth/tenants/{id}/leave. `currentTenantId` is null when the session no longer has a current tenant. */
+export interface LeaveTenantResultDto {
+  success: boolean;
+  currentTenantId: string | null;
+}
+
+/** POST /auth/logout. */
+export interface LogoutResultDto {
+  logoutUrl: string;
+}
