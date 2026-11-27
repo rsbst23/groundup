@@ -79,7 +79,9 @@ export function RequestInspector({ open, onClose }: RequestInspectorProps) {
                 >
                   <TableCell>{entry.method}</TableCell>
                   <TableCell sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{entry.url}</TableCell>
-                  <TableCell sx={{ color: statusColor(entry.status) }}>{entry.status ?? '…'}</TableCell>
+                  <TableCell sx={{ color: entry.cancelled ? 'text.secondary' : statusColor(entry.status) }}>
+                    {entry.cancelled ? 'cancelled' : (entry.status ?? '…')}
+                  </TableCell>
                   <TableCell align="right">{entry.durationMs ?? ''}</TableCell>
                 </TableRow>
               ))}
@@ -93,7 +95,13 @@ export function RequestInspector({ open, onClose }: RequestInspectorProps) {
                 {selected.method} {selected.url} → {selected.status ?? 'in flight'}
                 {selected.correlationId && ` · correlation ID ${selected.correlationId}`}
               </Typography>
-              {selected.error && <Typography color="error">{selected.error}</Typography>}
+              {selected.cancelled && (
+                <Typography color="text.secondary">
+                  Cancelled by the app before a response (in development React renders pages twice, and the first
+                  call is cancelled). Not an error.
+                </Typography>
+              )}
+              {selected.error && !selected.cancelled && <Typography color="error">{selected.error}</Typography>}
               <Typography variant="overline">Request headers</Typography>
               <Json value={selected.requestHeaders} />
               <Typography variant="overline">Request body</Typography>

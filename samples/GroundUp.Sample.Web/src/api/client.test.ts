@@ -137,10 +137,19 @@ describe('apiFetch', () => {
     expect(getInspectorSnapshot()[0]?.error).toBe('Failed to fetch');
   });
 
-  it('rethrows an abort unchanged', async () => {
+  it('rethrows an abort unchanged and records it as cancelled', async () => {
     mockFetch({ '/auth/me': [() => Promise.reject(new DOMException('The operation was aborted.', 'AbortError'))] });
 
     await expect(apiFetch('/auth/me')).rejects.toMatchObject({ name: 'AbortError' });
+    expect(getInspectorSnapshot()[0]?.cancelled).toBe(true);
+  });
+
+  it('does not record a network failure as cancelled', async () => {
+    mockFetch({ '/auth/me': [() => Promise.reject(new TypeError('Failed to fetch'))] });
+
+    await apiFetch('/auth/me').catch(() => undefined);
+
+    expect(getInspectorSnapshot()[0]?.cancelled).toBe(false);
   });
 
   it('keeps an unreadable JSON body as text', async () => {

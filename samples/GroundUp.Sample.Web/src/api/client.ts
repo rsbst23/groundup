@@ -84,7 +84,7 @@ async function send(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    recordResponse(id, { error: message });
+    recordResponse(id, { error: message, cancelled: isAbort(error) });
     if (isAbort(error)) {
       throw error; // let TanStack Query treat it as a cancellation
     }

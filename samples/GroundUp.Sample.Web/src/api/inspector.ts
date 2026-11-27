@@ -26,6 +26,8 @@ export interface InspectorEntry {
   responseBody: unknown;
   /** Set when the call failed before a response (network error, abort). */
   error: string | null;
+  /** True when the app cancelled the call itself (for example React's development double render). */
+  cancelled: boolean;
 }
 
 /** Header names are lower-cased; the masked ones are replaced with `***`. */
@@ -82,6 +84,7 @@ export function recordRequest(request: {
     responseHeaders: {},
     responseBody: null,
     error: null,
+    cancelled: false,
   };
   publish([entry, ...entries].slice(0, INSPECTOR_CAPACITY));
   return id;
@@ -92,7 +95,7 @@ export function recordResponse(
   id: number,
   response:
     | { status: number; headers: Headers; body: unknown; correlationId: string | null }
-    | { error: string },
+    | { error: string; cancelled?: boolean },
 ): void {
   const now = Date.now();
   publish(
@@ -102,7 +105,7 @@ export function recordResponse(
       }
       const durationMs = now - entry.startedAt;
       if ('error' in response) {
-        return { ...entry, durationMs, status: 0, error: response.error };
+        return { ...entry, durationMs, status: 0, error: response.error, cancelled: response.cancelled ?? false };
       }
       return {
         ...entry,
