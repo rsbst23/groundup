@@ -7,7 +7,7 @@ import { clearInspector } from '../../api/inspector';
 import { emptyResponse, headersOf, jsonResponse, mockFetch } from '../../api/testing';
 import { queryClient, shouldRetry } from '../../queryClient';
 import { formatRemaining } from './formatRemaining';
-import { myTenantsQueryOptions, onSessionChanged, sessionKey, sessionQueryOptions } from './sessionQuery';
+import { myTenantsQueryOptions, onSessionChanged, onSessionRefreshed, sessionKey, sessionQueryOptions } from './sessionQuery';
 
 beforeEach(() => {
   queryClient.clear();
@@ -59,6 +59,32 @@ describe('session queries', () => {
     expect(csrfHeaders).toEqual(['csrf-1', 'csrf-2']);
     expect(fetchMock.mock.calls.filter((call) => String(call[0]) === '/auth/me')).toHaveLength(2);
     expect(queryClient.getQueryData<typeof me>(sessionKey)?.tenantId).toBe('t2');
+  });
+
+  it('onSessionChanged clears data loaded for the old tenant, not only the session', async () => {
+    mockFetch({ '/auth/me': [() => jsonResponse(200, me)] });
+    queryClient.setQueryData(['members'], [{ email: 'old-tenant-member@example.com' }]);
+    queryClient.setQueryData(sessionKey, me);
+
+    await onSessionChanged(queryClient);
+
+    // Reset to empty (an inactive query is not refetched until a page shows it again)
+    expect(queryClient.getQueryData(['members'])).toBeUndefined();
+  });
+
+  it('onSessionRefreshed reloads only the session and keeps the CSRF token and other data', async () => {
+    const fetchMock = mockFetch({
+      '/auth/csrf': [() => jsonResponse(200, { token: 'csrf-1' })],
+      '/auth/refresh': [() => emptyResponse(200), () => emptyResponse(200)],
+    });
+    queryClient.setQueryData(['members'], [{ email: 'member@example.com' }]);
+    await apiFetch('/auth/refresh', { method: 'POST' });
+
+    await onSessionRefreshed(queryClient);
+    await apiFetch('/auth/refresh', { method: 'POST' });
+
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]) === '/auth/csrf')).toHaveLength(1);
+    expect(queryClient.getQueryData(['members'])).toEqual([{ email: 'member@example.com' }]);
   });
 
   it('a 401 from any other query marks the session signed out', async () => {

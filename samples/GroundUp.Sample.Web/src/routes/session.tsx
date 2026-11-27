@@ -9,6 +9,8 @@ import { OrganizationsPanel } from '../features/session/components/Organizations
 import { SessionDetails } from '../features/session/components/SessionDetails';
 import { SignedOutPanel } from '../features/session/components/SignedOutPanel';
 import { SignOutPanel } from '../features/session/components/SignOutPanel';
+import { landingAction } from '../features/session/landing';
+import { requestTenantPicker } from '../features/session/pickerRequest';
 import { onSessionChanged, useSession } from '../features/session/sessionQuery';
 import { isCallbackLanding, sessionSearchSchema } from '../features/session/sessionSearch';
 
@@ -33,10 +35,15 @@ function SessionPage() {
     }
     handled.current = true; // React's development double render must not navigate twice
 
+    const action = landingAction(outcome);
     void (async () => {
       await onSessionChanged(queryClient);
-      if (outcome.result === 'signed_in' && outcome.next) {
-        await navigate({ href: outcome.next, replace: true });
+      if (action.openPicker) {
+        // The dialog is app-wide, so it stays open over the page the user returns to
+        requestTenantPicker();
+      }
+      if (action.navigateTo) {
+        await navigate({ href: action.navigateTo, replace: true });
       } else {
         await navigate({ to: '/session', search: {}, replace: true });
       }

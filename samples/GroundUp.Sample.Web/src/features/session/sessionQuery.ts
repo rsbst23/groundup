@@ -37,11 +37,23 @@ export function useSession() {
 }
 
 /**
- * Call after anything that changes who is signed in or the current tenant (set-tenant, logout,
- * leave, create organization, refresh). The CSRF token is tied to the user, so it is dropped too.
+ * Call after anything that can change who is signed in or the current tenant (sign-in, set-tenant,
+ * leave, logout). Everything else the app has loaded belonged to the old user or tenant, so it is
+ * cleared (reset to empty and refetched by the pages still showing it), not only marked stale, so the
+ * old tenant's data is never shown under the new one. The CSRF token is tied to the user, so it is
+ * dropped too.
  */
 export async function onSessionChanged(queryClient: QueryClient): Promise<void> {
   clearCsrfToken();
+  await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+  await queryClient.invalidateQueries({ queryKey: sessionKey });
+}
+
+/**
+ * Call after a change to the session that keeps the user and the tenant (token refresh, a new
+ * organization in the list): only the session queries are reloaded.
+ */
+export async function onSessionRefreshed(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: sessionKey });
 }
 

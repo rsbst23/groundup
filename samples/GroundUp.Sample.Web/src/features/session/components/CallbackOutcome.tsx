@@ -50,7 +50,7 @@ export function CallbackOutcome({ outcome }: CallbackOutcomeProps) {
         </Alert>
       );
     case 'tenant_picker':
-      return <Alert severity="info">Signed in. Choose an organization below to continue.</Alert>;
+      return <Alert severity="info">Signed in. Choose an organization to continue.</Alert>;
     case 'no_tenant':
       return (
         <Alert severity="info">Signed in. You do not belong to any organization yet; create one below.</Alert>

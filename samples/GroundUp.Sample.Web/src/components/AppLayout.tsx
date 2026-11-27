@@ -9,6 +9,7 @@ import { useState, type ReactNode } from 'react';
 import { NavMenu } from './NavMenu';
 import { RequestInspector } from './RequestInspector';
 import { SessionButton } from './SessionButton';
+import { TenantPickerDialog } from './TenantPickerDialog';
 import { useInspectorEntries } from './useInspectorEntries';
 import { SessionBanner } from './SessionBanner';
 
@@ -60,6 +61,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {children}
       </Box>
       <RequestInspector open={inspectorOpen} onClose={() => setInspectorOpen(false)} />
+      <TenantPickerDialog />
     </Box>
   );
 }

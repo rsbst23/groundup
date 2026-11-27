@@ -5,12 +5,13 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { formatRemaining } from '../features/session/formatRemaining';
 import { useSession } from '../features/session/sessionQuery';
+import { requestTenantPicker } from '../features/session/pickerRequest';
 import { useNow } from '../features/session/useNow';
 import { useStartSignIn } from '../features/session/useStartSignIn';
 
 /** Who is signed in, the current tenant, roles and the token's expiry, on every page. */
 export function SessionBanner() {
-  const { me, currentTenant, isLoading } = useSession();
+  const { me, currentTenant, tenants, isLoading } = useSession();
   const startSignIn = useStartSignIn();
   const now = useNow(Boolean(me?.expiresAt));
 
@@ -43,6 +44,11 @@ export function SessionBanner() {
         <Typography variant="body2" color={me.tenantId ? 'text.primary' : 'warning.main'}>
           Tenant: {tenantLabel}
         </Typography>
+        {!me.tenantId && tenants.length > 0 && (
+          <Button size="small" variant="outlined" onClick={requestTenantPicker}>
+            Choose organization
+          </Button>
+        )}
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {me.roles.length === 0 ? (
             <Typography variant="body2" color="text.secondary">

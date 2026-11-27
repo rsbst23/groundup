@@ -22,7 +22,8 @@ The token cookie is HttpOnly, so the app shows what `/auth/me` returns (user id,
 ## Decisions (with Rob)
 
 1. **One Session page.** Signed out: the sign-in and sign-up actions. Signed in: the session, the organizations, and sign-out.
-2. **Back to where you started.** Signing in from a page returns to that page. The tenant picker and errors land on the Session page.
+2. **Back to where you started.** Signing in from a page returns to that page. Errors and "no organization yet" land on the Session page.
+6. **The organization picker is an app-wide dialog** (decided after Rob's first run, where the picker kept him on the Session page). After a sign-in that needs a choice, the user returns to the page they started from and chooses there; the Session page keeps its list for switching later.
 3. **A Sign in / Sign out button in the top bar**, next to Requests. The banner's "Sign in" link does the same.
 4. **Enterprise organizations** in the list are marked "not switchable here" and show their subdomain; no switch button (GU-69).
 5. **Tests:** Vitest for the new endpoint functions and the return logic; pages checked by hand with TESTING.md Part 3.
@@ -46,7 +47,7 @@ The token cookie is HttpOnly, so the app shows what `/auth/me` returns (user id,
 2. `next` SHALL be accepted only when it is a path in this app: it starts with a single `/`, is not a proxied API path (`/api`, `/auth`, `/setup`, `/health`, `/swagger`) and is at most 1000 characters. Anything else is dropped (the user stays on the Session page). This keeps the app from being used to bounce users to another site, in addition to the API's own `returnUrl` rules.
 3. On landing, the Session page SHALL:
    - for `result=signed_in`: refresh the session, show a short confirmation, and go to `next` when there is one (replacing the history entry, so Back does not land on the callback outcome)
-   - for `result=tenant_picker`: stay, and show the organization list with a prompt to choose
+   - for `result=tenant_picker`: refresh the session, open the organization picker dialog (Requirement 3.8) and go to `next` when there is one, so the user chooses on the page they started from
    - for `result=no_tenant`: stay, and show that there is no organization yet, with the create form
    - for `error=CODE`: stay, and show the code with a plain-language explanation for the known codes (`REAUTH_REQUIRED`, `CSRF_STATE_MISMATCH`, `FLOW_ALREADY_CONSUMED`, `FLOW_EXPIRED`, `IDP_ERROR`, `ACCESS_DENIED`, `NO_DEFAULT_TENANT`, `EMAIL_NOT_VERIFIED`, `INVITATION_EMAIL_MISMATCH`, and a generic line for others), with "Sign in again"
 4. After acting on the outcome, the Session page SHALL remove the outcome values from its address, so a reload does not show the message again.
@@ -72,8 +73,13 @@ The token cookie is HttpOnly, so the app shows what `/auth/me` returns (user id,
 5. **Sign out:**
    - **Sign out of this app:** `POST /auth/logout`; the session becomes signed out. Keycloak's own session stays, so the next sign-in may not ask for a password (said on the button's help text)
    - **Sign out everywhere:** `POST /auth/logout`, then the whole page goes to `logoutUrl`; Keycloak returns to the app's home page
-6. Every action that changes the user or tenant SHALL call `onSessionChanged` (fresh CSRF token, session refetched).
-7. When the session is on the tenant picker (signed in, no current tenant, organizations available), the organization list SHALL be the first thing on the page.
+6. Every action that can change the user or tenant (sign-in, switch, leave, sign-out) SHALL call `onSessionChanged`: fresh CSRF token, everything else the app has loaded cleared (so the old tenant's data is never shown under the new one), session refetched. A token refresh and creating an organization keep the user and tenant, so they only refetch the session.
+7. When the session is on the tenant picker (signed in, no current tenant, organizations available), the organization list SHALL be the first thing on the Session page.
+8. **Organization picker dialog**, available on every page:
+   - it opens on its own only right after a sign-in that returned `result=tenant_picker`; leaving the current organization or reloading does not open it
+   - the banner shows a **Choose organization** button whenever the session has no current tenant and organizations are available; it opens the dialog
+   - it lists the organizations; switchable ones can be chosen (the dialog closes and the page reloads its data), enterprise or not-switchable ones show "Not switchable here" and the subdomain
+   - **Not now** closes it; the session stays with no current tenant
 
 ### Requirement 4: Top bar and "sign in again"
 

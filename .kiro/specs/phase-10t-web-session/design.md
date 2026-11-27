@@ -78,10 +78,22 @@ Layout, top to bottom:
 
 Each mutation's error shows in an `ErrorPanel` next to the action that failed.
 
-**Landing handling.** On first render, the page copies the outcome values into component state (`useState(() => search)`), then in an effect:
-1. calls `onSessionChanged(queryClient)` if there was an outcome
-2. for `result=signed_in` with a valid `next`: `navigate({ href: next, replace: true })`
-3. otherwise: `navigate({ to: '/session', search: {}, replace: true })`, so a reload shows no message but the message stays on screen (it is in state)
+**Landing handling.** On first render, the page copies the outcome values into component state (`useState(() => search)`), then in an effect applies `landingAction(outcome)` (`features/session/landing.ts`, a plain function with tests):
+
+| Outcome | Go to | Open the picker |
+|---|---|---|
+| `signed_in` | `next`, or stay | no |
+| `tenant_picker` | `next`, or stay | yes |
+| `no_tenant` | stay | no |
+| `error` | stay | no |
+
+1. calls `onSessionChanged(queryClient)`
+2. opens the picker when asked (`requestTenantPicker()`, an in-memory flag that survives the client-side navigation)
+3. goes to `next` with `navigate({ href: next, replace: true })`, or clears the address with `navigate({ to: '/session', search: {}, replace: true })`, so a reload shows no message but the message stays on screen (it is in state)
+
+**Organization picker dialog** (`components/TenantPickerDialog.tsx`, mounted once in `AppLayout`, added after Rob's first run). Open while the flag is set, the user is signed in and there are organizations. Choosing one calls `switchTenant` and closes on success; "Not now" closes it. The banner's **Choose organization** button (shown when there is no current tenant and organizations exist) sets the flag. The flag is set on its own only by the landing above.
+
+**Clearing tenant data.** `onSessionChanged` now resets every query that is not a session query (`queryClient.resetQueries` with a predicate), so pages refetch for the new tenant instead of showing the old tenant's data while they do. Token refresh and creating an organization use `onSessionRefreshed`, which only reloads the session and keeps the CSRF token.
 
 A ref guards the effect so React's development double render does not navigate twice.
 
