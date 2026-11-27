@@ -220,6 +220,7 @@ Never skip the backlog review step. Never create a spec without first discussing
 - Commit frequently after each sub-step that compiles and works. Small commits with clear messages.
 - Merge to main only when the phase is verified and complete.
 - Push branches with `-u` flag to set up remote tracking.
+- When giving PR info, put the title and the description each in its own fenced code block (so they have a copy button), with the compare URL above them.
 - Keep PRs small and reviewable. Aim for ~10-15 files max per PR. Break large phases into multiple PRs at natural boundaries (e.g., entities in one PR, EF configs in another, tests in another). The user needs to be able to read and comprehend every PR.
 
 ## Jira Project

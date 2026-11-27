@@ -727,7 +727,7 @@ These decisions span all sub-phases and should be referenced when writing each s
 
 ### Sub-phase breakdown
 
-Phase 10 is split into six sub-phases with separate specs and PRs. Each sub-phase ships independently and keeps PRs at ~10–15 files. Tracked in Jira under epic GU-9.
+Phase 10 is split into sub-phases with separate specs and PRs. Each sub-phase ships independently and keeps PRs at ~10–15 files. Tracked in Jira under epic GU-9; the test console has its own epic, GU-85.
 
 | Sub-phase | Title | Jira |
 |---|---|---|
@@ -736,8 +736,9 @@ Phase 10 is split into six sub-phases with separate specs and PRs. Each sub-phas
 | 10b | `GroundUp.Auth.Keycloak` provider implementation | GU-38 |
 | 10c | Auth dispatcher, host resolver, cookie writer, basic flows | GU-67 |
 | 10d | Invitations, Join Links, `IUserRoleService` | GU-68 |
-| 10e | Enterprise flows: realm provisioning, first admin, SSO auto-join | GU-69 |
 | 10d-settings | Settings authorization (spec `phase-10d-settings-authorization`) | GU-77 |
+| 10t | Test console and the roles, policies and permissions APIs (before 10e) | GU-85, GU-95, GU-96 |
+| 10e | Enterprise flows: realm provisioning, first admin, SSO auto-join | GU-69 |
 
 #### Phase 10a — Keycloak infra, IdP admin contract, AuthFlowState (GU-37)
 
@@ -812,6 +813,18 @@ Adds two more flows plus member management. Spec: `.kiro/specs/phase-10d-invitat
 - Enterprise tenants refuse invitations and join links until 10e.
 
 Verification: invitation acceptance creates the membership with the correct role; revoked, expired or used invitations and links return 410; a non-SuperAdmin cannot assign SuperAdmin by any path; the invitation email must match; concurrent joins never exceed a link's maximum uses; the Keycloak registration, `login_hint` and forced sign-in pages are checked against a real Keycloak.
+
+#### Phase 10t — Test console, roles and policies APIs (GU-85, GU-95, GU-96)
+
+The auth flows are browser journeys that Swagger cannot follow, and the manual testing guide had grown to need SQL and copied tokens. Before the enterprise flows, build a small browser app to call every endpoint and run every workflow, and add the two missing admin APIs it needs. It is a test tool, not a product: plain forms and tables.
+
+- **Sample web app** (`samples/GroundUp.Sample.Web`): React, Vite and TypeScript, with MUI, TanStack Query and TanStack Router. It may become the template other GroundUp apps copy. It has its own testing manual (`samples/GroundUp.Sample.Web/TESTING.md`); the API guide stays as the Swagger reference. The Vite dev server proxies `/api`, `/auth`, `/setup` and `/health` to the sample API, so cookies, SameSite and CSRF behave as in a real client. Development only; never packed. It calls only public HTTP endpoints; anything it cannot do through the API is a finding.
+- **Post-sign-in redirect** (GU-87): the callback can redirect to an allowlisted return URL with a non-secret outcome, instead of leaving the browser on JSON. Needed by any browser client.
+- **Roles API** (GU-95) and **policies and permissions API** (GU-96): tenant roles, policies, and the permissions they grant, with built-in role protection, an escalation guard and permission cache eviction.
+- **Console pages**, in order: scaffold and API client (GU-86), redirect (GU-87), setup wizard (GU-88), sign-in, session and tenants (GU-89), roles API (GU-95), policies and permissions API (GU-96), members, invitations and join links (GU-90), roles pages (GU-97), settings (GU-91), sample data (GU-92), diagnostics (GU-93), then the manual testing guide rewritten around the console (GU-94).
+- From here on, a story that adds endpoints or flows also adds its console page (10e, GU-79, GU-80, Notifications).
+
+Verification: every part of the manual testing guide runs from the console, except the steps deliberately done in the Keycloak admin console; a new role with a policy gives a member a permission without signing in again.
 
 #### Phase 10e — Enterprise flows: realm provisioning, first admin, SSO auto-join (GU-69)
 

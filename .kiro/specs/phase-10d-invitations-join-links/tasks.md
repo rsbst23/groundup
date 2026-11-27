@@ -64,5 +64,5 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
   - [x] 7.3 `realm.json`: port wildcards replaced by explicit ports 5000, 5001, 5117, 7295 for redirect URIs, web origins and post-logout URIs (checked by importing into a throwaway Keycloak 26.3: port 5000 accepted, 5999 rejected)
   - [x] 7.4a Test fixture fix: `AuthFlowTestFixture` replaced `IUnitOfWork` with a test-only version that ran no transaction (and matched exception messages), so a rolled-back invitation still left its pending membership in the integration tests. The fixture now uses the production `AuthDbContextUnitOfWork`. Production code was not affected (unit 1939 / 0; integration 525 / 0; sample 22/22)
   - [x] 7.4 ARCHITECTURE.md ("Members, Invitations and Join Links", revocation paths), BUILD_PHASES.md (10d as built), MANUAL_TESTING.md (Parts 15 and 16, reset script, troubleshooting)
-  - [ ] 7.5 Jira (GU-68 comment, Done after merge)
+  - [x] 7.5 Jira (GU-68 comment, Done after merge)
   - PR C boundary: push, give the compare URL, title and description
