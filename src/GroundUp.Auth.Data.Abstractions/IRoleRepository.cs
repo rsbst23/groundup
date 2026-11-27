@@ -67,4 +67,15 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
         Guid tenantId,
         string name,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What uses a role of the current tenant (GU-95): its holders, pending invitations, active join
+    /// links, and whether it is the tenant's default role. Checked before a delete.
+    /// </summary>
+    /// <param name="roleId">The role.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The usage, or NotFound for a role that is not in the current tenant.</returns>
+    Task<OperationResult<RoleUsageDto>> GetUsageAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default);
 }

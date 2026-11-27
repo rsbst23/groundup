@@ -33,5 +33,9 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.TenantId);
+
+        // Names are unique per tenant ignoring case: the unique expression index
+        // IX_AuthRoles_TenantId_LowerName on ("TenantId", lower("Name")) is created with SQL in the
+        // AddRoleNameIndexAndTenantDefaultRole migration (EF cannot express lower(...) in HasIndex).
     }
 }

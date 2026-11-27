@@ -481,6 +481,9 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("DefaultRoleId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -525,6 +528,8 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DefaultRoleId");
 
                     b.HasIndex("ParentTenantId");
 
@@ -849,10 +854,17 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
 
             modelBuilder.Entity("GroundUp.Auth.Core.Entities.Tenant", b =>
                 {
+                    b.HasOne("GroundUp.Auth.Core.Entities.Role", "DefaultRole")
+                        .WithMany()
+                        .HasForeignKey("DefaultRoleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GroundUp.Auth.Core.Entities.Tenant", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentTenantId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DefaultRole");
 
                     b.Navigation("Parent");
                 });
@@ -862,7 +874,7 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                     b.HasOne("GroundUp.Auth.Core.Entities.Role", "Role")
                         .WithMany("UserRoles")
                         .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("GroundUp.Auth.Core.Entities.Tenant", "Tenant")
