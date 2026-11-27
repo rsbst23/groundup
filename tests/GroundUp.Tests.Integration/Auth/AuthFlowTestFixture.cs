@@ -198,7 +198,8 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             services.RemoveAll<IIdTokenValidator>();
             services.AddSingleton<IIdTokenValidator, TestIdTokenValidator>();
 
-            // Register IUnitOfWork backed by AuthDbContext for transactional flow handlers
+            // The production unit of work over AuthDbContext (real transactions), in case the
+            // sample's registrations replaced it
             services.RemoveAll<IUnitOfWork>();
             services.AddScoped<IUnitOfWork, AuthDbContextUnitOfWork>();
 
@@ -462,45 +463,6 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             };
             dbContext.Set<GroundUp.Core.Entities.Settings.SettingValue>().Add(settingValue);
             await dbContext.SaveChangesAsync();
-        }
-    }
-}
-
-/// <summary>
-/// Simple EF Core-based <see cref="IUnitOfWork"/> implementation for integration tests.
-/// Wraps the operation in a database transaction using <see cref="AuthDbContext"/>.
-/// </summary>
-internal sealed class AuthDbContextUnitOfWork : IUnitOfWork
-{
-    private readonly AuthDbContext _context;
-
-    public AuthDbContextUnitOfWork(AuthDbContext context)
-    {
-        _context = context;
-    }
-
-    public async Task<OperationResult> ExecuteInTransactionAsync(
-        Func<CancellationToken, Task> operation,
-        CancellationToken cancellationToken = default)
-    {
-        // Each repository AddAsync already calls SaveChangesAsync internally,
-        // so we just run the operation and return success.
-        // For true atomicity, a proper UoW would defer saves.
-        try
-        {
-            await operation(cancellationToken);
-            return OperationResult.Ok();
-        }
-        catch (Exception ex) when (
-            ex.Message.Contains("23505") ||
-            ex.Message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) ||
-            ex.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) ||
-            (ex.InnerException is not null && (
-                ex.InnerException.Message.Contains("23505") ||
-                ex.InnerException.Message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) ||
-                ex.InnerException.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))))
-        {
-            return OperationResult.Fail("Unique constraint violation", 409);
         }
     }
 }

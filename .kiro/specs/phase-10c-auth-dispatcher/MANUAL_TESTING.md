@@ -14,7 +14,8 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 |---|---|---|---|
 | **Sam** | `admin@example.com` | `Admin123!` | The system administrator (SuperAdmin), created by the setup wizard's first-admin step (1.3). Only needed for the optional parts that change System-level settings (11, 14.4). If your setup used a different first admin, use that account. |
 | **Alice** | `testuser@example.com` | `Test123!` | Founds `My Test Org`, creates `Second Org`. The only TenantAdmin of both. |
-| **Bob** | `member@example.com` | `Test123!` | A regular member (no admin role) who joins through the default tenant, then leaves and rejoins. |
+| **Bob** | `member@example.com` | `Test123!` | A regular member (no admin role) who joins through the default tenant, then leaves and rejoins. Joins My Test Org again through a join link in Part 16. |
+| **Carol** | `invitee@example.com` | `Test123!` | Has no account until Alice invites her in Part 15. |
 
 ### What state you are in after each part
 
@@ -31,6 +32,8 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 | 9 | Log in with nowhere to go | Bob, **no current tenant** | unchanged | none (left) | empty |
 | 10 | Create an organization from a tenantless session | Bob, in Tenantless Org | unchanged | Tenantless Org | empty |
 | 11, 12, 13, 14 | Optional: token refresh, subdomains, email verification, session lifetime and forced sign-in | Alice, then the Part 13 users | — | — | empty (Part 12 changes the default *domain*; put it back) |
+| 15 | Optional: invitations (needs Parts 2 to 10) | Carol, in My Test Org | unchanged | unchanged | empty |
+| 16 | Optional: join links (needs Part 15's Member role) | Bob, in My Test Org | unchanged | Tenantless Org, My Test Org | empty |
 
 ### Words used
 
@@ -134,7 +137,7 @@ Expected: `{ "code": "setup_active", ... }`.
 
 Go to http://localhost:8080 → log in as `admin` / `admin` → select the **groundup** realm (top-left dropdown).
 
-1. **Redirect URI.** Keycloak 26 ignores port wildcards. **Clients → groundup-app → Settings → Valid redirect URIs** → add `http://localhost:5000/auth/callback` (use your port; add a few common ones: 5000, 5001, 7295).
+1. **Redirect URI.** Keycloak 26 ignores port wildcards. **Clients → groundup-app → Settings → Valid redirect URIs** → add `http://localhost:5000/auth/callback` (use your port; add a few common ones: 5000, 5001, 7295). A realm newly imported from `realm.json` already has ports 5000, 5001, 5117 and 7295 for steps 1 and 2.
 2. **Post-logout redirect URI** (needed for Recipe 2). Same page → **Valid post logout redirect URIs** → add `http://localhost:5000/` (match your port). Without it the logout URL returns "Invalid redirect uri".
 3. **Save.**
 4. **Enable user registration.** **Realm settings → Login** → toggle **User registration** On. (The `realm.json` import is skipped if the realm already existed, so this may be off.)
@@ -692,6 +695,72 @@ Uses the shortest allowed absolute lifetime (10 minutes), so it takes about 11 m
 
 ---
 
+## Part 15 (Optional): Invitations (Alice Invites Carol)
+
+Alice invites Carol, who has no account, to My Test Org. Carol registers from the invitation and lands in the organization. Start after Part 10 (or any time Alice is the TenantAdmin of My Test Org).
+
+The sample app has no email sender and no accept page. In Development the default sender writes the accept link to the app console instead of emailing it, and you call the accept endpoints from Swagger.
+
+### 15.1 Set up (once)
+1. **Add a Member role to My Test Org.** New organizations only get TenantAdmin, and there is no roles API yet, so use the database:
+   ```sql
+   INSERT INTO "AuthRoles" ("Id", "Name", "Description", "RoleType", "TenantId", "IsSystem", "CreatedAt")
+   SELECT gen_random_uuid(), 'Member', 'Regular member', 1, t."Id", false, now()
+   FROM "AuthTenants" t WHERE t."Slug" = 'my-test-org';
+
+   SELECT r."Id" FROM "AuthRoles" r JOIN "AuthTenants" t ON t."Id" = r."TenantId"
+   WHERE t."Slug" = 'my-test-org' AND r."Name" = 'Member';
+   ```
+   Note the Member role id.
+2. **Set the accept page URL** (System level, so as Sam; Part 11 shows how to get the System level id): `PUT /api/settings/auth.invitations.accept-url` with `{ "value": "http://localhost:5000/invite/{token}", "levelId": "<System id>" }` (use your port). Until it is set, `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED`.
+
+### 15.2 Alice sends the invitation
+1. Log out fully (Recipe 2), then log in as Alice (Recipe 1) and make sure you are in My Test Org (`POST /auth/set-tenant` if you get the picker).
+2. `POST /api/invitations` with `{ "email": "invitee@example.com", "roleId": "<Member id>" }`. **Expected:** 201, `status` 0 (Pending), and no token anywhere in the response.
+3. The app console shows `Invitation ... for invitee@example.com (not sent: no email sender registered). Accept link: http://localhost:5000/invite/<token>`. Copy the token.
+4. `GET /api/members`. **Expected:** Carol is listed with `status` 2 (Pending) and role Member.
+
+### 15.3 Carol accepts and registers
+1. `POST /auth/invitations/lookup` with `{ "token": "<token>" }`. **Expected:** `usable: true`, `organizationName: "My Test Org"`, `roleName: "Member"`. No sign-in is needed.
+2. Log out fully (Recipe 2). Alice's Keycloak session must end, or Keycloak refuses to register a second person.
+3. `POST /auth/invitations/accept` with `{ "token": "<token>" }`. **Expected:** the `redirectUrl` contains `prompt=create` and `login_hint=invitee%40example.com`, because Carol has no Keycloak account.
+4. Open it. **Expected:** the Keycloak **registration** form, with the email filled in. Register with password `Test123!`.
+5. **Expected:** the callback succeeds. `GET /auth/me` shows Carol in My Test Org with the Member role.
+
+### 15.4 The link only works once
+1. `POST /auth/invitations/lookup` with the same token. **Expected:** `usable: false`, `reason: "accepted"`.
+2. `POST /auth/invitations/accept` with the same token. **Expected:** **410** `INVITATION_ALREADY_USED`.
+
+### 15.5 Revoking an invitation
+1. Log out fully and log in as Alice in My Test Org. `POST /api/invitations` with `{ "email": "nobody@example.com", "roleId": "<Member id>" }`. Note `data.id` and the token from the console.
+2. `POST /api/invitations/<id>/revoke`. **Expected:** 200.
+3. **Expected:** `GET /api/members` no longer lists `nobody@example.com`; `POST /auth/invitations/lookup` with its token returns `reason: "revoked"`.
+
+**Resend** works the same way (`POST /api/invitations/<id>/resend`): the console shows a new link, and the old token's lookup returns `not_found`.
+
+---
+
+## Part 16 (Optional): Join Links (Bob Rejoins My Test Org)
+
+Alice creates a shareable link; Bob, who left My Test Org in Part 9, uses it to join again with the Member role. Needs the Member role from Part 15.1.
+
+### 16.1 Alice creates a link
+1. As Alice in My Test Org: `POST /api/join-links` with `{ "roleId": "<Member id>", "maxUses": 5 }`. **Expected:** 201 with `data.token` and `data.link`. This is the only time the token is shown.
+2. `GET /api/join-links`. **Expected:** the link is listed with `useCount` 0 and no token.
+3. `POST /api/join-links/<id>/regenerate`. **Expected:** a new `data.token`. `POST /auth/join-links/lookup` with the **old** token returns `reason: "not_found"`; with the new one, `usable: true`. Use the new token from here on.
+
+### 16.2 Bob joins
+1. Log out fully (Recipe 2).
+2. `POST /auth/join-links/join` with `{ "token": "<new token>" }`. Open the `redirectUrl` and sign in as Bob.
+3. **Expected:** the callback succeeds and Bob is signed in to My Test Org, with no picker even though he also belongs to Tenantless Org. `GET /auth/me` shows the Member role. `GET /auth/me/tenants` lists both organizations.
+4. As Alice, `GET /api/join-links` shows `useCount` 1.
+
+### 16.3 Revoking a link
+1. As Alice: `POST /api/join-links/<id>/revoke`. **Expected:** 200.
+2. **Expected:** `POST /auth/join-links/lookup` returns `reason: "revoked"`, and `POST /auth/join-links/join` returns **410** `JOIN_LINK_NO_LONGER_VALID`. Bob is still a member (`GET /api/members`).
+
+---
+
 ## What Automated Tests Cover (Not Repeated Here)
 
 These need extra setup (several organizations, a second admin) or conditions that are awkward to create by hand. They run against a real database:
@@ -746,6 +815,10 @@ These need extra setup (several organizations, a second admin) or conditions tha
 | An endpoint or the callback returns 401 `REAUTH_REQUIRED` | The session is older than the absolute session lifetime. Run `POST /auth/login?forceLogin=true` and open its `redirectUrl`; Keycloak asks for the password and the session starts again |
 | Callback returns `ID_TOKEN_INVALID` | The ID token from Keycloak did not validate. The app log line "ID token rejected for realm ..." gives the reason. Check that the setup wizard's `publicBaseUrl` and `internalBaseUrl` match the URL Keycloak puts in its tokens (`iss`), and that the app can reach Keycloak at the internal URL |
 | The app logs a warning that the default domain is a single label | `auth.application.default-domain` is `localhost` (or another name without a dot). That is fine on `localhost`, but browsers drop the cookie on subdomain hosts. Part 12 uses `groundup.test` |
+| Part 15: `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED` | Set `auth.invitations.accept-url` (Part 15.1 step 2) |
+| Part 15 or 16: creating an invitation or link returns 403 | You are not in My Test Org (`POST /auth/set-tenant`), or the signed-in user may not grant that role |
+| Part 15: no accept link in the console | The default sender only writes the link in the Development environment |
+| Part 15: accept returns 403 `INVITATION_EMAIL_MISMATCH` at the callback | You signed in as someone other than the invited email. Log out fully and accept again, or send `"forceLogin": true` so Keycloak asks who you are |
 | Part 8 or 9 behaves differently from this guide | Check the starting state in the table at the top, especially `default-tenant-slug`, and that the app was restarted after changing it |
 
 ---
@@ -763,7 +836,7 @@ docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d
 
 ## Resetting a Test User
 
-Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Run it once for each test user (`testuser@example.com`, `member@example.com`, and the Part 13 users `verify@example.com`, `unverified@example.com`, `verify2@example.com` if you ran that part). Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
+Removes one user and every organization **only they** belong to, so you can sign up again with the same email. Run it once for each test user (`testuser@example.com`, `member@example.com`, the Part 15 users `invitee@example.com` and `nobody@example.com` if you ran that part, and the Part 13 users `verify@example.com`, `unverified@example.com`, `verify2@example.com` if you ran that part). Settings, the setup wizard and other users are untouched. Organizations that also have other members are kept; only this user's membership and roles in them are removed. The seeded `system` tenant is never deleted.
 
 **1. Preview** (pgAdmin/DBeaver query tool, `groundup` database). Change the email on the first line:
 ```sql
@@ -776,7 +849,7 @@ SELECT t."Id", t."Name", t."Slug",
 FROM "AuthTenants" t
 WHERE t."Id" IN (SELECT ut."TenantId" FROM "AuthUserTenants" ut WHERE ut."UserId" IN (SELECT "Id" FROM target_user));
 ```
-Rows with `other_members = 0` will be deleted. Rows with `other_members > 0` will be kept. When resetting Alice, `My Test Org` has Bob as another member until Bob is reset first; **reset Bob first, then Alice**.
+Rows with `other_members = 0` will be deleted. Rows with `other_members > 0` will be kept. When resetting Alice, `My Test Org` has Bob as another member until Bob is reset first; **reset Bob first, then Alice** (and Carol before Alice if you ran Part 15).
 
 **2. Delete.** Run as one script; it is a single transaction, so any error leaves the database unchanged. Use the same email:
 ```sql
@@ -802,6 +875,8 @@ DELETE FROM "AuthUserTenants"
  WHERE "UserId" IN (SELECT "Id" FROM reset_user) OR "TenantId" IN (SELECT "Id" FROM reset_tenants);
 
 -- Tenant-owned rows (role-policy and policy-permission links cascade)
+DELETE FROM "AuthInvitations" WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants) OR "UserId" IN (SELECT "Id" FROM reset_user);
+DELETE FROM "AuthJoinLinks"   WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
 DELETE FROM "AuthRoles"    WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
 DELETE FROM "AuthPolicies" WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
 
@@ -827,8 +902,7 @@ If `default-tenant-slug` points at an organization this deletes, clear it (Recip
 
 These flows are planned for future phases and are not implemented yet:
 
-- **Enterprise SSO / custom realms** (Phase 10D): `501 Not Implemented` is returned if triggered
-- **Invitation flow** (Phase 10E)
-- **Join links** (Phase 10F)
-- **Admin management UI** (Phase 10G)
+- **Enterprise SSO / custom realms** (Phase 10E, GU-69): `501 Not Implemented` is returned if triggered; invitations and join links for enterprise tenants return `422 ENTERPRISE_NOT_SUPPORTED`
+- **Sending invitation emails** (GU-64, Notifications module): the default sender only writes the link to the console in Development
+- **Admin management UI**
 - **Revocation across several app instances** (Phase 15, caching module): today an old token is rejected only by the instance that handled the leave (7.4)

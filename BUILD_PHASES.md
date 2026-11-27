@@ -800,17 +800,18 @@ Verification: new-org flow end-to-end; multi-tenant picker shown only on the gen
 
 #### Phase 10d — Invitations, Join Links, `IUserRoleService` (GU-68)
 
-Adds two more flows. Brings `TenantInvitation` and `TenantJoinLink` into existence (carried over from Phase 9 scope).
+Adds two more flows plus member management. Spec: `.kiro/specs/phase-10d-invitations-join-links/`; details in ARCHITECTURE.md, "Members, Invitations and Join Links".
 
-- Entities: `TenantInvitation` (Pending/Accepted/Expired/Revoked, expiry, role assignment, invited email, token, audit, soft-delete) and `TenantJoinLink` (token, status, optional expiry, optional max uses, role assignment, audit, soft-delete).
-- EF configurations, migrations, repositories.
-- `IInvitationService`, `IJoinLinkService` in `GroundUp.Auth.Services`. Membership creation and role assignment on acceptance.
-- `IUserRoleService` (lean) — encapsulates role-assignment writes, enforces `auth.roles.assign-system`. Invitation/join-link acceptance routes through this service.
-- `IInvitationEmailSender` interface with default `LoggingInvitationEmailSender` implementation. Future swap to Notifications module tracked by GU-64.
-- Flow handlers: Invitation, Join Link.
-- Controllers: `InvitationController`, `JoinLinkController`.
+- Membership status (`Active`/`Inactive`/`Pending`) replaces `IsActive`; `ExternalUserId` is nullable so an invited person can exist before signing in; role grants record their `Source`.
+- Entities `Invitation` (Pending/Accepted/Expired/Revoked, invited email, role, hashed token, expiry) and `JoinLink` (role, hashed token, optional expiry, optional max uses), with EF configurations, migrations and repositories.
+- `IUserRoleService` holds the role-grant rules (SuperAdmin, TenantAdmin, `auth.roles.assign`, `IRoleAssignmentRule`) and the last-TenantAdmin and last-SuperAdmin guards. Every flow grants roles through the same rules.
+- `IMemberManagementService`, `IInvitationService`, `IJoinLinkService` and the acceptance services, in `GroundUp.Auth.Services`. `TenantAccessRevoker` ends access on every removal path.
+- `IInvitationEmailSender` with the default `LoggingInvitationEmailSender`. The swap to the Notifications module is tracked by GU-64.
+- Flow handlers: Invitation, Join Link. A pending user record is merged into the account that accepts.
+- Controllers: `MembersController`, `InvitationsController`, `JoinLinksController` (under `/api`), `InvitationAcceptanceController`, `JoinLinkAcceptanceController` (under `/auth`).
+- Enterprise tenants refuse invitations and join links until 10e.
 
-Verification: invitation acceptance creates membership with correct role; revoked or expired invitations/links return 410; non-SuperAdmin cannot assign SuperAdmin via any path; invitation email-match enforced.
+Verification: invitation acceptance creates the membership with the correct role; revoked, expired or used invitations and links return 410; a non-SuperAdmin cannot assign SuperAdmin by any path; the invitation email must match; concurrent joins never exceed a link's maximum uses; the Keycloak registration, `login_hint` and forced sign-in pages are checked against a real Keycloak.
 
 #### Phase 10e — Enterprise flows: realm provisioning, first admin, SSO auto-join (GU-69)
 
