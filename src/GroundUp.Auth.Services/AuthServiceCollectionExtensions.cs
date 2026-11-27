@@ -9,6 +9,7 @@ using GroundUp.Auth.Services.Configuration;
 using GroundUp.Auth.Services.EventHandlers;
 using GroundUp.Auth.Services.Identity;
 using GroundUp.Auth.Services.Invitations;
+using GroundUp.Auth.Services.JoinLinks;
 using GroundUp.Auth.Services.Membership;
 using GroundUp.Auth.Services.Revocation;
 using GroundUp.Auth.Services.Roles;
@@ -177,6 +178,11 @@ public static class AuthServiceCollectionExtensions
         // Accepting invitations: the public start (the token is the credential) and the callback
         services.AddScoped<IInvitationAcceptanceService, InvitationAcceptanceService>();
         services.AddScoped<IFlowHandler, InvitationFlowHandler>();
+        // Join links (GU-68): admin service behind the proxy, public start, callback
+        services.AddScoped<IValidator<CreateJoinLinkDto>, CreateJoinLinkDtoValidator>();
+        services.AddAuthorized<IJoinLinkService, JoinLinkService>();
+        services.AddScoped<IJoinLinkAcceptanceService, JoinLinkAcceptanceService>();
+        services.AddScoped<IFlowHandler, JoinLinkFlowHandler>();
 
         // Token revocation (GU-71). In-memory and per process until the caching module (Phase 15, GU-47).
         // TimeProvider.System on purpose: the cutoff must use the clock that stamps iat on tokens, not

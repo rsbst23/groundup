@@ -79,6 +79,9 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IInvitationRepository>(sp =>
             new InvitationRepository(sp.GetRequiredService<AuthDbContext>()));
 
+        services.AddScoped<IJoinLinkRepository>(sp =>
+            new JoinLinkRepository(sp.GetRequiredService<AuthDbContext>()));
+
         // AuthFlowState repository (not tenant-scoped)
         services.AddScoped<IAuthFlowStateRepository>(sp =>
             new AuthFlowStateRepository(sp.GetRequiredService<AuthDbContext>()));

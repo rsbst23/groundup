@@ -53,10 +53,10 @@ Requirements: `requirements.md`. Design: `design.md` (section numbers below refe
 
 ## PR C: join links and end-to-end
 
-- [ ] 6. Join links (design 6.1-6.2)
-  - [ ] 6.1 `JoinLink` entity, configuration, migration `AddJoinLinks`, repository with the conditional use-count update
-  - [ ] 6.2 `IJoinLinkService` (create, list, regenerate, revoke), `IJoinLinkAcceptanceService`, `JoinLinkFlowHandler`, controller, startup check
-  - [ ] 6.3 Tests: new, former, pending (invitation closed) and active members; revoked, expired and used-up links; regenerate kills the old token; concurrent last use never exceeds the maximum
+- [x] 6. Join links (design 6.1-6.2)
+  - [x] 6.1 `JoinLink` entity, configuration, migration `AddJoinLinks`, repository with the conditional use-count update
+  - [x] 6.2 `IJoinLinkService` (create, list, regenerate, revoke), `IJoinLinkAcceptanceService`, `JoinLinkFlowHandler`, controller, startup check
+  - [x] 6.3 Tests: new, former, pending (invitation closed) and active members; revoked, expired and used-up links; regenerate kills the old token; concurrent last use never exceeds the maximum; host mismatch, forceLogin, creator lost the right, token shown only on create/regenerate (unit 1939 / 0; integration 509 / 0; sample 22/22)
 
 - [ ] 7. End-to-end checks and documentation
   - [ ] 7.1 Keycloak end-to-end tests (`KeycloakFixture`, PKCE login form): invitation with registration, invitation with sign-in, different-session forced sign-in, join link sign-in

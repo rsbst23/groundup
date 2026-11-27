@@ -57,6 +57,9 @@ public class AuthDbContext : GroundUpDbContext
     /// <summary>Gets the Invitations DbSet.</summary>
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
+    /// <summary>Gets the JoinLinks DbSet.</summary>
+    public DbSet<JoinLink> JoinLinks => Set<JoinLink>();
+
     /// <summary>
     /// Configures the Auth module's entity model. Applies only the Auth assembly's
     /// configurations and the framework conventions (UUID v7, soft delete filters),
