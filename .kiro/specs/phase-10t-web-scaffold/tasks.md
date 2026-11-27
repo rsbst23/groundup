@@ -27,13 +27,13 @@ Found while checking the requirements and design against the code:
   - [x] 1.5 `routes.test.ts`: no route starts with a proxied prefix (11 tests)
   - [x] 1.6 Check: build, lint (0 problems) and tests pass. With the API running: Home and placeholder routes load (and reload) through port 5173; `/health` and `/swagger` are proxied; `POST /auth/login` through the proxy gives `redirect_uri=http://localhost:5173/auth/callback` (Host kept); a browser-style GET of `/auth/callback` reaches the API (400 without a code), not the app
 
-- [ ] 2. API client (design: API client)
-  - [ ] 2.1 `api/errors.ts` (`ApiError`, `parseErrorBody` for every body shape) and `api/operationResult.ts` (`isOperationResult`, `unwrap`)
-  - [ ] 2.2 `api/csrf.ts` (`getCsrfToken` with shared pending fetch, 401 means no token, `clearCsrfToken`)
-  - [ ] 2.3 `api/inspector.ts` (ring buffer of 100, subscribe and snapshot, masking at record time, start time and duration)
-  - [ ] 2.4 `api/client.ts` (`apiFetch`: JSON, cookies, correlation ID, CSRF attach and single retry, inspector records, `raw` option, headers in the result)
-  - [ ] 2.5 Tests: `errors.test.ts`, `csrf.test.ts`, `inspector.test.ts`, `client.test.ts` (the cases in the design's Tests section)
-  - [ ] 2.6 Check: `npm run build`, `npm run lint`, `npm test`
+- [x] 2. API client (design: API client)
+  - [x] 2.1 `api/errors.ts` (`ApiError`, `parseErrorBody` for every body shape) and `api/operationResult.ts` (`isOperationResult`, `unwrap`)
+  - [x] 2.2 `api/csrf.ts` (`getCsrfToken` with shared pending fetch, 401 means no token, `clearCsrfToken`; a clear during a fetch discards the fetched token)
+  - [x] 2.3 `api/inspector.ts` (ring buffer of 100, subscribe and snapshot, masking at record time, start time and duration)
+  - [x] 2.4 `api/client.ts` (`apiFetch`: JSON, cookies, correlation ID, CSRF attach and single retry, inspector records including the CSRF fetch, `raw` option, headers in the result; aborts rethrown unchanged)
+  - [x] 2.5 Tests: `errors.test.ts`, `csrf.test.ts`, `inspector.test.ts`, `client.test.ts`, with a shared fetch mock in `api/testing.ts` (53 tests in all, including the 11 route tests)
+  - [x] 2.6 Check: build, lint (0 problems), tests (53 / 0)
 
 - [ ] 3. Session, components and the `/auth/me` change (design: Server state, Components, API change)
   - [ ] 3.1 API: `AuthController.Me` returns `issuedAt`, `expiresAt`, `authTime`; `AuthControllerTests` for present, missing and unparseable claims
