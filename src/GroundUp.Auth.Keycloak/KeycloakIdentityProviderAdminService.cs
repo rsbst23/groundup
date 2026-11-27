@@ -639,6 +639,38 @@ internal sealed class KeycloakIdentityProviderAdminService : IIdentityProviderAd
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
 
+    /// <inheritdoc />
+    public async Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(
+        string realmName, string email, CancellationToken cancellationToken = default)
+    {
+        var token = await _adminTokenCache.GetTokenAsync(cancellationToken);
+        if (token is null)
+        {
+            return OperationResult<IdentityProviderUserDto?>.Fail("Failed to acquire Keycloak admin token", 503);
+        }
+
+        var opts = _options.CurrentValue;
+        var url = $"{opts.InternalBaseUrl.TrimEnd('/')}/admin/realms/{Uri.EscapeDataString(realmName)}/users" +
+                  $"?email={Uri.EscapeDataString(email)}&exact=true&briefRepresentation=true&max=2";
+
+        var client = CreateAuthorizedClient(token);
+        var response = await client.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            // The email is personal data: not logged
+            _logger.LogWarning(
+                "FindUserByEmailAsync failed with status {StatusCode} in realm {RealmName}",
+                (int)response.StatusCode, realmName);
+            return OperationResult<IdentityProviderUserDto?>.Fail(
+                "Failed to look up the user by email", (int)response.StatusCode);
+        }
+
+        var users = await response.Content.ReadFromJsonAsync<List<KeycloakUserRepresentation>>(JsonOptions, cancellationToken);
+        var match = users?.FirstOrDefault(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase));
+        return OperationResult<IdentityProviderUserDto?>.Ok(
+            match is null ? null : new IdentityProviderUserDto(match.Id, match.Email!, match.EmailVerified));
+    }
+
     /// <summary>
     /// Creates an HttpClient with the admin bearer token already set.
     /// </summary>

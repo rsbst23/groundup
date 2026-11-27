@@ -224,7 +224,7 @@ public interface IInvitationService
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
     Task<OperationResult<CreatedInvitationDto>> CreateAsync(CreateInvitationDto request, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
-    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(FilterParams filter, CancellationToken ct = default);
+    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(PaginationParams paging, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
     Task<OperationResult<InvitationDto>> ResendAsync(Guid invitationId, CancellationToken ct = default);
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
@@ -245,9 +245,9 @@ public interface IInvitationService
    - insert the invitation. A violation of the partial index → 409 `INVITATION_PENDING`.
 5. After commit: publish role event; send the email (5.5). A send failure is logged; the invitation stays and the admin can resend.
 
-`ResendAsync`: Pending (including expired) only, else 409. New token, new hash, expiry restarted. Saved before sending.
+`ResendAsync`: Pending (including expired) only, else 409. The resender must be allowed to grant the role, and becomes the invitation's `CreatedByUserId`, so an invitation whose creator lost the right can be revived by an admin who has it. New token, new hash, expiry restarted. Saved before sending.
 
-`RevokeAsync`: Pending (including expired) only. In one transaction: status Revoked, `RemoveBySourceAsync(user, tenant, Invitation)`, membership Pending → deleted. Then `InvitationRevoked` event and cache eviction. The user record stays.
+`RevokeAsync`: Pending (including expired) only. In one transaction: status Revoked (conditional update), and a membership that is still Pending is deactivated with **all** its roles (`DeactivateMembershipAsync`), not just the Invitation-source ones: roles added to a pending member by hand would otherwise linger on an inactive membership and come back on a later rejoin. A member who became Active another way keeps their access. The row is kept as Inactive (not deleted), so a later invitation or rejoin reuses it. After commit: role-removed events, revocation and cache eviction (`TenantAccessRevoker`), then `InvitationRevoked`. The user record stays.
 
 ### 5.4 Settings (`DefaultAuthSettingsSeeder`)
 
@@ -289,12 +289,12 @@ The response is the same shape in every case (`{ redirectUrl }`), so it doesn't 
 
 ### 5.7 Flow plumbing changes
 
-- `FlowInitiationRequest` gains `Guid? InvitationId`, `Guid? JoinLinkId`, `string? LoginHint`, `AuthPrompt? Prompt`.
-- `AuthUrlRequest` gains `string? LoginHint` and `AuthPrompt Prompt` (`None`, `Login`, `Create`), replacing the two bools. `IsSignup` maps to `Create`, `ForceLogin` to `Login` in `AuthFlowService`, so existing callers don't change.
-- `AuthUrlBuilderService` writes `prompt` from the enum and `login_hint` when set.
+As built (group 5):
+- `FlowInitiationRequest` gains `Guid? InvitationId`, `Guid? JoinLinkId`, `string? LoginHint` and `bool Register` (opens the registration page, like the sign-up flows).
+- `AuthUrlRequest` gains `string? LoginHint`; `AuthUrlBuilderService` writes `login_hint` when set. The existing `IsSignup` (`prompt=create`) and `ForceLogin` (`prompt=login`) flags are kept instead of a new `AuthPrompt` enum: the acceptance service only ever sets one of them, so the enum would add churn without a new case.
 - `AuthFlowService.InitiateFlowAsync` passes `InvitationId`/`JoinLinkId` through instead of `null`. `InitiateAuthFlowRequestValidator`: InvitationId required for `FlowType.Invitation`, JoinLinkId for `FlowType.JoinLink`, both null otherwise.
-- `FlowResult` gains `bool AlreadyMember`. `FlowResult.Success(token, redirectUrl, alreadyMember: false)`. `AuthController.Callback` adds `alreadyMember` to the success body.
-
+- `FlowResult` gains `bool AlreadyMember`. `AuthController.Callback` adds `alreadyMember` to the success body.
+- A Pending membership activated by any other path (default-tenant sign-in now, join links in group 6) closes its pending invitations as Accepted inside `UserTenantRepository.ReactivateMembershipAsync`, in the same save, so the link cannot be used afterwards (task 5.4a).
 ### 5.8 `IIdentityProviderAdminService.FindUserByEmailAsync`
 
 `Task<OperationResult<IdentityProviderUserDto?>> FindUserByEmailAsync(string realmName, string email, CancellationToken ct = default)`. Keycloak: `GET /admin/realms/{realm}/users?email={email}&exact=true&briefRepresentation=true`, existing token cache, client and status mapping. `IdentityProviderUserDto(string ExternalUserId, string Email, bool EmailVerified)`. Realm = tenant realm or `SharedRealmName`.

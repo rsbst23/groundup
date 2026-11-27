@@ -159,4 +159,38 @@ public sealed class InitiateAuthFlowRequestValidatorTests
             CreatedByIp: "127.0.0.1",
             CreatedByUserAgent: "TestAgent/1.0",
             Lifetime: TimeSpan.FromMinutes(10));
+
+    [Fact]
+    public async Task Validate_InvitationFlowWithoutInvitationId_Fails()
+    {
+        var request = CreateValidRequest() with { FlowType = FlowType.Invitation, InvitationId = null };
+
+        (await _sut.TestValidateAsync(request)).ShouldHaveValidationErrorFor(x => x.InvitationId);
+    }
+
+    [Fact]
+    public async Task Validate_InvitationFlowWithInvitationId_Passes()
+    {
+        var request = CreateValidRequest() with { FlowType = FlowType.Invitation, InvitationId = Guid.NewGuid() };
+
+        (await _sut.TestValidateAsync(request)).ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public async Task Validate_OtherFlowCarryingAnInvitationOrJoinLinkId_Fails()
+    {
+        var withInvitation = CreateValidRequest() with { FlowType = FlowType.Login, InvitationId = Guid.NewGuid() };
+        var withJoinLink = CreateValidRequest() with { FlowType = FlowType.Login, JoinLinkId = Guid.NewGuid() };
+
+        (await _sut.TestValidateAsync(withInvitation)).ShouldHaveValidationErrorFor(x => x.InvitationId);
+        (await _sut.TestValidateAsync(withJoinLink)).ShouldHaveValidationErrorFor(x => x.JoinLinkId);
+    }
+
+    [Fact]
+    public async Task Validate_JoinLinkFlowWithoutJoinLinkId_Fails()
+    {
+        var request = CreateValidRequest() with { FlowType = FlowType.JoinLink, JoinLinkId = null };
+
+        (await _sut.TestValidateAsync(request)).ShouldHaveValidationErrorFor(x => x.JoinLinkId);
+    }
 }

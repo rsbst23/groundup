@@ -74,7 +74,7 @@ public sealed class AuthFlowService : IAuthFlowService
 
         // Build the authorization URL (generates state, nonce, PKCE)
         // Sign-up flows get prompt=create so users land on Keycloak's registration form
-        var isSignup = request.FlowType == FlowType.NewOrganization || request.FlowType == FlowType.SimpleSignup;
+        var isSignup = request.FlowType == FlowType.NewOrganization || request.FlowType == FlowType.SimpleSignup || request.Register;
 
         // max_age is the absolute session lifetime: of the host-pinned tenant when the host names
         // one (tenant values can only be shorter), otherwise the System value.
@@ -87,7 +87,8 @@ public sealed class AuthFlowService : IAuthFlowService
             redirectUri,
             IsSignup: isSignup,
             MaxAgeSeconds: (int)policy.AbsoluteLifetime.TotalSeconds,
-            ForceLogin: request.ForceLogin);
+            ForceLogin: request.ForceLogin,
+            LoginHint: request.LoginHint);
         var urlResult = await _authUrlBuilder.BuildAuthorizationUrlAsync(urlRequest, cancellationToken);
 
         if (!urlResult.Success)
@@ -112,8 +113,8 @@ public sealed class AuthFlowService : IAuthFlowService
         var initiateRequest = new InitiateAuthFlowRequest(
             FlowType: request.FlowType,
             TenantId: tenant?.Id,
-            InvitationId: null,
-            JoinLinkId: null,
+            InvitationId: request.InvitationId,
+            JoinLinkId: request.JoinLinkId,
             Realm: realmOverride,
             ReturnUrl: request.ReturnUrl,
             StateToken: authUrl.StateToken,

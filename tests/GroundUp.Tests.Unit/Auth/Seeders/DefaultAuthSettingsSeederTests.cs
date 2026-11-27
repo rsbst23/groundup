@@ -32,13 +32,13 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyEightTimes()
+    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyElevenTimes()
     {
         // Act
         await _sut.SeedAsync();
 
         // Assert
-        await _settingsService.Received(8).EnsureDefinitionAsync(
+        await _settingsService.Received(11).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }
@@ -149,6 +149,31 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
+    public async Task SeedAsync_CreatesTheInvitationSettings()
+    {
+        // Act
+        await _sut.SeedAsync();
+
+        // Assert
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == GroundUp.Auth.Core.InvitationSettingKeys.LifetimeHours
+                && r.DefaultValue == "168" && r.MinValue == "1" && r.MaxValue == "720"
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system", "tenant" })),
+            Arg.Any<CancellationToken>());
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == GroundUp.Auth.Core.InvitationSettingKeys.AcceptUrl && r.DefaultValue == ""
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system" })),
+            Arg.Any<CancellationToken>());
+        await _settingsService.Received(1).EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r =>
+                r.Key == GroundUp.Auth.Core.InvitationSettingKeys.RequireVerifiedEmail && r.DefaultValue == "false"
+                && r.AllowedLevelNames.SequenceEqual(new[] { "system" })),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SeedAsync_CreatesSignupCreatesOrgSetting()
     {
         // Act
@@ -168,8 +193,8 @@ public sealed class DefaultAuthSettingsSeederTests
         await _sut.SeedAsync();
         await _sut.SeedAsync();
 
-        // Assert — 16 total calls (8 per run), all succeed without error
-        await _settingsService.Received(16).EnsureDefinitionAsync(
+        // Assert — 22 total calls (11 per run), all succeed without error
+        await _settingsService.Received(22).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }

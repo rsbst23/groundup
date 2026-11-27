@@ -60,13 +60,20 @@ public sealed record FlowResult
     public int? HttpStatus { get; init; }
 
     /// <summary>
+    /// True when an invitation or join link was used by someone who was already a member: they are
+    /// signed in to the tenant and their roles did not change (GU-68).
+    /// </summary>
+    public bool AlreadyMember { get; init; }
+
+    /// <summary>
     /// Creates a successful result with an issued token and optional redirect URL.
     /// </summary>
     /// <param name="token">The issued GroundUp JWT token.</param>
     /// <param name="redirectUrl">Optional post-authentication redirect URL.</param>
+    /// <param name="alreadyMember">See <see cref="AlreadyMember"/>.</param>
     /// <returns>A success <see cref="FlowResult"/>.</returns>
-    public static FlowResult Success(string token, string? redirectUrl = null) =>
-        new() { IsSuccess = true, Token = token, RedirectUrl = redirectUrl };
+    public static FlowResult Success(string token, string? redirectUrl = null, bool alreadyMember = false) =>
+        new() { IsSuccess = true, Token = token, RedirectUrl = redirectUrl, AlreadyMember = alreadyMember };
 
     /// <summary>
     /// Creates a pending-selection result. The handler has written a tenantless GroundUp token

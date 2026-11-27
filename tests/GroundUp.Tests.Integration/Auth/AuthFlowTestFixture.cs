@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using GroundUp.Auth.Core.Abstractions;
 using GroundUp.Auth.Data.Postgres;
 using GroundUp.Auth.Services;
 using GroundUp.Core.Results;
@@ -49,6 +50,26 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
     /// to simulate Keycloak code exchange and userinfo responses without a live Keycloak instance.
     /// </summary>
     public IIdentityProviderService MockIdentityProviderService { get; } = Substitute.For<IIdentityProviderService>();
+
+    /// <summary>
+    /// Replaces the Keycloak admin client. By default no account is found by email, so an invitee
+    /// gets the registration page; tests change the answer per call.
+    /// </summary>
+    public IIdentityProviderAdminService MockIdentityProviderAdminService { get; } = CreateAdminServiceMock();
+
+    private static IIdentityProviderAdminService CreateAdminServiceMock()
+    {
+        var mock = Substitute.For<IIdentityProviderAdminService>();
+        mock.FindUserByEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<GroundUp.Auth.Core.Dtos.IdentityProviderUserDto?>.Ok(null));
+        return mock;
+    }
+
+    /// <summary>The <c>auth.invitations.accept-url</c> value seeded for tests.</summary>
+    public const string TestInvitationAcceptUrl = "https://app.test/invite/{token}?org={tenantSlug}";
+
+    /// <summary>Every invitation email the app sent, in order.</summary>
+    public CapturingInvitationEmailSender InvitationEmails { get; } = new();
 
     /// <summary>
     /// The JWT signing key used for test token generation and validation.
@@ -105,6 +126,14 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             TestDefaultDomain,
             "Default Domain",
             "The default domain for host-based tenant resolution");
+
+        // Invitations need an accept page; {tenantSlug} included so tests can check both placeholders
+        await SeedSystemSettingAsync(
+            _container.GetConnectionString(),
+            GroundUp.Auth.Core.InvitationSettingKeys.AcceptUrl,
+            TestInvitationAcceptUrl,
+            "Invitation Accept URL",
+            "The client app's invitation accept page");
 
         // Derived fixtures add data that must exist before the first request (see the hook below)
         await SeedBeforeHostStartAsync();
@@ -197,6 +226,13 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
             // Inject controllable TimeProvider for refresh/session tests
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(TimeProvider);
+
+            services.RemoveAll<IIdentityProviderAdminService>();
+            services.AddSingleton(MockIdentityProviderAdminService);
+
+            // Capture invitation emails so tests can read the link (and its token)
+            services.RemoveAll<GroundUp.Auth.Services.Invitations.IInvitationEmailSender>();
+            services.AddSingleton<GroundUp.Auth.Services.Invitations.IInvitationEmailSender>(InvitationEmails);
         });
     }
 

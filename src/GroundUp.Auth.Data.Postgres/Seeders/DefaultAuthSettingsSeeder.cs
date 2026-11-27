@@ -99,6 +99,45 @@ public sealed class DefaultAuthSettingsSeeder : IDataSeeder
             AllowedLevelNames: ["system", "tenant"]),
             cancellationToken);
 
+        // Invitations (GU-68)
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: InvitationSettingKeys.LifetimeHours,
+            DataType: SettingDataType.Int,
+            DefaultValue: InvitationSettingKeys.LifetimeHoursDefault.ToString(CultureInfo.InvariantCulture),
+            DisplayName: "Invitation Lifetime (hours)",
+            Description: "How long a new or resent invitation link stays valid. A single invitation can be given a shorter expiry.",
+            Category: "Invitations",
+            GroupKey: "auth.invitations",
+            GroupDisplayName: "Members > Invitations",
+            AllowedLevelNames: ["system", "tenant"],
+            MinValue: InvitationSettingKeys.LifetimeHoursMin.ToString(CultureInfo.InvariantCulture),
+            MaxValue: InvitationSettingKeys.LifetimeHoursMax.ToString(CultureInfo.InvariantCulture)),
+            cancellationToken);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: InvitationSettingKeys.AcceptUrl,
+            DataType: SettingDataType.String,
+            DefaultValue: "",
+            DisplayName: "Invitation Accept URL",
+            Description: "The client app's page that accepts invitations, for example https://app.example.com/invite/{token}. Must contain {token}; may contain {tenantSlug} for apps that serve organizations on subdomains. Invitations cannot be sent while this is empty.",
+            Category: "Invitations",
+            GroupKey: "auth.invitations",
+            GroupDisplayName: "Members > Invitations",
+            AllowedLevelNames: ["system"]),
+            cancellationToken);
+
+        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
+            Key: InvitationSettingKeys.RequireVerifiedEmail,
+            DataType: SettingDataType.Bool,
+            DefaultValue: "false",
+            DisplayName: "Require Verified Email for Invitations",
+            Description: "When true, accepting an invitation also requires the identity provider to have verified the email. By default the invitation link, which was sent to that address, counts as proof.",
+            Category: "Invitations",
+            GroupKey: "auth.invitations",
+            GroupDisplayName: "Members > Invitations",
+            AllowedLevelNames: ["system"]),
+            cancellationToken);
+
         await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
             Key: "auth.application.signup-creates-org",
             DataType: SettingDataType.Bool,

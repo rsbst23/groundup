@@ -75,6 +75,10 @@ public static class AuthServiceCollectionExtensions
                 sp.GetRequiredService<AuthDbContext>(),
                 sp.GetRequiredService<ITenantContext>()));
 
+        // Invitations (GU-68): explicit tenant on every call, looked up by token before a tenant is selected
+        services.AddScoped<IInvitationRepository>(sp =>
+            new InvitationRepository(sp.GetRequiredService<AuthDbContext>()));
+
         // AuthFlowState repository (not tenant-scoped)
         services.AddScoped<IAuthFlowStateRepository>(sp =>
             new AuthFlowStateRepository(sp.GetRequiredService<AuthDbContext>()));

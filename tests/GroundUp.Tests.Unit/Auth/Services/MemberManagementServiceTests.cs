@@ -34,6 +34,7 @@ public sealed class MemberManagementServiceTests
     private readonly IUserTenantRepository _userTenants = Substitute.For<IUserTenantRepository>();
     private readonly IUserRoleRepository _userRoles = Substitute.For<IUserRoleRepository>();
     private readonly IRoleRepository _roles = Substitute.For<IRoleRepository>();
+    private readonly IInvitationRepository _invitations = Substitute.For<IInvitationRepository>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly ITokenRevocationStore _store = Substitute.For<ITokenRevocationStore>();
     private readonly MemberManagementService _sut;
@@ -57,8 +58,11 @@ public sealed class MemberManagementServiceTests
         _userTenants.DeactivateMembershipAsync(MemberId, TenantId, Arg.Any<CancellationToken>())
             .Returns(OperationResult<List<UserRoleDto>>.Ok([Row(MemberId, Editor)]));
 
+        _invitations.RevokePendingForUserAsync(TenantId, MemberId, CallerId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<Guid>>.Ok([Guid.NewGuid()]));
+
         _sut = new MemberManagementService(
-            _currentUser, _tenantContext, _userTenants, _userRoles, _roles,
+            _currentUser, _tenantContext, _userTenants, _userRoles, _roles, _invitations,
             new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
             new LastAdminGuard(_userRoles),
             new TenantAccessRevoker(_store, new MemoryCache(new MemoryCacheOptions()), NullLogger<TenantAccessRevoker>.Instance),
@@ -99,6 +103,28 @@ public sealed class MemberManagementServiceTests
         result.Success.Should().BeTrue();
         await _userTenants.Received(1).DeactivateMembershipAsync(MemberId, TenantId, Arg.Any<CancellationToken>());
         await _store.Received(1).RevokeTenantAccessAsync(MemberId, TenantId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_PendingMember_RevokesTheirInvitationBeforeDeactivating()
+    {
+        GivenMembership(MembershipStatus.Pending);
+
+        (await _sut.RemoveMemberAsync(MemberId)).Success.Should().BeTrue();
+
+        Received.InOrder(() =>
+        {
+            _invitations.RevokePendingForUserAsync(TenantId, MemberId, CallerId, Arg.Any<CancellationToken>());
+            _userTenants.DeactivateMembershipAsync(MemberId, TenantId, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_ActiveMember_DoesNotTouchInvitations()
+    {
+        (await _sut.RemoveMemberAsync(MemberId)).Success.Should().BeTrue();
+
+        await _invitations.DidNotReceiveWithAnyArgs().RevokePendingForUserAsync(default, default, default, default);
     }
 
     [Fact]

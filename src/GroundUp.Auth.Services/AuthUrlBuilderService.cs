@@ -98,6 +98,12 @@ public sealed class AuthUrlBuilderService : IAuthUrlBuilder
             queryParams["prompt"] = "login";
         }
 
+        // Pre-fill the email field (invitations): the invitee does not have to type it
+        if (!string.IsNullOrWhiteSpace(request.LoginHint))
+        {
+            queryParams["login_hint"] = request.LoginHint;
+        }
+
         // The identity provider re-authenticates a session older than this and must return
         // auth_time, so a silent single sign-on cannot outlive the absolute session lifetime.
         if (request.MaxAgeSeconds is > 0)

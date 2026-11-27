@@ -94,6 +94,20 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     }
 
     /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult> MarkPendingAsync(
+        Guid userId,
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await SetMembershipStatusAsync(userId, tenantId, MembershipStatus.Pending, removeRoles: false,
+            "A conflict occurred while inviting the former member.", cancellationToken);
+        return result.Success
+            ? OperationResult.Ok()
+            : OperationResult.Fail(result.Message, result.StatusCode, result.ErrorCode);
+    }
+
+    /// <inheritdoc />
     /// <remarks>SYSTEM BYPASS: keeps the membership's own tenant instead of the current tenant context.</remarks>
     public async Task<OperationResult<UserTenantDto>> AddForTenantAsync(
         UserTenantDto membership,
@@ -192,6 +206,24 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         if (entity.Status == target)
             return OperationResult<List<UserRoleDto>>.Ok([]);
 
+        // A pending invitation exists only while its membership is Pending. A membership activated
+        // another way (default-tenant sign-in, join link) closes it as Accepted in the same save, so
+        // the link cannot be used afterwards (GU-68 Requirement 9.4).
+        var closedInvitations = new List<Invitation>();
+        if (entity.Status == MembershipStatus.Pending && target == MembershipStatus.Active)
+        {
+            closedInvitations = await Context.Set<Invitation>()
+                .Where(i => i.UserId == userId && i.TenantId == tenantId && i.Status == InvitationStatus.Pending)
+                .ToListAsync(cancellationToken);
+            var now = DateTime.UtcNow;
+            foreach (var invitation in closedInvitations)
+            {
+                invitation.Status = InvitationStatus.Accepted;
+                invitation.AcceptedByUserId = userId;
+                invitation.AcceptedAt = now;
+            }
+        }
+
         entity.Status = target;
 
         // Leaving also removes the user's role assignments in that tenant (every source), in the same
@@ -223,6 +255,13 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
             {
                 // Restore the tracked state so a retry on this context is not poisoned
                 Context.Entry(role).State = EntityState.Unchanged;
+            }
+
+            foreach (var invitation in closedInvitations)
+            {
+                var entry = Context.Entry(invitation);
+                entry.CurrentValues.SetValues(entry.OriginalValues);
+                entry.State = EntityState.Unchanged;
             }
 
             return OperationResult<List<UserRoleDto>>.Fail(
