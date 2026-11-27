@@ -43,3 +43,9 @@ pgdata/
 ## User-specific
 *.env
 *.env.local
+
+## Node (samples/GroundUp.Sample.Web)
+node_modules/
+dist/
+.env
+*.local

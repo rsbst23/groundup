@@ -27,9 +27,45 @@
             }
         },
         {
+            // The sample API for "API + Web app": same as above, without opening a browser on port 5000.
+            "name": "Sample API (no browser)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/samples/GroundUp.Sample/bin/Debug/net8.0/GroundUp.Sample.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/samples/GroundUp.Sample",
+            "stopAtEntry": false,
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development"
+            }
+        },
+        {
+            // The sample web app's dev server (port 5173). Opens the browser when Vite is ready.
+            "name": "Sample web app (Vite)",
+            "type": "node-terminal",
+            "request": "launch",
+            "preLaunchTask": "web: npm install",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/samples/GroundUp.Sample.Web",
+            "serverReadyAction": {
+                "action": "openExternally",
+                "pattern": "Local:",
+                "uriFormat": "http://localhost:5173"
+            }
+        },
+        {
             "name": ".NET Core Attach",
             "type": "coreclr",
             "request": "attach"
+        }
+    ],
+    "compounds": [
+        {
+            // Pick this once in the Run and Debug dropdown; F5 then starts both.
+            "name": "API + Web app",
+            "configurations": ["Sample API (no browser)", "Sample web app (Vite)"],
+            "stopAll": true
         }
     ]
 }

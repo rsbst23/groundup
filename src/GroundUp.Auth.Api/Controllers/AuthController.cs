@@ -230,14 +230,30 @@ public sealed class AuthController : ControllerBase
             .Select(c => c.Value)
             .ToList();
 
+        // The token's times, so a browser client can show the session without reading the HttpOnly cookie
         return Ok(new
         {
             userId = userId?.ToString() ?? subClaim,
             email,
             displayName,
             tenantId,
-            roles
+            roles,
+            issuedAt = ReadUnixTimeClaim("iat"),
+            expiresAt = ReadUnixTimeClaim("exp"),
+            authTime = ReadUnixTimeClaim("auth_time")
         });
+    }
+
+    /// <summary>
+    /// Reads a claim holding Unix seconds (<c>iat</c>, <c>exp</c>, <c>auth_time</c>) as UTC, or null
+    /// when the claim is missing or not a number.
+    /// </summary>
+    private DateTimeOffset? ReadUnixTimeClaim(string claimType)
+    {
+        var value = HttpContext.User.FindFirst(claimType)?.Value;
+        return long.TryParse(value, out var seconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+            : null;
     }
 
     /// <summary>

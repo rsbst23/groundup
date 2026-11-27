@@ -19,35 +19,36 @@ Found while checking the requirements and design against the code:
 
 ## Tasks
 
-- [ ] 1. Project, tooling and skeleton (design: Versions, Project layout, Dev server and proxy)
-  - [ ] 1.1 `samples/GroundUp.Sample.Web`: `package.json` with exact versions, `.nvmrc`, `engines`, `.env.example`, tsconfig files (strict), `eslint.config.js`, `index.html`, Vitest config; `.gitignore` entries
-  - [ ] 1.2 `vite.config.ts`: router plugin, React plugin, port 5173 strict, allowed hosts, proxy for the five prefixes with Host kept
-  - [ ] 1.3 Providers (`main.tsx`, `theme.ts`, `queryClient.ts` stub, `router.ts`), root route with `AppLayout` and `NavMenu`, Home, the nine placeholder routes, not-found page; devtools in development only; `routeTree.gen.ts` generated and committed
-  - [ ] 1.4 One route with a zod 4 search schema (for example `/data?page=`) to confirm Standard Schema works without the adapter; fall back to zod 3 and the adapter if not, and record which
-  - [ ] 1.5 `routes.test.ts`: no route starts with a proxied prefix
-  - [ ] 1.6 Check: `npm install`, `npm run build`, `npm run lint`, `npm test`; `npm run dev` with the API running opens Home, `/swagger` loads through the proxy, a page reload on a placeholder route works
+- [x] 1. Project, tooling and skeleton (design: Versions, Project layout, Dev server and proxy)
+  - [x] 1.1 `samples/GroundUp.Sample.Web`: `package.json` with exact versions, `.nvmrc`, `engines`, `.env.example`, tsconfig files (strict; a separate `tsconfig.test.json` gives the tests Node types), `eslint.config.js`, `index.html`, Vitest config; `.gitignore` entries
+  - [x] 1.2 `vite.config.ts`: router plugin (test files ignored as routes), React plugin, port 5173 strict, allowed hosts, proxy for the five prefixes (`src/proxiedPrefixes.ts`) with Host kept; chunk warning limit 800 kB (MUI makes the main chunk about 550 kB, 175 kB gzipped)
+  - [x] 1.3 Providers (`main.tsx`, `theme.ts`, `queryClient.ts` stub, `router.ts`), root route with `AppLayout` and `NavMenu`, Home, the placeholder routes, not-found page; devtools in development only; `routeTree.gen.ts` generated and committed
+  - [x] 1.4 `/data` validates `?page=` with a zod 4 schema passed straight to `validateSearch`: types check and a bad value falls back to 1, so no adapter and no zod 3
+  - [x] 1.5 `routes.test.ts`: no route starts with a proxied prefix (11 tests)
+  - [x] 1.6 Check: build, lint (0 problems) and tests pass. With the API running: Home and placeholder routes load (and reload) through port 5173; `/health` and `/swagger` are proxied; `POST /auth/login` through the proxy gives `redirect_uri=http://localhost:5173/auth/callback` (Host kept); a browser-style GET of `/auth/callback` reaches the API (400 without a code), not the app
 
-- [ ] 2. API client (design: API client)
-  - [ ] 2.1 `api/errors.ts` (`ApiError`, `parseErrorBody` for every body shape) and `api/operationResult.ts` (`isOperationResult`, `unwrap`)
-  - [ ] 2.2 `api/csrf.ts` (`getCsrfToken` with shared pending fetch, 401 means no token, `clearCsrfToken`)
-  - [ ] 2.3 `api/inspector.ts` (ring buffer of 100, subscribe and snapshot, masking at record time, start time and duration)
-  - [ ] 2.4 `api/client.ts` (`apiFetch`: JSON, cookies, correlation ID, CSRF attach and single retry, inspector records, `raw` option, headers in the result)
-  - [ ] 2.5 Tests: `errors.test.ts`, `csrf.test.ts`, `inspector.test.ts`, `client.test.ts` (the cases in the design's Tests section)
-  - [ ] 2.6 Check: `npm run build`, `npm run lint`, `npm test`
+- [x] 2. API client (design: API client)
+  - [x] 2.1 `api/errors.ts` (`ApiError`, `parseErrorBody` for every body shape) and `api/operationResult.ts` (`isOperationResult`, `unwrap`)
+  - [x] 2.2 `api/csrf.ts` (`getCsrfToken` with shared pending fetch, 401 means no token, `clearCsrfToken`; a clear during a fetch discards the fetched token)
+  - [x] 2.3 `api/inspector.ts` (ring buffer of 100, subscribe and snapshot, masking at record time, start time and duration)
+  - [x] 2.4 `api/client.ts` (`apiFetch`: JSON, cookies, correlation ID, CSRF attach and single retry, inspector records including the CSRF fetch, `raw` option, headers in the result; aborts rethrown unchanged)
+  - [x] 2.5 Tests: `errors.test.ts`, `csrf.test.ts`, `inspector.test.ts`, `client.test.ts`, with a shared fetch mock in `api/testing.ts` (53 tests in all, including the 11 route tests)
+  - [x] 2.6 Check: build, lint (0 problems), tests (53 / 0)
 
-- [ ] 3. Session, components and the `/auth/me` change (design: Server state, Components, API change)
-  - [ ] 3.1 API: `AuthController.Me` returns `issuedAt`, `expiresAt`, `authTime`; `AuthControllerTests` for present, missing and unparseable claims
-  - [ ] 3.2 `api/types.ts`, `api/auth.ts` (`getMe`, `getMyTenants`); `features/session/sessionQuery.ts` (`sessionQueryOptions` with 401 as null, `myTenantsQueryOptions`, `useSession`, `onSessionChanged`); `queryClient.ts` retry rules and the 401 handler; root loader `ensureQueryData`
-  - [ ] 3.3 `ErrorPanel` (with the `REAUTH_REQUIRED` action), `SessionBanner` (countdown), `RequestInspector` drawer with badge, clear and copy
-  - [ ] 3.4 Root `errorComponent` for an unreachable API; Home links (Swagger, Keycloak admin, both manuals, current host) and the Checks card (`GET /api/members`, `POST /auth/refresh`)
-  - [ ] 3.5 `keycloak/realm.json`: port 5173 in redirect URIs, web origins and post-logout URIs
-  - [ ] 3.6 Tests: `sessionQuery.test.ts` (401 gives null; `onSessionChanged` clears CSRF and invalidates)
-  - [ ] 3.7 Check: npm build, lint, test; .NET build and all three suites
+- [x] 3. Session, components and the `/auth/me` change (design: Server state, Components, API change)
+  - [x] 3.1 API: `AuthController.Me` returns `issuedAt`, `expiresAt`, `authTime`; `AuthControllerTests` for present, missing and unparseable claims
+  - [x] 3.2 `api/types.ts`, `api/auth.ts` (`getMe`, `getMyTenants`, `refreshSession`); `features/session/sessionQuery.ts` (`sessionQueryOptions` with 401 as null, `myTenantsQueryOptions`, `useSession`, `onSessionChanged`, `markSignedOut`); `queryClient.ts` retry rules and the 401 handler; root loader `ensureQueryData`. Found: `/auth/me/tenants` answers 401 for an identity-provider token on the tenant picker while `/auth/me` answers 200, so the tenants query treats 401 as an empty list and the 401 handler ignores session queries (otherwise the picker state would show as signed out)
+  - [x] 3.3 `ErrorPanel` (with the `REAUTH_REQUIRED` action), `SessionBanner` (countdown; `formatRemaining` in its own file), `RequestInspector` drawer with badge, clear and copy (`useInspectorEntries` hook in its own file)
+  - [x] 3.4 Root `errorComponent` for an unreachable API; Home links and the Checks card (`GET /api/members`, `POST /auth/refresh`, which refreshes the session after success)
+  - [x] 3.5 `keycloak/realm.json`: port 5173 in redirect URIs, web origins and post-logout URIs
+  - [x] 3.6 Tests: `sessionQuery.test.ts` (401 gives null; tenants 401 gives an empty list; `onSessionChanged` drops CSRF and refetches; another query's 401 marks signed out; retry rules; countdown format)
+  - [x] 3.7 Check: npm build, lint (0 problems), tests 63 / 0; .NET build (no new warnings), unit 1942 / 0, integration 525 / 0, sample 22/22
 
-- [ ] 4. Documentation and the full check
-  - [ ] 4.1 `README.md`: start-up steps, URL, folder layout and rules (no `fetch` in pages, feature folders, no route under a proxied prefix, add new API paths to the proxy, CSRF and sign-in reload)
-  - [ ] 4.2 `TESTING.md`: how to use it, state table, Before You Start (including the three Keycloak URIs for an existing realm), Part 1 (design: Testing manual), parts to come
-  - [ ] 4.3 ARCHITECTURE.md: the `/auth/me` session fields; one line on the sample web app under the sample section; the API guide's Before You Start points to the web app manual
-  - [ ] 4.4 Run TESTING.md Part 1 by hand against the running API and Keycloak; record the result here
-  - [ ] 4.5 Full check (npm build, lint, test; .NET suites); push; give the PR compare URL, title and description
+- [x] 4. Documentation and the full check
+  - [x] 4.0 Found in Rob's run of task 3: calls the app cancels itself (React's development double render) showed as status 0, which looks like a failure. The inspector now records them as cancelled and shows "cancelled" with an explanation
+  - [x] 4.1 `README.md`: start-up steps (F5 "API + Web app" or by hand), URL, scripts, folder layout and rules (no `fetch` in pages, feature folders, no route under a proxied prefix, add new API paths to the proxy, typed search parameters, `onSessionChanged`, CSRF and sign-in reload, masking)
+  - [x] 4.2 `TESTING.md`: how to use it, state table, Before You Start (including the three Keycloak URIs for an existing realm), Part 1 (layout, signed out, sign-in through Swagger on 5173, Requests panel, an error with its correlation ID, cookie POST with CSRF, API not running), parts to come, troubleshooting
+  - [x] 4.3 ARCHITECTURE.md: `GroundUp.Sample.Web` under the projects, the `/auth/me` session fields in the sessions section; the API guide's Before You Start points to the web app manual
+  - [x] 4.4 Part 1 by hand (Rob, 2026-11-27, Keycloak 26.3): layout and navigation, reload, search parameter, not found; sign-in through Swagger on port 5173 with the three Keycloak URIs added by hand; banner (email, tenant, TenantAdmin, countdown) and the tenantless state ("No current tenant", no roles); Requests panel; `GET /api/members` 403 while tenantless and 200 with a tenant; cookie POST succeeded with `x-csrf-token: ***` and `{ token: *** }`. Not yet run by hand: 1.2 (signed out after logout), the "cancelled" label (added after the run) and 1.7 (API not running)
+  - [x] 4.5 Full check: npm build, lint (0 problems), tests 64 / 0; .NET unchanged since task 3 (unit 1942 / 0, integration 525 / 0, sample 22/22); pushed
   - [ ] 4.6 Jira: GU-86 comment; Done after merge

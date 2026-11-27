@@ -76,6 +76,10 @@ Base controllers, middleware (exception handling, correlation ID), health checks
 
 A sample ASP.NET Core web application that wires up all framework modules. Used for manual testing during development and as a reference for how consuming applications use GroundUp. References all src projects.
 
+### GroundUp.Sample.Web
+
+A React app (`samples/GroundUp.Sample.Web`: Vite, TypeScript, MUI, TanStack Query and Router) for calling and testing the sample API from a browser. Its dev server proxies the API paths with the Host kept, so cookies, CSRF and the Keycloak redirects behave as for a deployed client. Development only; not in the solution and never packed. See its README for the conventions and TESTING.md for the manual tests.
+
 ### GroundUp.Tests.Unit
 
 Unit tests using xUnit, NSubstitute for mocking, FluentAssertions for readable assertions, and FsCheck for property-based testing.
@@ -178,6 +182,7 @@ Settings are cached in memory. A change made through `ISettingsService` clears t
 - A change applies from the next token issue or refresh. Existing tokens keep their expiry, but the absolute limit is checked against the current value at every refresh and tenant switch, so shortening it takes effect without waiting.
 - The session is counted from the identity provider's `auth_time` (when the user really authenticated), so a silent single sign-on does not restart it. Every login request carries `max_age` with the absolute lifetime, so Keycloak asks for credentials when its own session is older. When a session has reached the limit the API returns `401` with `errorCode: REAUTH_REQUIRED`; the client then starts `POST /auth/login?forceLogin=true`.
 - No token expires later than the user's last sign-in plus the absolute lifetime.
+- `GET /auth/me` returns `issuedAt`, `expiresAt` and `authTime` (UTC) from the current token, so a browser client can show the session's times without reading the HttpOnly cookie.
 - Only a SuperAdmin can change the System values. A TenantAdmin (or a user with `settings.manage.tenant`) can change their own current tenant's values. See **Settings authorization** below.
 
 **Settings authorization (GU-77).** Enforced in the settings services, so it applies to the API and to SDK callers alike.

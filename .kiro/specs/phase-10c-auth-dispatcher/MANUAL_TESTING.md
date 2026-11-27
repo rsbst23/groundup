@@ -95,6 +95,8 @@ Then **restart the app** (Shift+F5, then F5). Setting values are cached for 15 m
 
 ## Before You Start
 
+> **Testing from a browser instead?** The sample web app (`samples/GroundUp.Sample.Web`) is taking over these parts page by page; its manual is `samples/GroundUp.Sample.Web/TESTING.md`. This guide stays as the Swagger and API reference.
+
 1. **Start Docker** from PowerShell in `d:\_Rob\github\groundup`:
    ```powershell
    docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d

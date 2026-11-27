@@ -14,6 +14,16 @@
             "problemMatcher": "$msCompile"
         },
         {
+            // Quick when nothing changed; installs on the first run and after package.json changes.
+            "label": "web: npm install",
+            "type": "shell",
+            "command": "npm install --no-audit --no-fund",
+            "options": {
+                "cwd": "${workspaceFolder}/samples/GroundUp.Sample.Web"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "publish",
             "command": "dotnet",
             "type": "process",
