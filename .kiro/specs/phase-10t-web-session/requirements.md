@@ -83,7 +83,7 @@ The token cookie is HttpOnly, so the app shows what `/auth/me` returns (user id,
 
 ### Requirement 4: Top bar and "sign in again"
 
-1. The top bar SHALL show **Sign in** when signed out and **Sign out** (sign out of this app) when signed in. Sign in starts a normal sign-in returning to the current page.
+1. The top bar SHALL show **Sign in** when signed out and **Sign out** when signed in, which signs out everywhere (the app and Keycloak; Rob, after the first run). Both sign-out kinds stay on the Session page for testing. Sign in starts a normal sign-in returning to the current page.
 2. The error panel's "Sign in again" (shown for `REAUTH_REQUIRED`) and the banner's "Sign in" link SHALL start a sign-in directly (with `forceLogin` for `REAUTH_REQUIRED`) returning to the current page, instead of only linking to the Session page.
 
 ### Requirement 5: Code structure

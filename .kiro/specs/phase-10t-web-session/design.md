@@ -116,7 +116,7 @@ Every error message has **Sign in again** (with `forceLogin` for `REAUTH_REQUIRE
 
 ## 5. Top bar, banner and error panel
 
-- `SessionButton` in `AppLayout`, next to Requests: signed out → **Sign in** (`useStartSignIn` login); signed in → **Sign out** (sign out of this app).
+- `SessionButton` in `AppLayout`, next to Requests: signed out → **Sign in** (`useStartSignIn` login); signed in → **Sign out**, which signs out everywhere (app and Keycloak). The Session page keeps both kinds.
 - `SessionBanner`: the signed-out "Sign in" link becomes a button starting a sign-in.
 - `ErrorPanel`: "Sign in again" for `REAUTH_REQUIRED` starts a sign-in with `forceLogin` returning to the current page (it used to link to `/session`). The component takes the start function from the hook, so `ErrorPanel` stays usable in the root error page (where the API is down, the button simply fails and shows nothing new).
 
