@@ -226,6 +226,23 @@ A single-label default domain such as `localhost` logs a warning: browsers drop 
 
 **CSRF.** A POST, PUT, PATCH or DELETE authenticated by the `AuthToken` cookie must send the token from `GET /auth/csrf` in the `X-CSRF-Token` header, or it gets `403 CSRF_VALIDATION_FAILED`. A browser client calls `/auth/csrf` once after sign-in, keeps the token in memory, and calls it again after a 403. Requests with an `Authorization: Bearer` header (mobile apps, services, MCP clients) need no CSRF token.
 
+**Returning to the app after sign-in (GU-87).** `POST /auth/login`, `/auth/signup`, `/auth/invitations/accept` and `/auth/join-links/join` take an optional `returnUrl` query parameter. It is stored on the flow state and never read from the callback's query string.
+- **Rules** (`ReturnUrlRules`, in the services so SDK callers get the same check): a path on this site only. It must start with a single `/` (not `//` or `/\`), contain no `\`, `#` or control character, be at most 2048 characters, and not be the callback path or under it. Anything else is refused with `400 INVALID_RETURN_URL` before any flow state or cookie is created. There is no allowlist for other domains.
+- **Outcome.** The callback answers `302` with a relative `Location` (the browser stays on the host it called) and adds one of these to the return URL's query string, replacing any earlier values:
+
+| Outcome | Added |
+|---|---|
+| Signed in with a current tenant | `result=signed_in` (and `alreadyMember=true` after an invitation or join link used by an existing member) |
+| Signed in, organizations to choose from | `result=tenant_picker` |
+| Signed in, no organization yet | `result=no_tenant` |
+| Any error once the flow state is found (including a state cookie mismatch, a used, expired or failed flow, and the flow handlers' codes) | `error=CODE` |
+| The identity provider reported an error (`?error=access_denied`) | `error=IDP_ERROR&idpError=access_denied` |
+
+- The redirect never carries the token or the error message; the cookie is set before it. A state cookie mismatch is still refused; the state is only read to find the return URL.
+- **Without a return URL** (and when the state is unknown) the callback answers JSON as before. The one change for JSON clients: an identity-provider error now gives `400 IDP_ERROR` instead of "Missing code or state", and the flow state is marked failed.
+- **Identity-provider errors** mark the flow failed only when the request carries the matching state cookie and the flow is still pending, so a state token alone cannot end someone else's sign-in. The provider's `error` is passed on only if it matches `^[a-z_]{1,64}$`; `error_description` is logged (up to 200 characters) and never returned.
+- Logout is unchanged: it returns to `/`, because Keycloak needs each post-logout address registered.
+
 ## Members, Invitations and Join Links (GU-68)
 
 **Membership status.** `UserTenant.Status` is `Active`, `Inactive` or `Pending`. A pending membership is created when someone is invited; it becomes `Active` when they accept. Only roles held through an `Active` membership count for permissions. Each role grant records its `Source` (`Manual`, `Invitation`, `JoinLink`, `DefaultRole`, `Provisioning`), so the same role can be held for more than one reason and removing one grant leaves the others.

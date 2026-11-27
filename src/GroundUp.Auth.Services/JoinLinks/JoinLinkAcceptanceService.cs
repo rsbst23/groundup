@@ -50,7 +50,7 @@ internal sealed class JoinLinkAcceptanceService : IJoinLinkAcceptanceService
 
     /// <inheritdoc />
     public async Task<OperationResult<FlowInitiationResult>> StartAsync(
-        string token, bool forceLogin, HttpContext httpContext, CancellationToken cancellationToken = default)
+        string token, bool forceLogin, string? returnUrl, HttpContext httpContext, CancellationToken cancellationToken = default)
     {
         var link = await FindAsync(token, cancellationToken);
         if (link is null)
@@ -77,7 +77,7 @@ internal sealed class JoinLinkAcceptanceService : IJoinLinkAcceptanceService
         }
 
         return await _authFlowService.InitiateFlowAsync(
-            new FlowInitiationRequest(FlowType.JoinLink, ForceLogin: forceLogin, JoinLinkId: link.Id),
+            new FlowInitiationRequest(FlowType.JoinLink, ReturnUrl: returnUrl, ForceLogin: forceLogin, JoinLinkId: link.Id),
             httpContext,
             cancellationToken);
     }

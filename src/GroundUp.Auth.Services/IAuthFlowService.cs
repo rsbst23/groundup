@@ -37,4 +37,23 @@ public interface IAuthFlowService
         string state,
         HttpContext httpContext,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Handles a callback in which the identity provider reported its own error (for example
+    /// <c>access_denied</c>) instead of an authorization code. Marks the flow failed when the state
+    /// cookie matches and the flow is still pending, and returns <c>IDP_ERROR</c> with the flow's
+    /// return URL (GU-87).
+    /// </summary>
+    /// <param name="state">The state token returned in the callback query parameter.</param>
+    /// <param name="error">The provider's <c>error</c> value; kept only if it matches <c>^[a-z_]{1,64}$</c>.</param>
+    /// <param name="errorDescription">The provider's <c>error_description</c>; logged (truncated), never returned.</param>
+    /// <param name="httpContext">The current HTTP context (used to read and clear the state cookie).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An <see cref="OperationResult{T}"/> containing the <c>IDP_ERROR</c> flow result.</returns>
+    Task<OperationResult<FlowResult>> HandleProviderErrorAsync(
+        string state,
+        string error,
+        string? errorDescription,
+        HttpContext httpContext,
+        CancellationToken cancellationToken = default);
 }

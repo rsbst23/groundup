@@ -46,6 +46,7 @@ Use Swagger (or Bruno/Postman) against the sample app, not the browser address b
 - **CSRF protection.** A POST, PUT, PATCH or DELETE authenticated by the cookie must carry a CSRF token in the `X-CSRF-Token` header, or it gets **403** `CSRF_VALIDATION_FAILED`. Swagger does this for you: before the first such request it calls `GET /auth/csrf` in the background and adds the header (DevTools → Network shows the extra call once). GET requests and requests with an `Authorization: Bearer` header never need it.
 - With a REST client instead, send the cookie yourself: `Cookie: AuthToken=<value>`. For a POST, PUT, PATCH or DELETE, first call `GET /auth/csrf` with that cookie, then send `Cookie: AuthToken=<value>; CsrfToken=<CsrfToken cookie from that response>` and the header `X-CSRF-Token: <token from its body>`. Or use `Authorization: Bearer <token>` instead of the cookie, which needs no CSRF token.
 - `GET /api/projects` is used throughout as an example of a tenant-scoped endpoint.
+- **`returnUrl` (GU-87).** `POST /auth/login`, `/auth/signup`, `/auth/invitations/accept` and `/auth/join-links/join` take an optional `returnUrl` (a path on the same site). With it, the callback redirects there with `result=...` or `error=CODE` instead of showing JSON. This guide leaves it empty, so every callback here still ends on JSON as described.
 
 ### Recipes (used by many parts)
 

@@ -26,6 +26,7 @@ Until the sign-in page exists (GU-89), Part 1 needs a user who already exists. A
 | Part | What it tests | You end as |
 |---|---|---|
 | 1 | The scaffold: layout, session banner, errors, the Requests panel, CSRF | signed in, as you started |
+| 2 | Returning to the app after sign-in (`returnUrl`) | signed in |
 
 ### Words used
 
@@ -74,7 +75,7 @@ Until the sign-in page exists (GU-89), Part 1 needs a user who already exists. A
 ### 1.3 Sign in (through Swagger until GU-89)
 1. In the same browser, open http://localhost:5173/swagger (Swagger through the web app's host, not port 5000).
 2. Run `POST /auth/login`. Copy `redirectUrl` and open it. **Expected:** it contains `redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fauth%2Fcallback`.
-3. Sign in. **Expected:** the browser ends on `localhost:5173/auth/callback` showing JSON (GU-87 will bring you back to the app instead).
+3. Sign in. **Expected:** the browser ends on `localhost:5173/auth/callback` showing JSON, because no `returnUrl` was given (Part 2 brings you back to the app instead).
 4. Open http://localhost:5173. **Expected:** the banner shows your email, the current tenant's name (or "No current tenant" if you have several organizations and have not chosen one), your roles, and "Token expires in m:ss" counting down.
 
 ### 1.4 The Requests panel
@@ -106,19 +107,46 @@ Until the sign-in page exists (GU-89), Part 1 needs a user who already exists. A
 
 ---
 
+## Part 2: Returning to the App After Sign-In (GU-87)
+
+A sign-in started with a `returnUrl` comes back to that page in the app with the outcome in the address, instead of ending on the callback's JSON. Until GU-89 builds the sign-in page, start it from Swagger on port 5173.
+
+**You start:** signed in or not. **You end:** signed in.
+
+### 2.1 Signed in, back on the app
+1. Log out fully (Swagger on port 5173: `POST /auth/logout`, then open `logoutUrl`), so Keycloak asks for the password.
+2. Run `POST /auth/login` with **returnUrl** `/session`. Open the `redirectUrl` in the same browser and sign in.
+3. **Expected:** the browser lands on `http://localhost:5173/session?result=signed_in` (or `result=tenant_picker` if you belong to several organizations, `result=no_tenant` if none) and the page shows a matching message. The banner shows you signed in without a reload.
+4. In the Requests panel there is no callback entry (the callback was a full-page redirect), and `/auth/me` was fetched again after landing.
+
+### 2.2 A return URL that is not a path on this site
+1. Run `POST /auth/login` with **returnUrl** `https://example.com`.
+2. **Expected:** `400` with `"errorCode": "INVALID_RETURN_URL"`. No Keycloak address is returned. `//example.com` and `/auth/callback` are refused the same way.
+
+### 2.3 An error comes back to the app too
+1. Run `POST /auth/login` with **returnUrl** `/session` and copy `redirectUrl`.
+2. Open it in a **private window** (which does not have the sign-in cookie the API set in the normal window) and sign in.
+3. **Expected:** the private window lands on `http://localhost:5173/session?error=CSRF_STATE_MISMATCH` with an error message. The sign-in was refused, because it was finished in a different browser from the one that started it. Close the private window.
+
+### 2.4 Crafted values are ignored
+1. Open http://localhost:5173/session?result=hacked&error=%3Cb%3Ehi%3C%2Fb%3E.
+2. **Expected:** no message; values that do not match the known forms are dropped.
+
+**Record the result** in `.kiro/specs/phase-10t-return-url/tasks.md`, task 3.3.
+
+---
+
 ## Parts to Come
 
 | Part | Story | Page |
 |---|---|---|
-| 2 | GU-88 | Setup wizard |
-| 3 | GU-89 | Sign-in, session and tenants (replaces the Swagger sign-in above) |
-| 4 | GU-90 | Members, invitations and join links |
-| 5 | GU-97 | Roles, policies and permissions |
-| 6 | GU-91 | Settings |
-| 7 | GU-92 | Sample data |
-| 8 | GU-93 | Diagnostics |
-
-GU-87 (the post-sign-in redirect) changes step 1.3.3: the callback returns to the app.
+| 3 | GU-88 | Setup wizard |
+| 4 | GU-89 | Sign-in, session and tenants (replaces the Swagger sign-in in Parts 1 and 2) |
+| 5 | GU-90 | Members, invitations and join links |
+| 6 | GU-97 | Roles, policies and permissions |
+| 7 | GU-91 | Settings |
+| 8 | GU-92 | Sample data |
+| 9 | GU-93 | Diagnostics |
 
 ---
 

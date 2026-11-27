@@ -18,11 +18,12 @@ public interface IJoinLinkAcceptanceService
     /// Starts the sign-in that joins the link's organization and returns the identity provider address.
     /// A join link has no email, so the page is the sign-in page (which links to registration), unless
     /// <paramref name="forceLogin"/> asks for credentials even with a live single sign-on session.
+    /// <paramref name="returnUrl"/> is an optional path on this site the callback redirects to (GU-87).
     /// </summary>
     /// <returns>
     /// The flow; 404 for an unknown token; 410 <c>JOIN_LINK_NO_LONGER_VALID</c>; 403
     /// <c>INVITATION_WRONG_ORGANIZATION</c> on another tenant's host; 422 <c>ENTERPRISE_NOT_SUPPORTED</c>.
     /// </returns>
     Task<OperationResult<FlowInitiationResult>> StartAsync(
-        string token, bool forceLogin, HttpContext httpContext, CancellationToken cancellationToken = default);
+        string token, bool forceLogin, string? returnUrl, HttpContext httpContext, CancellationToken cancellationToken = default);
 }

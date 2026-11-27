@@ -39,12 +39,16 @@ public sealed class InvitationAcceptanceController : ControllerBase
 
     /// <summary>
     /// Starts the sign-in that accepts the invitation. The client navigates to the returned
-    /// <c>redirectUrl</c> straight away; the identity provider returns to <c>/auth/callback</c>.
+    /// <c>redirectUrl</c> straight away; the identity provider returns to <c>/auth/callback</c>, which then
+    /// redirects to <c>returnUrl</c> (an optional path on this site) with the outcome.
     /// </summary>
     [HttpPost("accept")]
-    public async Task<IActionResult> Accept([FromBody] InvitationTokenRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Accept(
+        [FromBody] InvitationTokenRequestDto request,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _acceptanceService.StartAsync(request.Token ?? string.Empty, request.ForceLogin, HttpContext, cancellationToken);
+        var result = await _acceptanceService.StartAsync(request.Token ?? string.Empty, request.ForceLogin, returnUrl, HttpContext, cancellationToken);
         return result.Success
             ? Ok(new { redirectUrl = result.Data!.RedirectUrl })
             : StatusCode(result.StatusCode, new { error = result.Message, errorCode = result.ErrorCode });

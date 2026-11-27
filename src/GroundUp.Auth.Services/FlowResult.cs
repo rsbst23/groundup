@@ -66,6 +66,19 @@ public sealed record FlowResult
     public bool AlreadyMember { get; init; }
 
     /// <summary>
+    /// The path the client asked to return to when it started the flow (GU-87), from the flow state.
+    /// When set, the callback redirects there with the outcome instead of answering with JSON.
+    /// Set only by <see cref="AuthFlowService"/>, never by a flow handler.
+    /// </summary>
+    public string? ReturnUrl { get; init; }
+
+    /// <summary>
+    /// The identity provider's own error code (for example <c>access_denied</c>) when it reported one
+    /// to the callback. Only values matching <c>^[a-z_]{1,64}$</c> are kept.
+    /// </summary>
+    public string? IdpError { get; init; }
+
+    /// <summary>
     /// Creates a successful result with an issued token and optional redirect URL.
     /// </summary>
     /// <param name="token">The issued GroundUp JWT token.</param>

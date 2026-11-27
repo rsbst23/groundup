@@ -40,6 +40,12 @@ public static class AuthErrorCodes
     /// <summary>The join link was revoked, expired, used up, or its creator may no longer grant its role.</summary>
     public const string JoinLinkNoLongerValid = "JOIN_LINK_NO_LONGER_VALID";
 
+    /// <summary>The return URL given when starting a sign-in is not a path on this site (GU-87).</summary>
+    public const string InvalidReturnUrl = "INVALID_RETURN_URL";
+
+    /// <summary>The identity provider reported an error to the sign-in callback (for example access_denied).</summary>
+    public const string IdpError = "IDP_ERROR";
+
     /// <summary>Invitations and join links are not available for enterprise tenants yet (GU-69).</summary>
     public const string EnterpriseNotSupported = "ENTERPRISE_NOT_SUPPORTED";
 }

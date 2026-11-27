@@ -151,6 +151,40 @@ public sealed class JoinLinkTests : AuthFlowTestBase
     }
 
     [Fact]
+    public async Task Join_WithReturnUrl_StoresItOnTheFlowState()
+    {
+        var org = await SeedOrganizationAsync();
+        var link = await CreateLinkAsync(org);
+
+        var response = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/auth/join-links/join?returnUrl=%2Fjoin%2Fdone")
+        {
+            Content = JsonContent.Create(new { token = link.Token })
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.AuthFlowStates.SingleAsync(s => s.JoinLinkId == link.Id)).ReturnUrl.Should().Be("/join/done");
+    }
+
+    [Fact]
+    public async Task Join_InvalidReturnUrl_RefusedAndNoFlowStateCreated()
+    {
+        var org = await SeedOrganizationAsync();
+        var link = await CreateLinkAsync(org);
+
+        var response = await Client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/auth/join-links/join?returnUrl=https%3A%2F%2Fevil.example.com")
+        {
+            Content = JsonContent.Create(new { token = link.Token })
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("errorCode").GetString().Should().Be(AuthErrorCodes.InvalidReturnUrl);
+        await using var context = Fixture.CreateAuthDbContext();
+        (await context.AuthFlowStates.AnyAsync(s => s.JoinLinkId == link.Id)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Join_OnAnotherOrganizationsHost_Forbidden()
     {
         var org = await SeedOrganizationAsync();

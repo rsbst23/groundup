@@ -106,6 +106,62 @@ public sealed class AuthFlowServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("https://evil.example.com")]
+    [InlineData("//evil.example.com")]
+    [InlineData("/auth/callback")]
+    public async Task InitiateFlowAsync_InvalidReturnUrl_RefusedBeforeAnythingIsCreated(string returnUrl)
+    {
+        // Arrange
+        var httpContext = CreateHttpContext();
+
+        // Act
+        var result = await _sut.InitiateFlowAsync(
+            new FlowInitiationRequest(FlowType.Login, ReturnUrl: returnUrl), httpContext);
+
+        // Assert — refused with the code, before the URL is built, the state is saved or a cookie is set
+        result.Success.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.InvalidReturnUrl);
+        await _authUrlBuilder.DidNotReceiveWithAnyArgs().BuildAuthorizationUrlAsync(default!, default);
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().InitiateAsync(default!, default);
+        httpContext.Response.Headers.SetCookie.ToString().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_ValidReturnUrl_StoredOnTheFlowState()
+    {
+        // Arrange
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        var result = await _sut.InitiateFlowAsync(
+            new FlowInitiationRequest(FlowType.Login, ReturnUrl: "/invite/abc?org=acme"), CreateHttpContext());
+
+        // Assert
+        result.Success.Should().BeTrue();
+        await _authFlowStateService.Received(1).InitiateAsync(
+            Arg.Is<InitiateAuthFlowRequest>(r => r.ReturnUrl == "/invite/abc?org=acme"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InitiateFlowAsync_BlankReturnUrl_StoredAsNone()
+    {
+        // Arrange
+        SetupSuccessfulUrlBuild();
+        SetupSuccessfulStateCreation();
+
+        // Act
+        await _sut.InitiateFlowAsync(new FlowInitiationRequest(FlowType.Login, ReturnUrl: "  "), CreateHttpContext());
+
+        // Assert
+        await _authFlowStateService.Received(1).InitiateAsync(
+            Arg.Is<InitiateAuthFlowRequest>(r => r.ReturnUrl == null),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task InitiateFlowAsync_ValidRequest_CreatesStateWithAllFieldsPopulated()
     {
@@ -519,6 +575,192 @@ public sealed class AuthFlowServiceTests
         // The implementation calls httpContext.Response.Cookies.Delete which sets expiry to epoch
         setCookieHeaders.Should().Contain(h => h!.Contains("AuthState") && h.Contains("expires="));
     }
+
+    #endregion
+
+    #region Return URL on callback results (GU-87)
+
+    private const string TestReturnUrl = "/session?tab=1";
+
+    [Fact]
+    public async Task HandleCallbackAsync_HandlerResult_CarriesTheFlowStatesReturnUrl()
+    {
+        // Arrange
+        var pending = CreateFlowStateDto(FlowStatus.Pending) with { ReturnUrl = TestReturnUrl };
+        SetupFoundState(pending);
+        _authFlowStateService.ConsumeAsync(pending.Id, FlowType.Login, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<AuthFlowStateDto>.Ok(pending with { Status = FlowStatus.Consumed }));
+        var handler = Substitute.For<IFlowHandler>();
+        handler.HandledFlowType.Returns(FlowType.Login);
+        // A handler that tries to set its own return URL is overridden by the flow state's
+        handler.HandleCallbackAsync(Arg.Any<FlowCallbackContext>())
+            .Returns(FlowResult.Success("token") with { ReturnUrl = "/elsewhere" });
+
+        // Act
+        var result = await CreateSut(new[] { handler })
+            .HandleCallbackAsync("auth-code", TestStateToken, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        result.Data!.IsSuccess.Should().BeTrue();
+        result.Data.ReturnUrl.Should().Be(TestReturnUrl);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_NoReturnUrlOnTheState_ResultHasNone()
+    {
+        // Arrange
+        var pending = CreateFlowStateDto(FlowStatus.Pending);
+        SetupFoundState(pending);
+        _authFlowStateService.ConsumeAsync(pending.Id, FlowType.Login, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<AuthFlowStateDto>.Ok(pending with { Status = FlowStatus.Consumed }));
+        var handler = Substitute.For<IFlowHandler>();
+        handler.HandledFlowType.Returns(FlowType.Login);
+        handler.HandleCallbackAsync(Arg.Any<FlowCallbackContext>()).Returns(FlowResult.Success("token"));
+
+        // Act
+        var result = await CreateSut(new[] { handler })
+            .HandleCallbackAsync("auth-code", TestStateToken, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        result.Data!.ReturnUrl.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(FlowStatus.Consumed, "FLOW_ALREADY_CONSUMED")]
+    [InlineData(FlowStatus.Expired, "FLOW_EXPIRED")]
+    [InlineData(FlowStatus.Failed, "FLOW_FAILED")]
+    public async Task HandleCallbackAsync_StateNoLongerUsable_ErrorCarriesTheReturnUrl(FlowStatus status, string expectedCode)
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(status) with { ReturnUrl = TestReturnUrl });
+
+        // Act
+        var result = await _sut.HandleCallbackAsync("auth-code", TestStateToken, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        result.Data!.ErrorCode.Should().Be(expectedCode);
+        result.Data.ReturnUrl.Should().Be(TestReturnUrl);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_StateCookieMismatch_StillRefusedButCarriesTheReturnUrl()
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(FlowStatus.Pending) with { ReturnUrl = TestReturnUrl });
+
+        // Act
+        var result = await _sut.HandleCallbackAsync("auth-code", TestStateToken, CreateHttpContextWithStateCookie("other"));
+
+        // Assert — the sign-in is refused and the state is not consumed or changed
+        result.Data!.ErrorCode.Should().Be("CSRF_STATE_MISMATCH");
+        result.Data.ReturnUrl.Should().Be(TestReturnUrl);
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().ConsumeAsync(default, default, default);
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().MarkFailedAsync(default, default!, default);
+    }
+
+    [Fact]
+    public async Task HandleCallbackAsync_StateCookieMissingAndStateUnknown_NoReturnUrl()
+    {
+        // Arrange
+        _authFlowStateRepository.FindByStateTokenAsync(TestStateToken, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<AuthFlowStateDto>.Fail("Not found", 404));
+
+        // Act
+        var result = await _sut.HandleCallbackAsync("auth-code", TestStateToken, CreateHttpContext());
+
+        // Assert
+        result.Data!.ErrorCode.Should().Be("CSRF_STATE_MISMATCH");
+        result.Data.ReturnUrl.Should().BeNull();
+    }
+
+    #endregion
+
+    #region HandleProviderErrorAsync (GU-87)
+
+    [Fact]
+    public async Task HandleProviderErrorAsync_MatchingCookieAndPendingState_MarksFailedAndCarriesTheReturnUrl()
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(FlowStatus.Pending) with { ReturnUrl = TestReturnUrl });
+        var httpContext = CreateHttpContextWithStateCookie(TestStateToken);
+
+        // Act
+        var result = await _sut.HandleProviderErrorAsync(TestStateToken, "access_denied", "The user cancelled", httpContext);
+
+        // Assert
+        result.Data!.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.IdpError);
+        result.Data.IdpError.Should().Be("access_denied");
+        result.Data.ReturnUrl.Should().Be(TestReturnUrl);
+        result.Data.ErrorMessage.Should().NotContain("cancelled");
+        await _authFlowStateService.Received(1).MarkFailedAsync(TestFlowStateId, Arg.Is<string>(r => r.Contains("access_denied")), Arg.Any<CancellationToken>());
+        httpContext.Response.Headers.SetCookie.ToString().Should().Contain("AuthState");
+    }
+
+    [Fact]
+    public async Task HandleProviderErrorAsync_CookieDoesNotMatch_StateLeftAlone()
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(FlowStatus.Pending) with { ReturnUrl = TestReturnUrl });
+
+        // Act
+        var result = await _sut.HandleProviderErrorAsync(TestStateToken, "access_denied", null, CreateHttpContext());
+
+        // Assert — still reported, but nobody without the browser's cookie can fail the flow
+        result.Data!.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.IdpError);
+        result.Data.ReturnUrl.Should().Be(TestReturnUrl);
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().MarkFailedAsync(default, default!, default);
+    }
+
+    [Fact]
+    public async Task HandleProviderErrorAsync_StateAlreadyConsumed_NotMarkedFailed()
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(FlowStatus.Consumed));
+
+        // Act
+        await _sut.HandleProviderErrorAsync(TestStateToken, "access_denied", null, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().MarkFailedAsync(default, default!, default);
+    }
+
+    [Theory]
+    [InlineData("Access Denied")]
+    [InlineData("access-denied")]
+    [InlineData("<script>")]
+    [InlineData("")]
+    public async Task HandleProviderErrorAsync_ErrorNotAPlainCode_IdpErrorLeftOut(string error)
+    {
+        // Arrange
+        SetupFoundState(CreateFlowStateDto(FlowStatus.Pending) with { ReturnUrl = TestReturnUrl });
+
+        // Act
+        var result = await _sut.HandleProviderErrorAsync(TestStateToken, error, null, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        result.Data!.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.IdpError);
+        result.Data.IdpError.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task HandleProviderErrorAsync_UnknownState_IdpErrorWithoutReturnUrl()
+    {
+        // Arrange
+        _authFlowStateRepository.FindByStateTokenAsync(TestStateToken, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<AuthFlowStateDto>.Fail("Not found", 404));
+
+        // Act
+        var result = await _sut.HandleProviderErrorAsync(TestStateToken, "access_denied", null, CreateHttpContextWithStateCookie(TestStateToken));
+
+        // Assert
+        result.Data!.ErrorCode.Should().Be(GroundUp.Auth.Core.AuthErrorCodes.IdpError);
+        result.Data.ReturnUrl.Should().BeNull();
+        await _authFlowStateService.DidNotReceiveWithAnyArgs().MarkFailedAsync(default, default!, default);
+    }
+
+    private void SetupFoundState(AuthFlowStateDto state) =>
+        _authFlowStateRepository.FindByStateTokenAsync(TestStateToken, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<AuthFlowStateDto>.Ok(state));
 
     #endregion
 
