@@ -93,7 +93,7 @@ Rules:
 |---|---|---|
 | Create | `RoleType` is `Application` or `Workspace` | `400 VALIDATION_FAILED` |
 | Create / Update | name free in the tenant (the index decides) | `409 ROLE_NAME_TAKEN` |
-| Update | built-in role: only the description may change (a different name, ignoring case, is refused) | `409 ROLE_IS_BUILT_IN` |
+| Update | built-in role: only the description may change (any different name, even a change of case, is refused, because code checks `TenantAdmin` by name) | `409 ROLE_IS_BUILT_IN` |
 | Delete | built-in role | `409 ROLE_IS_BUILT_IN` |
 | Delete | `GetUsageAsync` is all zero/false, inside the transaction; the FK backs it up | `409 ROLE_IN_USE` with `errors` such as "Held by 3 members", "Used by 1 pending invitation", "Used by 2 active join links", "The tenant's default role" |
 | SetDefault | not built-in | `409 ROLE_IS_BUILT_IN` |
