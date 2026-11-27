@@ -33,9 +33,9 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/r
   - [x] 2.6 Integration tests (`CallbackReturnUrlTests`, plus one in `InvitationAcceptanceTests`): login redirects `signed_in` with the cookie and no token; no memberships redirects `no_tenant`; replayed state and cookie mismatch redirect with their codes (the mismatched state stays Pending); without a return URL the JSON is unchanged; provider error redirects and fails the row, or answers 400 JSON; invalid return URL refused with no flow state and no cookie; valid one stored; invitation email mismatch redirects with the code and without the email. `CreatePendingFlowStateAsync` takes an optional `returnUrl`
   - [x] 2.7 Check: build (no new warnings), unit 2010 / 0, integration 539 / 0, sample 22/22
 
-- [ ] 3. Web app check, docs, PR
-  - [ ] 3.1 `features/session/sessionSearch.ts` (zod schema) with a unit test; `routes/session.tsx` shows the landing values and refreshes the session on a result
-  - [ ] 3.2 The web app's TESTING.md Part 2 (the return URL); the API guide's note on `returnUrl`; ARCHITECTURE.md "Returning to the app after sign-in"
-  - [ ] 3.3 Run TESTING.md Part 2 by hand (or record what is left for Rob)
-  - [ ] 3.4 Full check (.NET suites; web build, lint, test); push; PR info
+- [x] 3. Web app check, docs, PR
+  - [x] 3.1 `features/session/sessionSearch.ts` (zod schema; `alreadyMember` accepts the router's parsed boolean and the string `true`) with a unit test; `routes/session.tsx` shows the outcome and refreshes the session when it lands with a result or an error
+  - [x] 3.2 The web app's TESTING.md Part 2 (signed in back on the app, a refused return URL, an error coming back through a private window, crafted values ignored; Part 1 step 1.3.3 and the parts-to-come table updated); the API guide's note on `returnUrl`; ARCHITECTURE.md "Returning to the app after sign-in"
+  - [ ] 3.3 TESTING.md Part 2 by hand: left for Rob (the automated tests cover each outcome and the provider error)
+  - [x] 3.4 Full check: web build, lint (0 problems), tests 70 / 0; .NET unchanged since task 2 (unit 2010 / 0, integration 539 / 0, sample 22/22); pushed
   - [ ] 3.5 Jira: GU-87 comment; Done after merge
