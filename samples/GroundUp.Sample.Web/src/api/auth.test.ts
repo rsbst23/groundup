@@ -81,7 +81,8 @@ describe('auth endpoints', () => {
     });
 
     await expect(createOrganization('Second Org')).resolves.toEqual({ id: 'o1', name: 'Second Org', slug: 'second-org' });
-    expect(call(mock, '/auth/organizations').body).toBe('{"name":"Second Org"}');
+    // The API's CreateOrganizationRequestDto field is organizationName
+    expect(call(mock, '/auth/organizations').body).toBe('{"organizationName":"Second Org"}');
   });
 
   it('leaveTenant posts to the tenant path and returns the new current tenant', async () => {

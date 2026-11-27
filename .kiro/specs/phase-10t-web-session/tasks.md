@@ -31,8 +31,9 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/w
   - [x] 2.6 Rob: the top-bar **Sign out** signs out everywhere (app and Keycloak). The Session page keeps both buttons for testing. Requirement 4.1 and design 5 updated
   - [x] 2.4 Check: web build, lint (0 problems), tests 117 / 0. Smoke run against the API through the dev server: `POST /auth/login?returnUrl=/session?next=%2Fdata%3Fpage%3D2` accepted; a provider error on that flow comes back as `302 /session?next=%2Fdata%3Fpage%3D2&error=IDP_ERROR&idpError=access_denied`, so `next` survives the callback. The browser parts (Keycloak form, landing, switch, sign-out) are in task 3's manual run
 
-- [ ] 3. Testing manual, manual run, PR
-  - [ ] 3.1 TESTING.md Part 2 with the Sign in button; Part 3 (the API guide's Parts 2 to 10 and 14.1 to 14.3 from the web app); the API guide's pointers
-  - [ ] 3.2 Run Parts 2 and 3 by hand (or record what is left for Rob)
-  - [ ] 3.3 Full check; push; PR info
+- [x] 3. Testing manual, manual run, PR
+  - [x] 3.0 Found while writing Part 3: `createOrganization` sent `{ name }`, but the API's `CreateOrganizationRequestDto` field is `organizationName`, so the API would have answered 400. Fixed, and the test now checks the field name
+  - [x] 3.1 TESTING.md Part 1 steps 1.2 and 1.3 use the top-bar buttons; Part 2 with the Sign in button (Swagger only for the refused return URL and the private-window error); Part 3 (the API guide's Parts 2 to 10 and 14.1 to 14.3 from the web app, with the picker dialog); the parts-to-come table renumbered; the API guide's Parts 2 to 10 and 14 point to Part 3
+  - [ ] 3.2 Parts 2 and 3 by hand: left for Rob. Rob's runs so far (2026-11-27): sign-in from Members returns to Members for a one-organization user; for a two-organization user, the picker dialog opens on Members and switching works; the top-bar Sign out signs out everywhere
+  - [x] 3.3 Full check: web build, lint (0 problems), tests 125 / 0; .NET unchanged (unit 2010 / 0, integration 539 / 0, sample 22/22); pushed
   - [ ] 3.4 Jira: GU-89 comment; Done after merge

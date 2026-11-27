@@ -81,7 +81,10 @@ export async function refreshSession(): Promise<void> {
 
 /** POST /auth/organizations: creates an organization with the user as TenantAdmin; the session does not move. */
 export async function createOrganization(name: string): Promise<CreatedOrganizationDto> {
-  return (await apiFetch<CreatedOrganizationDto>('/auth/organizations', { method: 'POST', body: { name } })).data;
+  return (await apiFetch<CreatedOrganizationDto>('/auth/organizations', {
+      method: 'POST',
+      body: { organizationName: name },
+    })).data;
 }
 
 /** POST /auth/tenants/{id}/leave. Leaving the current tenant leaves the session with no current tenant. */
