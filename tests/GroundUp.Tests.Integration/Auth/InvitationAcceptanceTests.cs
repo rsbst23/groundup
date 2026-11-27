@@ -250,6 +250,21 @@ public sealed class InvitationAcceptanceTests : AuthFlowTestBase
     }
 
     [Fact]
+    public async Task Callback_DifferentEmailWithReturnUrl_RedirectsWithTheCodeOnly()
+    {
+        var invite = await InviteAsync();
+        var state = await CreatePendingFlowStateAsync(FlowType.Invitation, invitationId: invite.Id, returnUrl: "/invite/page?org=x");
+        SetupFullSuccessfulCallback($"kc-wrong-{invite.Org.Suffix}", state.Nonce, $"wrong-{invite.Org.Suffix}@example.com");
+
+        var response = await Client.SendAsync(CreateCallbackRequest("auth-code-invite", state.StateToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        var location = response.Headers.Location!.OriginalString;
+        location.Should().Be($"/invite/page?org=x&error={AuthErrorCodes.InvitationEmailMismatch}");
+        location.Should().NotContain(invite.Email, "the message is not put in the URL");
+    }
+
+    [Fact]
     public async Task Callback_InvitationExpiredDuringSignIn_Gone()
     {
         var invite = await InviteAsync();

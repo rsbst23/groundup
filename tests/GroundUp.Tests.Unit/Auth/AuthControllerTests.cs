@@ -398,6 +398,81 @@ public sealed class AuthControllerTests
         objectResult.StatusCode.Should().Be(500);
     }
 
+    [Fact]
+    public async Task Callback_WithReturnUrl_RedirectsWithTheOutcomeAndNoToken()
+    {
+        // Arrange
+        _authFlowService.HandleCallbackAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowResult>.Ok(FlowResult.Success(TestToken) with { ReturnUrl = "/session" }));
+
+        // Act
+        var result = await _sut.Callback(code: "auth-code", state: "state-token");
+
+        // Assert
+        var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+        redirect.Url.Should().Be("/session?result=signed_in");
+        redirect.Permanent.Should().BeFalse();
+        redirect.Url.Should().NotContain(TestToken);
+    }
+
+    [Fact]
+    public async Task Callback_ErrorWithReturnUrl_RedirectsWithTheCode()
+    {
+        // Arrange
+        _authFlowService.HandleCallbackAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowResult>.Ok(
+                FlowResult.Error("REAUTH_REQUIRED", "Sign in again.", 401) with { ReturnUrl = "/session" }));
+
+        // Act
+        var result = await _sut.Callback(code: "auth-code", state: "state-token");
+
+        // Assert
+        result.Should().BeOfType<RedirectResult>().Which.Url.Should().Be("/session?error=REAUTH_REQUIRED");
+    }
+
+    [Fact]
+    public async Task Callback_ProviderError_GoesToHandleProviderErrorAsync()
+    {
+        // Arrange
+        _authFlowService.HandleProviderErrorAsync("state-token", "access_denied", "cancelled", Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowResult>.Ok(
+                FlowResult.Error(AuthErrorCodes.IdpError, "The identity provider reported an error.") with { ReturnUrl = "/session", IdpError = "access_denied" }));
+
+        // Act
+        var result = await _sut.Callback(code: null, state: "state-token", error: "access_denied", errorDescription: "cancelled");
+
+        // Assert
+        result.Should().BeOfType<RedirectResult>().Which.Url.Should().Be("/session?error=IDP_ERROR&idpError=access_denied");
+        await _authFlowService.DidNotReceiveWithAnyArgs().HandleCallbackAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Callback_ProviderErrorWithoutReturnUrl_Returns400JsonWithIdpError()
+    {
+        // Arrange
+        _authFlowService.HandleProviderErrorAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<HttpContext>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<FlowResult>.Ok(FlowResult.Error(AuthErrorCodes.IdpError, "The identity provider reported an error.")));
+
+        // Act
+        var result = await _sut.Callback(code: null, state: "state-token", error: "access_denied");
+
+        // Assert
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(400);
+        GetAnonymousObjectProperties(objectResult.Value!)["errorCode"].Should().Be(AuthErrorCodes.IdpError);
+    }
+
+    [Fact]
+    public async Task Callback_ProviderErrorWithoutState_Returns400()
+    {
+        // Act
+        var result = await _sut.Callback(code: null, state: null, error: "access_denied");
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+        await _authFlowService.DidNotReceiveWithAnyArgs().HandleProviderErrorAsync(default!, default!, default, default!, default);
+    }
+
     #endregion
 
     #region GET /auth/csrf

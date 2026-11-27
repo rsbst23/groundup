@@ -9,6 +9,9 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GroundUp.Tests.Unit" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GroundUp.Core\GroundUp.Core.csproj" />

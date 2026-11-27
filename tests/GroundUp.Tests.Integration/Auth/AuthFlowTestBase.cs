@@ -61,6 +61,7 @@ public abstract class AuthFlowTestBase
     /// <param name="expiresAt">Override expiration; defaults to 10 minutes from now.</param>
     /// <param name="invitationId">The invitation being accepted (Invitation flows).</param>
     /// <param name="joinLinkId">The join link being used (JoinLink flows).</param>
+    /// <param name="returnUrl">The path the callback redirects to (GU-87); none by default.</param>
     protected async Task<AuthFlowState> CreatePendingFlowStateAsync(
         FlowType flowType,
         string? stateToken = null,
@@ -72,7 +73,8 @@ public abstract class AuthFlowTestBase
         string? realm = null,
         DateTime? expiresAt = null,
         Guid? invitationId = null,
-        Guid? joinLinkId = null)
+        Guid? joinLinkId = null,
+        string? returnUrl = null)
     {
         stateToken ??= AuthFlowTestFixture.GenerateStateToken();
         nonce ??= AuthFlowTestFixture.GenerateNonce();
@@ -92,6 +94,7 @@ public abstract class AuthFlowTestBase
             Realm = realm,
             InvitationId = invitationId,
             JoinLinkId = joinLinkId,
+            ReturnUrl = returnUrl,
             ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(10),
             CreatedByIp = "127.0.0.1",
             CreatedByUserAgent = "IntegrationTest/1.0",

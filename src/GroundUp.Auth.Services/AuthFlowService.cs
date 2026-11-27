@@ -169,34 +169,35 @@ public sealed class AuthFlowService : IAuthFlowService
     {
         var options = _authOptions.Value;
 
-        // 1. Read and validate the state cookie binding (CSRF protection)
+        // 1. Read and validate the state cookie binding (CSRF protection). The sign-in is refused;
+        //    the state is only read (not changed) to find where the client asked to return to.
         var stateCookie = httpContext.Request.Cookies[options.StateCookieName];
 
         if (string.IsNullOrEmpty(stateCookie))
         {
             _logger.LogWarning("Callback rejected: state cookie '{CookieName}' is missing", options.StateCookieName);
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("CSRF_STATE_MISMATCH", "State cookie is missing — possible CSRF or session expired.", 403));
+            return Result(
+                FlowResult.Error("CSRF_STATE_MISMATCH", "State cookie is missing — possible CSRF or session expired.", 403),
+                await FindReturnUrlAsync(state, cancellationToken));
         }
 
         if (!string.Equals(state, stateCookie, StringComparison.Ordinal))
         {
             _logger.LogWarning("Callback rejected: state parameter does not match state cookie");
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("CSRF_STATE_MISMATCH", "State parameter does not match state cookie — possible CSRF.", 403));
+            return Result(
+                FlowResult.Error("CSRF_STATE_MISMATCH", "State parameter does not match state cookie — possible CSRF.", 403),
+                await FindReturnUrlAsync(state, cancellationToken));
         }
 
         // 2. Look up the AuthFlowState by StateToken
-        var lookupResult = await _authFlowStateRepository.FindByStateTokenAsync(state, cancellationToken);
+        var flowState = await FindStateAsync(state, cancellationToken);
 
-        if (!lookupResult.Success)
+        if (flowState is null)
         {
             _logger.LogWarning("Callback rejected: no AuthFlowState found for state token");
             return OperationResult<FlowResult>.Ok(
                 FlowResult.Error("STATE_NOT_FOUND", "No matching flow state found.", 404));
         }
-
-        var flowState = lookupResult.Data!;
 
         // 3. Check if already consumed (replay attack)
         if (flowState.Status == FlowStatus.Consumed)
@@ -204,8 +205,9 @@ public sealed class AuthFlowService : IAuthFlowService
             _logger.LogWarning(
                 "Callback rejected: AuthFlowState '{FlowStateId}' already consumed (replay attack)",
                 flowState.Id);
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("FLOW_ALREADY_CONSUMED", "This flow has already been processed.", 410));
+            return Result(
+                FlowResult.Error("FLOW_ALREADY_CONSUMED", "This flow has already been processed.", 410),
+                flowState.ReturnUrl);
         }
 
         // 4. Check if expired
@@ -214,8 +216,9 @@ public sealed class AuthFlowService : IAuthFlowService
             _logger.LogWarning(
                 "Callback rejected: AuthFlowState '{FlowStateId}' has expired",
                 flowState.Id);
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("FLOW_EXPIRED", "The authentication flow has expired. Please try again.", 400));
+            return Result(
+                FlowResult.Error("FLOW_EXPIRED", "The authentication flow has expired. Please try again.", 400),
+                flowState.ReturnUrl);
         }
 
         // 5. Check if already failed
@@ -224,8 +227,9 @@ public sealed class AuthFlowService : IAuthFlowService
             _logger.LogWarning(
                 "Callback rejected: AuthFlowState '{FlowStateId}' is in failed state",
                 flowState.Id);
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("FLOW_FAILED", "This flow has already failed.", 400));
+            return Result(
+                FlowResult.Error("FLOW_FAILED", "This flow has already failed.", 400),
+                flowState.ReturnUrl);
         }
 
         // 6. Consume the state (transition Pending → Consumed)
@@ -237,16 +241,18 @@ public sealed class AuthFlowService : IAuthFlowService
             // Could be a race condition where another request consumed it first
             if (consumeResult.StatusCode == 409)
             {
-                return OperationResult<FlowResult>.Ok(
-                    FlowResult.Error("FLOW_ALREADY_CONSUMED", "This flow has already been processed.", 410));
+                return Result(
+                    FlowResult.Error("FLOW_ALREADY_CONSUMED", "This flow has already been processed.", 410),
+                    flowState.ReturnUrl);
             }
 
             _logger.LogWarning(
                 "Callback rejected: failed to consume AuthFlowState '{FlowStateId}': {Message}",
                 flowState.Id,
                 consumeResult.Message);
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("CONSUME_FAILED", consumeResult.Message, consumeResult.StatusCode));
+            return Result(
+                FlowResult.Error("CONSUME_FAILED", consumeResult.Message, consumeResult.StatusCode),
+                flowState.ReturnUrl);
         }
 
         var consumedState = consumeResult.Data!;
@@ -270,8 +276,9 @@ public sealed class AuthFlowService : IAuthFlowService
                 $"No handler registered for FlowType '{consumedState.FlowType}'",
                 cancellationToken);
 
-            return OperationResult<FlowResult>.Ok(
-                FlowResult.Error("NO_HANDLER", $"No handler registered for flow type '{consumedState.FlowType}'.", 500));
+            return Result(
+                FlowResult.Error("NO_HANDLER", $"No handler registered for flow type '{consumedState.FlowType}'.", 500),
+                consumedState.ReturnUrl);
         }
 
         // 9. Build callback context and invoke the handler
@@ -289,8 +296,73 @@ public sealed class AuthFlowService : IAuthFlowService
 
         var flowResult = await handler.HandleCallbackAsync(callbackContext);
 
-        return OperationResult<FlowResult>.Ok(flowResult);
+        // The return URL comes from the flow state only, so a handler cannot send the browser elsewhere
+        return Result(flowResult, consumedState.ReturnUrl);
     }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<FlowResult>> HandleProviderErrorAsync(
+        string state,
+        string error,
+        string? errorDescription,
+        HttpContext httpContext,
+        CancellationToken cancellationToken = default)
+    {
+        var options = _authOptions.Value;
+        var providerError = IdpErrorPattern.IsMatch(error) ? error : null;
+        var flowState = await FindStateAsync(state, cancellationToken);
+
+        _logger.LogInformation(
+            "Identity provider reported {ProviderError} for AuthFlowState {FlowStateId}: {Description}",
+            providerError ?? "an unrecognised error",
+            flowState?.Id,
+            Truncate(errorDescription, 200));
+
+        if (flowState is null)
+        {
+            return OperationResult<FlowResult>.Ok(IdpErrorResult(providerError));
+        }
+
+        // Only the browser that started the flow may end it: without the matching state cookie the
+        // state is left alone, so someone holding a state token cannot fail another person's sign-in.
+        var stateCookie = httpContext.Request.Cookies[options.StateCookieName];
+        if (string.Equals(state, stateCookie, StringComparison.Ordinal) && flowState.Status == FlowStatus.Pending)
+        {
+            await _authFlowStateService.MarkFailedAsync(
+                flowState.Id, $"Identity provider error: {providerError ?? "unrecognised"}", cancellationToken);
+            ClearStateCookie(httpContext, options);
+        }
+
+        return Result(IdpErrorResult(providerError), flowState.ReturnUrl);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex IdpErrorPattern =
+        new("^[a-z_]{1,64}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static FlowResult IdpErrorResult(string? providerError) =>
+        FlowResult.Error(AuthErrorCodes.IdpError, "The identity provider reported an error.", 400) with { IdpError = providerError };
+
+    private static OperationResult<FlowResult> Result(FlowResult flowResult, string? returnUrl) =>
+        OperationResult<FlowResult>.Ok(flowResult with { ReturnUrl = returnUrl });
+
+    /// <summary>The flow state for a state token, or null when there is none.</summary>
+    private async Task<AuthFlowStateDto?> FindStateAsync(string state, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(state))
+        {
+            return null;
+        }
+
+        var lookup = await _authFlowStateRepository.FindByStateTokenAsync(state, cancellationToken);
+        return lookup is { Success: true, Data: not null } ? lookup.Data : null;
+    }
+
+    /// <summary>A read-only lookup of the return URL for a state token (used when the flow is refused).</summary>
+    private async Task<string?> FindReturnUrlAsync(string state, CancellationToken cancellationToken) =>
+        (await FindStateAsync(state, cancellationToken))?.ReturnUrl;
+
+    private static string? Truncate(string? value, int maxLength) =>
+        value is null || value.Length <= maxLength ? value : value[..maxLength];
 
     /// <summary>
     /// Sets the state cookie for browser-binding CSRF protection.

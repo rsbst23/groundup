@@ -138,23 +138,30 @@ public sealed class AuthController : ControllerBase
     /// </summary>
     /// <param name="code">The authorization code returned by Keycloak.</param>
     /// <param name="state">The state token for CSRF validation and flow correlation.</param>
+    /// <param name="error">The identity provider's own error (for example <c>access_denied</c>), sent instead of a code.</param>
+    /// <param name="errorDescription">The identity provider's error description; logged, never returned.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
-    /// HTTP 200 JSON on success (token + session info or tenant selection);
-    /// appropriate error status on failure.
+    /// When the flow was started with a return URL: 302 to it with <c>result=...</c> or <c>error=CODE</c>
+    /// (GU-87). Otherwise HTTP 200 JSON on success (token + session info or tenant selection) and an
+    /// error status with <c>{ error, errorCode, message }</c> on failure.
     /// </returns>
     [HttpGet("callback")]
     public async Task<IActionResult> Callback(
         [FromQuery] string? code,
         [FromQuery] string? state,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
+        if (string.IsNullOrWhiteSpace(state) || (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(error)))
         {
             return BadRequest(new { error = "Missing code or state parameter." });
         }
 
-        var result = await _authFlowService.HandleCallbackAsync(code, state, HttpContext, cancellationToken);
+        var result = string.IsNullOrWhiteSpace(error)
+            ? await _authFlowService.HandleCallbackAsync(code!, state, HttpContext, cancellationToken)
+            : await _authFlowService.HandleProviderErrorAsync(state, error, errorDescription, HttpContext, cancellationToken);
 
         if (!result.Success)
         {
@@ -163,6 +170,13 @@ public sealed class AuthController : ControllerBase
         }
 
         var flowResult = result.Data!;
+
+        // Back to the client's own page with the outcome. Relative Location: the browser stays on the
+        // host it called (the web app's origin or a tenant subdomain). The cookie is already written.
+        if (flowResult.ReturnUrl is not null)
+        {
+            return Redirect(CallbackRedirect.Build(flowResult.ReturnUrl, flowResult));
+        }
 
         if (!flowResult.IsSuccess)
         {

@@ -24,14 +24,14 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/r
   - [x] 1.4 Tests: `ReturnUrlRulesTests` (design 6 list, plus the length boundary and a custom callback path); `AuthFlowServiceTests` (refused before the URL builder, the state service and the cookie; valid value stored; blank stored as none); `AuthControllerTests` (login and both signup flow types pass it through; the refusal keeps status and code). The acceptance services have no unit tests, so their pass-through is covered by integration tests: accept and join store the return URL on the flow state, and an invalid one is refused with no flow state row
   - [x] 1.5 Check: build, unit 1980 / 0, integration 529 / 0, sample 22/22
 
-- [ ] 2. Callback redirect and provider errors (design 3, 4)
-  - [ ] 2.1 `FlowResult.ReturnUrl` and `FlowResult.IdpError`
-  - [ ] 2.2 `HandleCallbackAsync` sets the return URL on every result once the state is known, including cookie mismatch (read-only lookup), consumed, expired, failed, consume race and no handler
-  - [ ] 2.3 `IAuthFlowService.HandleProviderErrorAsync` (mark failed only with a matching cookie and a Pending state; `IdpError` only when it matches `^[a-z_]{1,64}$`; description truncated in the log)
-  - [ ] 2.4 `CallbackRedirect.Build` in `GroundUp.Auth.Api`; `AuthController.Callback` reads `error` and `error_description`, redirects when there is a return URL, otherwise answers today's JSON (`IDP_ERROR` as 400 JSON)
-  - [ ] 2.5 Unit tests: `CallbackRedirectTests`; `AuthFlowServiceTests` for the return URL on each result and the provider error; `AuthControllerTests` for redirect versus JSON and the provider error path
-  - [ ] 2.6 Integration tests: login with a return URL ends in 302 with the cookie; invalid return URL leaves no flow state row; invitation email mismatch redirects with its code; provider error redirects and fails the row; existing callback tests unchanged
-  - [ ] 2.7 Check: build, all three suites
+- [x] 2. Callback redirect and provider errors (design 3, 4)
+  - [x] 2.1 `FlowResult.ReturnUrl` and `FlowResult.IdpError`
+  - [x] 2.2 `HandleCallbackAsync` sets the return URL on every result once the state is known, including cookie mismatch (read-only lookup), consumed, expired, failed, consume race and no handler; a handler's own `ReturnUrl` is overwritten by the flow state's
+  - [x] 2.3 `IAuthFlowService.HandleProviderErrorAsync` (mark failed only with a matching cookie and a Pending state, then clear the state cookie; `IdpError` only when it matches `^[a-z_]{1,64}$`; description truncated to 200 characters in the log)
+  - [x] 2.4 `CallbackRedirect.Build` in `GroundUp.Auth.Api` (internal; `InternalsVisibleTo` for the unit tests added to the project); `AuthController.Callback` reads `error` and `error_description`, redirects when there is a return URL, otherwise answers today's JSON (`IDP_ERROR` as 400 JSON)
+  - [x] 2.5 Unit tests: `CallbackRedirectTests` (10); `AuthFlowServiceTests` (return URL on the handler result, none without one, the three unusable states, cookie mismatch without consuming, unknown state; provider error: marks failed with a matching cookie, leaves the state alone without it, not for a consumed state, drops non-code errors, unknown state); `AuthControllerTests` (redirect with no token, error redirect, provider error routing, provider error JSON, no state)
+  - [x] 2.6 Integration tests (`CallbackReturnUrlTests`, plus one in `InvitationAcceptanceTests`): login redirects `signed_in` with the cookie and no token; no memberships redirects `no_tenant`; replayed state and cookie mismatch redirect with their codes (the mismatched state stays Pending); without a return URL the JSON is unchanged; provider error redirects and fails the row, or answers 400 JSON; invalid return URL refused with no flow state and no cookie; valid one stored; invitation email mismatch redirects with the code and without the email. `CreatePendingFlowStateAsync` takes an optional `returnUrl`
+  - [x] 2.7 Check: build (no new warnings), unit 2010 / 0, integration 539 / 0, sample 22/22
 
 - [ ] 3. Web app check, docs, PR
   - [ ] 3.1 `features/session/sessionSearch.ts` (zod schema) with a unit test; `routes/session.tsx` shows the landing values and refreshes the session on a result
