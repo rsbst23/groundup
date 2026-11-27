@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { refreshSession } from '../../api/auth';
 import { apiFetch } from '../../api/client';
 import { ErrorPanel } from '../../components/ErrorPanel';
-import { onSessionChanged } from '../session/sessionQuery';
+import { onSessionRefreshed } from '../session/sessionQuery';
 
 /**
  * Two calls for checking the scaffold before real pages exist (testing manual, Part 1):
@@ -18,7 +18,7 @@ export function ChecksCard() {
   const tenantCall = useMutation({ mutationFn: () => apiFetch<unknown>('/api/members') });
   const queryClient = useQueryClient();
   // A refresh issues a new token, so the banner's times change.
-  const cookiePost = useMutation({ mutationFn: refreshSession, onSuccess: () => onSessionChanged(queryClient) });
+  const cookiePost = useMutation({ mutationFn: refreshSession, onSuccess: () => onSessionRefreshed(queryClient) });
 
   return (
     <Paper sx={{ p: 3 }}>

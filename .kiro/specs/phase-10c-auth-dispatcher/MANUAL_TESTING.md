@@ -176,6 +176,8 @@ Restart the app. It should start with no Keycloak validation errors in the conso
 
 ## Part 2: Alice Signs Up and Creates an Organization
 
+> From the browser: the web app's TESTING.md, Part 3.1.
+
 **Start:** nobody is logged in; `testuser@example.com` does not exist. **End:** Alice is logged in, scoped to `My Test Org`.
 
 ### 2.1 Start the signup
@@ -211,6 +213,8 @@ Database: an `AuthTenants` row with slug `my-test-org`; an `AuthUsers` row for A
 
 ## Part 3: Alice Logs In (One Membership)
 
+> From the browser: the web app's TESTING.md, Part 3.2.
+
 **Start:** Alice is logged in. **End:** Alice is logged in again, scoped to `My Test Org`.
 
 1. Log out fully (Recipe 2).
@@ -224,6 +228,8 @@ Database: an `AuthTenants` row with slug `my-test-org`; an `AuthUsers` row for A
 ---
 
 ## Part 4: Second Organization, the Tenant Picker, and Selecting a Tenant
+
+> From the browser: the web app's TESTING.md, Part 3.3.
 
 **Start:** Alice, scoped to `My Test Org`. **End:** Alice, scoped to `My Test Org`, owning two organizations.
 
@@ -288,6 +294,8 @@ Expected: **200**. Your `AuthToken` cookie is replaced with a token scoped to `M
 
 ## Part 5: The Last TenantAdmin Cannot Leave
 
+> From the browser: the web app's TESTING.md, Part 3.4.
+
 **The rule:** every tenant must keep at least one active TenantAdmin. A regular member can always leave; an admin can leave only if another active admin remains.
 
 **Start:** Alice, scoped to `My Test Org`. **End:** unchanged.
@@ -303,6 +311,8 @@ Expected: **403** `{ "error": "You are the only TenantAdmin of this organization
 ---
 
 ## Part 6: Default Tenant and Simple Signup (Bob)
+
+> From the browser: the web app's TESTING.md, Part 3.5.
 
 Simple signup registers a new person **without** creating an organization. They join the configured default tenant.
 
@@ -332,6 +342,8 @@ The callback returns:
 ---
 
 ## Part 7: A Regular Member Leaves (Bob)
+
+> From the browser: the web app's TESTING.md, Part 3.6.
 
 **Start:** Bob, scoped to `My Test Org`. **End:** Bob, signed in with **no current tenant**, no memberships.
 
@@ -384,6 +396,8 @@ Expected: `HTTP/1.1 401`. Leaving revoked every token Bob held for `My Test Org`
 
 ## Part 8: Bob Logs In Again and Rejoins Through the Default Tenant
 
+> From the browser: the web app's TESTING.md, Part 3.7.
+
 **Start:** Bob, tenantless, no memberships; default tenant is still `my-test-org`. **End:** Bob, scoped to `My Test Org`.
 
 1. Log out fully (Recipe 2).
@@ -398,6 +412,8 @@ Expected: `HTTP/1.1 401`. Leaving revoked every token Bob held for `My Test Org`
 ---
 
 ## Part 9: Logging In With Nowhere to Go (Bob)
+
+> From the browser: the web app's TESTING.md, Part 3.8.
 
 Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user is signed in with no current tenant.
 
@@ -422,6 +438,8 @@ Before the tenantless-session work this was a `403 ACCESS_DENIED`. Now the user 
 ---
 
 ## Part 10: Creating an Organization From a Tenantless Session (Bob)
+
+> From the browser: the web app's TESTING.md, Part 3.9.
 
 **Start:** Bob, no current tenant, no memberships. **End:** Bob, scoped to `Tenantless Org` as its TenantAdmin.
 
@@ -663,6 +681,8 @@ Set the default tenant (Recipe 3, `my-test-org`), restart, log out fully, then `
 ---
 
 ## Part 14 (Optional): Session Lifetime and Forced Sign-In
+
+> From the browser: the web app's TESTING.md, Part 3.10 (14.1 to 14.3).
 
 Checks that the session is counted from when the user really typed their password (Keycloak's `auth_time`), that a silent single sign-on does not restart it, and that the app makes Keycloak ask for the password again when the session is too old. Run it as Alice, scoped to `My Test Org`, with the timeouts at their defaults.
 

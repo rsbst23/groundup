@@ -7,8 +7,8 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { Link } from '@tanstack/react-router';
 import { ApiError } from '../api/errors';
+import { useStartSignIn } from '../features/session/useStartSignIn';
 
 interface ErrorPanelProps {
   error: unknown;
@@ -18,6 +18,7 @@ interface ErrorPanelProps {
 
 /** Shows any error from an API call: status, message, error code, details and the correlation ID. */
 export function ErrorPanel({ error, title }: ErrorPanelProps) {
+  const startSignIn = useStartSignIn();
   const apiError = error instanceof ApiError ? error : null;
   const message = error instanceof Error ? error.message : String(error);
   const status = apiError ? (apiError.status === 0 ? 'No response' : `HTTP ${apiError.status}`) : null;
@@ -27,7 +28,13 @@ export function ErrorPanel({ error, title }: ErrorPanelProps) {
       severity="error"
       action={
         apiError?.errorCode === 'REAUTH_REQUIRED' ? (
-          <Button color="inherit" size="small" component={Link} to="/session">
+          // Ask for the password (the session is past its absolute lifetime) and come back here
+          <Button
+            color="inherit"
+            size="small"
+            loading={startSignIn.isPending}
+            onClick={() => startSignIn.mutate({ kind: 'login', forceLogin: true })}
+          >
             Sign in again
           </Button>
         ) : undefined
