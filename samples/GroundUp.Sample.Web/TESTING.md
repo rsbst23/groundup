@@ -217,6 +217,12 @@ The API guide's Parts 2 to 10 and 14.1 to 14.3, from the browser. Same people, s
 
 ---
 
+## Part 4: Setup Wizard (GU-88)
+
+Not written yet. The setup wizard's pages come with GU-88, which runs from a reset database; until then use the API guide's Part 1. Parts are numbered by story, so Part 5 comes before Part 4 exists.
+
+---
+
 ## Part 5: Members, Invitations and Join Links (GU-90)
 
 The API guide's Parts 15 and 16, from the browser. Start after Part 3: Alice is TenantAdmin of My Test Org, and Bob is no longer a member of it.
@@ -309,7 +315,7 @@ Buttons you do not have the permission for are disabled; hover to see which perm
 
 | Part | Story | Page |
 |---|---|---|
-| 4 | GU-88 | Setup wizard |
+| 4 | GU-88 | Setup wizard (placeholder above) |
 | 6 | GU-97 | Roles, policies and permissions |
 | 7 | GU-91 | Settings (then the API guide's 14.4 moves here) |
 | 8 | GU-92 | Sample data |
@@ -321,6 +327,7 @@ Buttons you do not have the permission for are disabled; hover to see which perm
 
 | Problem | Solution |
 |---|---|
+| Keycloak's verification email bounces ("Address not found") for an address like `name+alice@yahoo.com` | Yahoo does not accept plus addresses. Use Gmail plus addresses (`name+alice@gmail.com`), or turn off **Verify email** in the realm (the API guide's 13.7) and use the `@example.com` test users; invitations go to the Mailbox either way. Delete the half-registered user in Keycloak before retrying |
 | Keycloak says "Invalid parameter: redirect_uri" | Add the three port 5173 URIs (Before You Start, step 4) |
 | The browser opened before the API was ready, and the page says the API is not reachable | Reload once the API's console shows "Now listening on" |
 | `npm run dev` fails with "Port 5173 is in use" | Another dev server is running. Stop it; the port is fixed because Keycloak only accepts that address |
