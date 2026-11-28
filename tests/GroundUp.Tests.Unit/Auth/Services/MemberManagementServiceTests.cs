@@ -74,7 +74,7 @@ public sealed class MemberManagementServiceTests
     {
         _tenantContext.TenantId.Returns(Guid.Empty);
 
-        var result = await _sut.ListMembersAsync(new PaginationParams());
+        var result = await _sut.ListMembersAsync(new FilterParams());
 
         result.ErrorCode.Should().Be(GroundUp.Core.ErrorCodes.TenantRequired);
     }
@@ -83,10 +83,10 @@ public sealed class MemberManagementServiceTests
     public async Task ListMembersAsync_ReadsTheCurrentTenant()
     {
         var page = new PaginatedData<TenantMemberDto> { Items = [], PageNumber = 1, PageSize = 10, TotalRecords = 0 };
-        _userTenants.GetMembersAsync(TenantId, Arg.Any<PaginationParams>(), Arg.Any<CancellationToken>())
+        _userTenants.GetMembersAsync(TenantId, Arg.Any<FilterParams>(), Arg.Any<CancellationToken>())
             .Returns(OperationResult<PaginatedData<TenantMemberDto>>.Ok(page));
 
-        var result = await _sut.ListMembersAsync(new PaginationParams());
+        var result = await _sut.ListMembersAsync(new FilterParams());
 
         result.Data.Should().BeSameAs(page);
     }

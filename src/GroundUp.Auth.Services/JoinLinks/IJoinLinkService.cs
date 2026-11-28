@@ -22,9 +22,9 @@ public interface IJoinLinkService
     [RequiresPermission(PermissionKeysAuth.JoinLinksManage)]
     Task<OperationResult<CreatedJoinLinkDto>> CreateAsync(CreateJoinLinkDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>Lists the tenant's join links, newest first.</summary>
+    /// <summary>Lists the tenant's join links, newest first unless sorted. Sort: <c>roleName</c>, <c>status</c>, <c>useCount</c>, <c>expiresAt</c>, <c>createdAt</c>; filter: <c>status</c> (as shown: Expired, UsedUp), <c>roleId</c>; search: role name. Other fields are ignored.</summary>
     [RequiresPermission(PermissionKeysAuth.JoinLinksManage)]
-    Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(PaginationParams paging, CancellationToken cancellationToken = default);
+    Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(FilterParams filterParams, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the link's token, so the old link stops working. The caller becomes the link's creator

@@ -26,9 +26,9 @@ public interface IInvitationRepository
     /// <summary>Finds an invitation by the hash of its token, in any tenant.</summary>
     Task<OperationResult<InvitationDto>> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
 
-    /// <summary>Lists the tenant's invitations, newest first.</summary>
+    /// <summary>Lists the tenant's invitations, newest first unless sorted. Sort: <c>email</c>, <c>roleName</c>, <c>status</c>, <c>expiresAt</c>, <c>createdAt</c>; filter: <c>status</c> (as shown, so Expired finds Pending invitations past their expiry), <c>roleId</c>; search: email. Other fields are ignored.</summary>
     Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(
-        Guid tenantId, PaginationParams paging, CancellationToken cancellationToken = default);
+        Guid tenantId, FilterParams filterParams, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the token and expiry of a stored-Pending invitation, and records who resent it.

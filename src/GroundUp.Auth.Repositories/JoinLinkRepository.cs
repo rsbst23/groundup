@@ -1,10 +1,12 @@
 using GroundUp.Auth.Core.Dtos;
+using System.Linq.Expressions;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
+using GroundUp.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace GroundUp.Auth.Repositories;
@@ -77,24 +79,29 @@ public sealed class JoinLinkRepository : IJoinLinkRepository
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(
-        Guid tenantId, PaginationParams paging, CancellationToken cancellationToken = default)
+        Guid tenantId, FilterParams filterParams, CancellationToken cancellationToken = default)
     {
-        var query = JoinLinks.AsNoTracking().Where(l => l.TenantId == tenantId);
-        var total = await query.CountAsync(cancellationToken);
-        var items = await Project(query
-                .OrderByDescending(l => l.CreatedAt)
-                .ThenBy(l => l.Id)
-                .Skip((paging.PageNumber - 1) * paging.PageSize)
-                .Take(paging.PageSize))
-            .ToListAsync(cancellationToken);
-
-        return OperationResult<PaginatedData<JoinLinkDto>>.Ok(new PaginatedData<JoinLinkDto>
+        var now = DateTime.UtcNow;
+        var roles = _context.Set<Role>();
+        Expression<Func<JoinLink, string?>> roleName = l => roles.Where(r => r.Id == l.RoleId).Select(r => r.Name).FirstOrDefault();
+        var options = new ListQueryOptions<JoinLink>
         {
-            Items = items,
-            PageNumber = paging.PageNumber,
-            PageSize = paging.PageSize,
-            TotalRecords = total
-        });
+            Fields = new ListFieldMap<JoinLink>()
+                .Sort("roleName", roleName)
+                .SortAndFilter("status", EffectiveStatus(now))
+                .Filter("roleId", l => l.RoleId)
+                .Sort("useCount", l => l.UseCount)
+                .Sort("expiresAt", l => l.ExpiresAt)
+                .Sort("createdAt", l => l.CreatedAt)
+                .Search(roleName),
+            DefaultOrder = q => q.OrderByDescending(l => l.CreatedAt),
+            TieBreaker = l => l.Id
+        };
+
+        var page = await JoinLinks.AsNoTracking()
+            .Where(l => l.TenantId == tenantId)
+            .ToPagedListAsync(filterParams, Projection(now), options, cancellationToken);
+        return OperationResult<PaginatedData<JoinLinkDto>>.Ok(page);
     }
 
     /// <inheritdoc />
@@ -163,16 +170,29 @@ public sealed class JoinLinkRepository : IJoinLinkRepository
     }
 
     /// <summary>
-    /// Projects to the DTO with the role name and the reported status.
+    /// The status the lists report: the stored status unless Active, then Expired past the expiry,
+    /// UsedUp at the use limit, otherwise Active. Filters and sorts on it; <see cref="Projection"/>
+    /// reports the same value.
     /// </summary>
-    private IQueryable<JoinLinkDto> Project(IQueryable<JoinLink> query)
+    private static Expression<Func<JoinLink, JoinLinkStatus>> EffectiveStatus(DateTime now)
+        => l => l.Status != JoinLinkStatus.Active ? l.Status
+            : l.ExpiresAt != null && l.ExpiresAt <= now ? JoinLinkStatus.Expired
+            : l.MaxUses != null && l.UseCount >= l.MaxUses ? JoinLinkStatus.UsedUp
+            : JoinLinkStatus.Active;
+
+    private IQueryable<JoinLinkDto> Project(IQueryable<JoinLink> query) => query.Select(Projection(DateTime.UtcNow));
+
+    /// <summary>
+    /// Projects to the DTO with the role name and the reported status (see <see cref="EffectiveStatus"/>).
+    /// </summary>
+    private Expression<Func<JoinLink, JoinLinkDto>> Projection(DateTime now)
     {
-        var now = DateTime.UtcNow;
-        return query.Select(l => new JoinLinkDto(
+        var roles = _context.Set<Role>();
+        return l => new JoinLinkDto(
             l.Id,
             l.TenantId,
             l.RoleId,
-            _context.Set<Role>().Where(r => r.Id == l.RoleId).Select(r => r.Name).FirstOrDefault(),
+            roles.Where(r => r.Id == l.RoleId).Select(r => r.Name).FirstOrDefault(),
             l.CreatedByUserId,
             l.ExpiresAt,
             l.MaxUses,
@@ -182,6 +202,6 @@ public sealed class JoinLinkRepository : IJoinLinkRepository
                 : l.MaxUses != null && l.UseCount >= l.MaxUses ? JoinLinkStatus.UsedUp
                 : JoinLinkStatus.Active,
             l.RevokedAt,
-            l.CreatedAt));
+            l.CreatedAt);
     }
 }

@@ -141,23 +141,30 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
     /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
     public async Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
         Guid tenantId,
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        var members = Context.Set<UserTenant>()
+        var options = new ListQueryOptions<UserTenant>
+        {
+            Fields = new ListFieldMap<UserTenant>()
+                .Sort("email", ut => ut.User.Email)
+                .Sort("displayName", ut => ut.User.DisplayName)
+                .SortAndFilter("status", ut => ut.Status)
+                .Search(ut => ut.User.Email, ut => ut.User.DisplayName),
+            DefaultOrder = q => q.OrderBy(ut => ut.User.Email),
+            TieBreaker = ut => ut.UserId
+        };
+
+        var paged = await Context.Set<UserTenant>()
             .AsNoTracking()
             .Where(ut => ut.TenantId == tenantId
-                && (ut.Status == MembershipStatus.Active || ut.Status == MembershipStatus.Pending));
-
-        var total = await members.CountAsync(cancellationToken);
-
-        var page = await members
-            .OrderBy(ut => ut.User.Email)
-            .ThenBy(ut => ut.UserId)
-            .Skip((paging.PageNumber - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(ut => new { ut.UserId, ut.User.Email, ut.User.DisplayName, ut.Status })
-            .ToListAsync(cancellationToken);
+                && (ut.Status == MembershipStatus.Active || ut.Status == MembershipStatus.Pending))
+            .ToPagedListAsync(
+                filterParams,
+                ut => new { ut.UserId, ut.User.Email, ut.User.DisplayName, ut.Status },
+                options,
+                cancellationToken);
+        var page = paged.Items;
 
         var userIds = page.Select(m => m.UserId).ToList();
         var assignments = await Context.Set<UserRole>()
@@ -183,9 +190,9 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
         return OperationResult<PaginatedData<TenantMemberDto>>.Ok(new PaginatedData<TenantMemberDto>
         {
             Items = items,
-            PageNumber = paging.PageNumber,
-            PageSize = paging.PageSize,
-            TotalRecords = total
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalRecords = paged.TotalRecords
         });
     }
 

@@ -54,7 +54,7 @@ internal sealed class MemberManagementService : IMemberManagementService
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<TenantMemberDto>>> ListMembersAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
         var tenantId = _tenantContext.TenantId;
@@ -64,7 +64,7 @@ internal sealed class MemberManagementService : IMemberManagementService
                 "A tenant must be selected to list members.", 403, ErrorCodes.TenantRequired);
         }
 
-        return await _userTenantRepository.GetMembersAsync(tenantId, paging, cancellationToken);
+        return await _userTenantRepository.GetMembersAsync(tenantId, filterParams, cancellationToken);
     }
 
     /// <inheritdoc />

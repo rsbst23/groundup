@@ -141,8 +141,8 @@ public sealed class PendingUserRepositoryTests : AuthIntegrationTestBase
         await userRoles.AddForTenantAsync(new UserRoleDto(Guid.Empty, a, editor, tenantId, Source: RoleAssignmentSource.Invitation));
 
         var repository = CreateUserTenantRepository(tenantId);
-        var page1 = await repository.GetMembersAsync(tenantId, new PaginationParams { PageNumber = 1, PageSize = 1 });
-        var page2 = await repository.GetMembersAsync(tenantId, new PaginationParams { PageNumber = 2, PageSize = 1 });
+        var page1 = await repository.GetMembersAsync(tenantId, new FilterParams { PageNumber = 1, PageSize = 1 });
+        var page2 = await repository.GetMembersAsync(tenantId, new FilterParams { PageNumber = 2, PageSize = 1 });
 
         page1.Data!.TotalRecords.Should().Be(2, "the inactive membership is not listed");
         var first = page1.Data.Items.Should().ContainSingle().Subject;

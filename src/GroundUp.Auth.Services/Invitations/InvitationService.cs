@@ -242,7 +242,7 @@ internal sealed class InvitationService : IInvitationService
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(
-        PaginationParams paging, CancellationToken cancellationToken = default)
+        FilterParams filterParams, CancellationToken cancellationToken = default)
     {
         var tenantId = _tenantContext.TenantId;
         if (tenantId == Guid.Empty)
@@ -251,7 +251,7 @@ internal sealed class InvitationService : IInvitationService
                 "A tenant must be selected to list invitations.", 403, ErrorCodes.TenantRequired);
         }
 
-        return await _invitationRepository.ListAsync(tenantId, paging, cancellationToken);
+        return await _invitationRepository.ListAsync(tenantId, filterParams, cancellationToken);
     }
 
     /// <inheritdoc />

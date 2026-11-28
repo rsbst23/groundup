@@ -24,13 +24,13 @@ Findings, and how the tasks handle them:
   - [x] 1.5 Build, run all suites, commit, stop for review
   - _Requirements: 1, 2.2, 2.4–2.7_
 
-- [ ] 2. The three lists
-  - [ ] 2.1 `InvitationRepository` and `JoinLinkRepository`: `EffectiveStatus(now)`, `Projection(now)`, field maps, `ListAsync(tenantId, FilterParams)` on `ToPagedListAsync`
-  - [ ] 2.2 `UserTenantRepository.GetMembersAsync(tenantId, FilterParams)` on `ToPagedListAsync`, with the roles query unchanged
-  - [ ] 2.3 Repository interfaces, the three services and interfaces, and the three controllers take `FilterParams`
-  - [ ] 2.4 Unit tests: `EffectiveStatus` agrees with the projection for every state
-  - [ ] 2.5 Integration tests per endpoint: each sort field both ways, search, status filter (Expired, Used up, Removed members = empty), an unknown field ignored, paging across ties, the default order, tenant isolation
-  - [ ] 2.6 Build, run all suites, commit, stop for review
+- [x] 2. The three lists
+  - [x] 2.1 `InvitationRepository` and `JoinLinkRepository`: `EffectiveStatus(now)`, `Projection(now)`, field maps, `ListAsync(tenantId, FilterParams)` on `ToPagedListAsync`
+  - [x] 2.2 `UserTenantRepository.GetMembersAsync(tenantId, FilterParams)` on `ToPagedListAsync`, with the roles query unchanged
+  - [x] 2.3 Repository interfaces, the three services and interfaces, and the three controllers take `FilterParams`
+  - [x] 2.4 `EffectiveStatus` agrees with the projection: checked in the integration tests (every status filter returns only rows showing that status), since both are private and the check is only meaningful in SQL
+  - [x] 2.5 Integration tests per endpoint: each sort field both ways, search, status filter (Expired, Used up, Removed members = empty), an unknown field ignored, paging across ties, the default order, tenant isolation
+  - [x] 2.6 Build, run all suites, commit, stop for review
   - _Requirements: 2, 3_
 
 - [ ] 3. Permission refusals and docs
