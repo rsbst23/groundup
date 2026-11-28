@@ -1,5 +1,6 @@
 import { apiFetch } from './client';
 import { ApiError } from './errors';
+import { withQuery } from './query';
 import type {
   CreatedOrganizationDto,
   LeaveTenantResultDto,
@@ -34,17 +35,6 @@ export async function getMyTenants(signal?: AbortSignal): Promise<MyTenantDto[]>
     }
     throw error;
   }
-}
-
-function withQuery(path: string, query: Record<string, string | undefined>): string {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) {
-      params.set(key, value);
-    }
-  }
-  const text = params.toString();
-  return text ? `${path}?${text}` : path;
 }
 
 /**
