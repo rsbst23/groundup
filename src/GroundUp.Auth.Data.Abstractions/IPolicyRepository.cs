@@ -49,11 +49,11 @@ public interface IPolicyRepository : IBaseRepository<PolicyDto>
     /// The current tenant's policies ordered by name, each with its permission keys and the number of
     /// the tenant's roles using it (GU-96).
     /// </summary>
-    /// <param name="paging">Page number and size.</param>
+    /// <param name="filterParams">Paging, and the fields <c>name</c>, <c>roleCount</c>, <c>permissionCount</c> (sort); search on name and description. Other fields are ignored.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A page of policies; 403 <c>TENANT_REQUIRED</c> without a current tenant.</returns>
     Task<OperationResult<PaginatedData<TenantPolicyDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default);
 
     /// <summary>

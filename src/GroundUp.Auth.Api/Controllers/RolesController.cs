@@ -27,15 +27,17 @@ public sealed class RolesController : BaseController
     }
 
     /// <summary>
-    /// Lists the tenant's roles, each with <c>isDefault</c>. Needs <c>auth.roles.read</c>. Pagination
+    /// Lists the tenant's roles, each with <c>isDefault</c> and <c>policyCount</c>. Needs <c>auth.roles.read</c>.
+    /// Accepts <c>FilterParams</c>: <c>sortBy</c> (name, roleType, policyCount), <c>filters[roleType]</c>,
+    /// <c>filters[isSystem]</c>, <c>searchTerm</c> (name, description); other fields are ignored. Pagination
     /// metadata is also returned in the X-Total-Count, X-Page-Number, X-Page-Size and X-Total-Pages headers.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OperationResult<PaginatedData<TenantRoleDto>>>> List(
-        [FromQuery] PaginationParams paging,
+        [FromQuery] FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        var result = await _roleService.ListAsync(paging, cancellationToken);
+        var result = await _roleService.ListAsync(filterParams, cancellationToken);
         if (result.Success && result.Data is not null)
         {
             AddPaginationHeaders(result.Data);

@@ -92,10 +92,10 @@ internal sealed class PolicyService : IPolicyService
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<TenantPolicyDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(paging);
+        ArgumentNullException.ThrowIfNull(filterParams);
 
         var tenantId = _tenantContext.TenantId;
         if (tenantId == Guid.Empty)
@@ -109,13 +109,13 @@ internal sealed class PolicyService : IPolicyService
             return OperationResult<PaginatedData<TenantPolicyDto>>.Ok(new PaginatedData<TenantPolicyDto>
             {
                 Items = [],
-                PageNumber = paging.PageNumber,
-                PageSize = paging.PageSize,
+                PageNumber = filterParams.PageNumber,
+                PageSize = filterParams.PageSize,
                 TotalRecords = 0
             });
         }
 
-        return await _policyRepository.ListAsync(paging, cancellationToken);
+        return await _policyRepository.ListAsync(filterParams, cancellationToken);
     }
 
     /// <inheritdoc />

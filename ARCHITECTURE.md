@@ -298,7 +298,7 @@ Applications can add rules with `IRoleAssignmentRule`. The last TenantAdmin of a
 | `GET /api/roles/default` | `auth.roles.read` |
 | `PUT /api/roles/{id}/default`, `DELETE /api/roles/default` | `auth.roles.write`, plus the right to grant the role (set only) |
 
-Each role in a response has `isDefault`. The list is ordered by name and has the usual pagination headers.
+Each role in a response has `isDefault` and `policyCount` (GU-97). The list is ordered by name unless sorted (see "Lists and Permission Refusals") and has the usual pagination headers.
 
 **Rules:**
 - Names are trimmed and unique within the tenant ignoring case (a unique index on `lower("Name")`, so two racing requests cannot both win): `409 ROLE_NAME_TAKEN`.
@@ -361,13 +361,17 @@ Changes publish `EntityCreatedEvent`/`EntityUpdatedEvent`/`EntityDeletedEvent` o
 
 Enum values are accepted as the number or the name (`2` or `Revoked`). A value that cannot be parsed skips that filter.
 
-**Admin lists.** `GET /api/members`, `/api/invitations` and `/api/join-links` take `FilterParams` (`sortBy=email desc`, `filters[status]=Pending`, `multiValueFilters[status]=...`, `searchTerm=...`, `pageNumber`, `pageSize`):
+**Every list endpoint takes `FilterParams`** and declares the fields it allows with a `ListFieldMap`, so every table can be sorted, filtered, searched and paged. A list's repository passes its base query (tenant and status conditions) and a projection to the pipeline; it does not order or page by hand.
+
+**Admin lists.** `GET /api/members`, `/api/invitations`, `/api/join-links`, `/api/roles` and `/api/policies` take `FilterParams` (`sortBy=email desc`, `filters[status]=Pending`, `multiValueFilters[status]=...`, `searchTerm=...`, `pageNumber`, `pageSize`):
 
 | List | Sort | Filter | Search | Default order |
 |---|---|---|---|---|
 | Members | `email`, `displayName`, `status` | `status` | email, display name | email |
 | Invitations | `email`, `roleName`, `status`, `expiresAt`, `createdAt` | `status`, `roleId` | email | newest first |
 | Join links | `roleName`, `status`, `useCount`, `expiresAt`, `createdAt` | `status`, `roleId` | role name | newest first |
+| Roles | `name`, `roleType`, `policyCount` | `roleType`, `isSystem` | name, description | name |
+| Policies | `name`, `roleCount`, `permissionCount` | none | name, description | name |
 
 `status` is the status the list shows: an invitation past its expiry is Expired even though it is stored as Pending, and a link past its expiry or use limit is Expired or UsedUp. Sorting by `status` follows the enum's numeric order. The service and repository list methods take `FilterParams` (they took `PaginationParams` before; SDK callers pass a `FilterParams`).
 

@@ -13,6 +13,7 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="TenantId">The tenant the role belongs to.</param>
 /// <param name="IsSystem">True for a built-in role (TenantAdmin), which cannot be renamed or deleted.</param>
 /// <param name="IsDefault">True when new members of the tenant get this role.</param>
+/// <param name="PolicyCount">How many policies are attached to the role (GU-97); 0 for TenantAdmin, which needs none.</param>
 public sealed record TenantRoleDto(
     Guid Id,
     string Name,
@@ -20,13 +21,15 @@ public sealed record TenantRoleDto(
     RoleType RoleType,
     Guid TenantId,
     bool IsSystem,
-    bool IsDefault)
+    bool IsDefault,
+    int PolicyCount = 0)
 {
     /// <summary>
     /// Builds the DTO from a <see cref="RoleDto"/>.
     /// </summary>
     /// <param name="role">The role.</param>
     /// <param name="isDefault">Whether it is the tenant's default role.</param>
-    public static TenantRoleDto From(RoleDto role, bool isDefault)
-        => new(role.Id, role.Name, role.Description, role.RoleType, role.TenantId, role.IsSystem, isDefault);
+    /// <param name="policyCount">How many policies are attached to the role.</param>
+    public static TenantRoleDto From(RoleDto role, bool isDefault, int policyCount = 0)
+        => new(role.Id, role.Name, role.Description, role.RoleType, role.TenantId, role.IsSystem, isDefault, policyCount);
 }
