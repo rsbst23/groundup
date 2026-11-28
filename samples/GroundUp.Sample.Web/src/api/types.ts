@@ -92,6 +92,10 @@ export interface TenantRoleDto {
   isDefault: boolean;
   /** How many policies are attached (GU-97); 0 for TenantAdmin, which needs none. */
   policyCount: number;
+  /** Distinct active members holding the role (GU-97d). */
+  activeMemberCount: number;
+  /** Distinct pending members holding it: open invitations to the role (GU-97d). */
+  pendingMemberCount: number;
 }
 
 /** A role–policy link (attach). */

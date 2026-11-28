@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { listSearchSchema } from '../features/list/listSearch';
 import { RoleDetailPage } from '../features/roles/RoleDetailPage';
+import { roleDetailSearchSchema } from '../features/roles/roleSearch';
 
-// Carries the roles list's view, so Back to roles returns to the same page, sort and search
+// Carries the roles list's view (Back to roles returns to it) and the members section's (GU-97d)
 export const Route = createFileRoute('/roles/$roleId')({
-  validateSearch: listSearchSchema,
+  validateSearch: roleDetailSearchSchema,
   component: RoleDetailPage,
 });

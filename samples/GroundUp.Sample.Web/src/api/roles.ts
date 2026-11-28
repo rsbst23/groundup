@@ -2,7 +2,7 @@ import type { ListState } from '../features/list/listSearch';
 import { apiFetch } from './client';
 import { listPath, pagedPath, type PaginatedData } from './paging';
 import { segment } from './query';
-import type { CreateRoleRequest, PolicyDto, RolePermissionsDto, RolePolicyLink, TenantRoleDto, UpdateRoleRequest } from './types';
+import type { CreateRoleRequest, PolicyDto, RolePermissionsDto, RolePolicyLink, TenantMemberDto, TenantRoleDto, UpdateRoleRequest } from './types';
 
 /** The API's largest page. A tenant has few roles; past this the picker shows the first ones by name. */
 export const MAX_ROLES = 100;
@@ -68,6 +68,14 @@ export async function attachPolicy(roleId: string, policyId: string): Promise<Ro
 /** DELETE /api/roles/{id}/policies/{policyId}. */
 export async function detachPolicy(roleId: string, policyId: string): Promise<void> {
   await apiFetch<unknown>(`/api/roles/${segment(roleId)}/policies/${segment(policyId)}`, { method: 'DELETE' });
+}
+
+/**
+ * GET /api/roles/{id}/members (GU-97d): the Active and Pending members holding the role, with the members
+ * list's fields (sort email, displayName, status; filter status; search). Needs auth.members.read and auth.roles.read.
+ */
+export async function listRoleMembers(roleId: string, state: ListState, signal?: AbortSignal): Promise<PaginatedData<TenantMemberDto>> {
+  return (await apiFetch<PaginatedData<TenantMemberDto>>(listPath(`/api/roles/${segment(roleId)}/members`, state), { signal })).data;
 }
 
 /** GET /api/roles/{id}/permissions: each permission with the policies granting it, or allPermissions. */

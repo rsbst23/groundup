@@ -66,6 +66,8 @@ function RolesTable() {
     },
     { label: 'Type', sortField: 'roleType', render: (role) => roleTypeLabel(role.roleType) },
     { label: 'Policies', sortField: 'policyCount', render: policiesText },
+    { label: 'Active', sortField: 'activeMemberCount', render: (role) => role.activeMemberCount },
+    { label: 'Pending', sortField: 'pendingMemberCount', render: (role) => role.pendingMemberCount },
     {
       label: 'Description',
       render: (role) => (

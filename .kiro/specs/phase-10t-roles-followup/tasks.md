@@ -29,11 +29,11 @@
 
 ## 97d-2: Web (new branch after 97d-1 merges)
 
-- [ ] 3. Roles table and the members section
-  - [ ] 3.1 Types and API functions (`listRoleMembers`, counts); the Active and Pending columns
-  - [ ] 3.2 The role route's nested `members` view; `RoleMembersSection` (`ListTable`, remove from role)
-  - [ ] 3.3 `AddMemberDialog` (debounced Autocomplete over the members list)
-  - [ ] 3.4 Node tests; build, lint, test, commit, stop for review
+- [x] 3. Roles table and the members section
+  - [x] 3.1 Types and API functions (`listRoleMembers`, counts); the Active and Pending columns
+  - [x] 3.2 The role route's nested `members` view; `RoleMembersSection` (`ListTable`, remove from role)
+  - [x] 3.3 `AddMemberDialog` (debounced Autocomplete over the members list)
+  - [x] 3.4 Node tests; build, lint, test, commit, stop for review
   - _Requirements: 4_
 
 - [ ] 4. Policy editor page

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachablePolicies, isRoleQuery, withoutRole } from '../features/roles/rolesQuery';
+import { attachablePolicies, holdsRole, isRoleQuery, withoutRole } from '../features/roles/rolesQuery';
+import { roleDetailSearchSchema, rolesListSearch } from '../features/roles/roleSearch';
 import { defaultRoleChoices, defaultRoleText, policiesText } from '../features/roles/roleText';
 import { clearCsrfToken } from './csrf';
 import { clearInspector } from './inspector';
@@ -15,6 +16,7 @@ import {
   getRole,
   getRolePermissions,
   getRolePolicies,
+  listRoleMembers,
   listRolePage,
   setDefaultRole,
   updateRole,
@@ -42,6 +44,8 @@ const role = (overrides: Partial<TenantRoleDto> = {}): TenantRoleDto => ({
   isSystem: false,
   isDefault: false,
   policyCount: 1,
+  activeMemberCount: 0,
+  pendingMemberCount: 0,
   ...overrides,
 });
 
@@ -118,6 +122,35 @@ describe('roles API', () => {
     mockFetch({ '/api/policies?pageNumber=1&pageSize=100': [ok(page([policy]))] });
 
     await expect(listAllPolicies()).resolves.toEqual([policy]);
+  });
+});
+
+describe('role members', () => {
+  it('lists a view of the role members', async () => {
+    mockFetch({ '/api/roles/r1/members?pageNumber=1&pageSize=25&sortBy=email&searchTerm=car&filters%5Bstatus%5D=2': [ok(page([]))] });
+
+    await expect(listRoleMembers('r1', { page: 1, sort: 'email', q: 'car', status: 2 })).resolves.toMatchObject({ items: [] });
+  });
+
+  it('tells whether a member holds the role', () => {
+    const member = { userId: 'u1', email: 'a@example.com', displayName: 'A', status: 0, roles: [{ roleId: 'r1', roleName: 'Editor', sources: [0] }] };
+
+    expect(holdsRole(member, 'r1')).toBe(true);
+    expect(holdsRole(member, 'r2')).toBe(false);
+  });
+});
+
+describe('role page search', () => {
+  it('keeps the list view and the members section view apart', () => {
+    const search = roleDetailSearchSchema.parse({ page: 2, q: 'ed', members: { page: 3, status: 2, q: 'car' } });
+
+    expect(search.members).toEqual({ page: 3, sort: undefined, q: 'car', status: 2 });
+    expect(rolesListSearch(search)).toEqual({ page: 2, sort: undefined, q: 'ed', status: undefined });
+  });
+
+  it('drops an invalid members view', () => {
+    expect(roleDetailSearchSchema.parse({ members: 'nonsense' }).members).toBeUndefined();
+    expect(roleDetailSearchSchema.parse({ members: { page: -1, sort: 'x; y' } }).members).toEqual({ page: undefined, sort: undefined, q: undefined, status: undefined });
   });
 });
 

@@ -24,6 +24,8 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import type { ListSearch } from '../list/listSearch';
 import { useSession } from '../session/sessionQuery';
 import { AttachPolicyDialog } from './AttachPolicyDialog';
+import { RoleMembersSection } from './RoleMembersSection';
+import { rolesListSearch } from './roleSearch';
 import { EditRoleDialog } from './EditRoleDialog';
 import {
   allPoliciesQueryOptions,
@@ -49,7 +51,7 @@ function RoleDetail() {
   const { me } = useSession();
   const tenantId = me!.tenantId!;
   const { roleId } = useParams({ from: '/roles/$roleId' });
-  const listSearch = useSearch({ from: '/roles/$roleId' });
+  const listSearch = rolesListSearch(useSearch({ from: '/roles/$roleId' }));
   const role = useQuery(roleQueryOptions(tenantId, roleId));
 
   const back = (
@@ -257,6 +259,8 @@ function RoleContent({ role, tenantId, back, listSearch }: RoleContentProps) {
           )}
         </>
       )}
+
+      <RoleMembersSection role={role} tenantId={tenantId} />
 
       <EditRoleDialog
         key={`edit-${dialogKey}`}

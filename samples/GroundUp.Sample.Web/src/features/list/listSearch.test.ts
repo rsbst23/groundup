@@ -5,6 +5,7 @@ import { Route as MembersRoute } from '../../routes/members';
 import { Route as PoliciesRoute } from '../../routes/policies';
 import { Route as RoleRoute } from '../../routes/roles.$roleId';
 import { Route as RolesRoute } from '../../routes/roles.index';
+import { roleDetailSearchSchema } from '../roles/roleSearch';
 import { lastPageWithRows, listSearchSchema, nextSort, pageBackTarget, parseSort, toListSearch, toListState } from './listSearch';
 
 describe('listSearchSchema', () => {
@@ -41,9 +42,10 @@ describe('listSearchSchema', () => {
 
 describe('list routes', () => {
   it('validate their search params with the list schema', () => {
-    for (const route of [MembersRoute, InvitationsRoute, JoinLinksRoute, RolesRoute, RoleRoute, PoliciesRoute]) {
+    for (const route of [MembersRoute, InvitationsRoute, JoinLinksRoute, RolesRoute, PoliciesRoute]) {
       expect(route.options.validateSearch).toBe(listSearchSchema);
     }
+    expect(RoleRoute.options.validateSearch).toBe(roleDetailSearchSchema);
   });
 });
 

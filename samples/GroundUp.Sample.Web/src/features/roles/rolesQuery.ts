@@ -10,14 +10,16 @@ import {
   getRole,
   getRolePermissions,
   getRolePolicies,
+  listRoleMembers,
   listRolePage,
   setDefaultRole,
   updateRole,
 } from '../../api/roles';
-import type { CreateRoleRequest, PolicyDto, TenantPolicyDto, TenantRoleDto, UpdateRoleRequest } from '../../api/types';
+import { addMemberRole, removeMemberRole } from '../../api/members';
+import type { CreateRoleRequest, PolicyDto, TenantMemberDto, TenantPolicyDto, TenantRoleDto, UpdateRoleRequest } from '../../api/types';
 import { isPage, withoutPageItems } from '../list/cachedPages';
 import type { ListState } from '../list/listSearch';
-import { rolesKey } from '../members/membersQuery';
+import { membersKey, rolesKey } from '../members/membersQuery';
 import { onSessionRefreshed } from '../session/sessionQuery';
 
 /** Every policies query key starts with this; the tenant is part of the key. */
@@ -97,6 +99,48 @@ export function withoutRole(cached: unknown, roleId: string): unknown {
 
 function isRoleList(value: unknown[]): value is TenantRoleDto[] {
   return value.every((v) => typeof v === 'object' && v !== null && 'id' in v && 'isSystem' in v);
+}
+
+/** One view (page, sort, search, status) of a role's members (GU-97d). */
+export function roleMembersQueryOptions(tenantId: string, roleId: string, state: ListState, enabled: boolean) {
+  return queryOptions({
+    queryKey: [...rolesKey, tenantId, 'role', roleId, 'members', state] as const,
+    queryFn: ({ signal }) => listRoleMembers(roleId, state, signal),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/**
+ * Adding a member to the role and removing one (GU-97d), through the member role endpoints. Each
+ * reloads the roles (counts, this section) and the members list, and refreshes the session: the
+ * signed-in user may have changed their own roles. A removed person leaves the section at once.
+ */
+export function useRoleMemberActions(roleId: string) {
+  const queryClient = useQueryClient();
+  const reload = async () => {
+    await queryClient.invalidateQueries({ queryKey: rolesKey });
+    await queryClient.invalidateQueries({ queryKey: membersKey });
+    await onSessionRefreshed(queryClient);
+  };
+  return {
+    add: useMutation({ mutationFn: (member: TenantMemberDto) => addMemberRole(member.userId, roleId), onSuccess: reload }),
+    remove: useMutation({
+      mutationFn: (member: TenantMemberDto) => removeMemberRole(member.userId, roleId),
+      onSuccess: (_, member) => {
+        queryClient.setQueriesData(
+          { predicate: (query) => isRoleQuery(query.queryKey, roleId) && query.queryKey[4] === 'members' },
+          (cached: unknown) => withoutPageItems<TenantMemberDto>(cached, (m) => m.userId === member.userId),
+        );
+        return reload();
+      },
+    }),
+  };
+}
+
+/** Whether the member already holds the role (any source). */
+export function holdsRole(member: TenantMemberDto, roleId: string): boolean {
+  return member.roles.some((role) => role.roleId === roleId);
 }
 
 /** The policies not attached yet, by name. */
