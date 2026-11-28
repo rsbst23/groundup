@@ -73,10 +73,10 @@ What exists in the web app: `apiFetch` (cookies, CSRF, `OperationResult` unwrapp
 
 ### Requirement 6: Sample host (90c)
 
-1. In Development, the sample's settings seeder sets `auth.invitations.accept-url` (System level) to `http://localhost:5173/invite/{token}` when it has no value. An existing value is never changed. Outside Development nothing is seeded.
+1. In Development, the sample's settings seeder sets `auth.invitations.accept-url` (System level) to `http://localhost:5173/invite/{token}` when it has no value (missing or empty). Any other existing value is never changed. Outside Development nothing is seeded.
 2. In Development, the sample registers a `DevMailboxInvitationEmailSender` that keeps the last 50 invitation emails (to, organization, role, link, expiry, time) in memory (a singleton, newest first) and also logs like the default sender. Outside Development the framework's default stays.
 3. `GET /api/dev/invitation-emails` exists only in Development and returns the stored emails. It needs a signed-in user but no permission (a development tool). It is not part of the framework.
-4. A **Mailbox** page (`/mailbox`, shown in the navigation only when the API reports the endpoint exists) lists them with the link (opens the accept page) and a refresh button.
+4. A **Mailbox** page (`/mailbox`, in the navigation when the web app runs in Vite's dev mode) lists them with the link (opens the accept page) and a refresh button. When the endpoint is 404 (the API is not in Development) it says so.
 
 ### Requirement 7: Tests and docs
 
