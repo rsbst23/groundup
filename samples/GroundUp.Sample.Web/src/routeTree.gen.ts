@@ -16,6 +16,7 @@ import { Route as InvitationsRouteImport } from './routes/invitations'
 import { Route as JoinLinksRouteImport } from './routes/join-links'
 import { Route as MailboxRouteImport } from './routes/mailbox'
 import { Route as MembersRouteImport } from './routes/members'
+import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as SessionRouteImport } from './routes/session'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WizardRouteImport } from './routes/wizard'
@@ -57,6 +58,11 @@ const MailboxRoute = MailboxRouteImport.update({
 const MembersRoute = MembersRouteImport.update({
   id: '/members',
   path: '/members',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliciesRoute = PoliciesRouteImport.update({
+  id: '/policies',
+  path: '/policies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionRoute = SessionRouteImport.update({
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
+  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
+  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
+  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
+    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
+    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
+    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
@@ -203,6 +215,7 @@ export interface RootRouteChildren {
   JoinLinksRoute: typeof JoinLinksRoute
   MailboxRoute: typeof MailboxRoute
   MembersRoute: typeof MembersRoute
+  PoliciesRoute: typeof PoliciesRoute
   SessionRoute: typeof SessionRoute
   SettingsRoute: typeof SettingsRoute
   WizardRoute: typeof WizardRoute
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/members'
       preLoaderRoute: typeof MembersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/policies': {
+      id: '/policies'
+      path: '/policies'
+      fullPath: '/policies'
+      preLoaderRoute: typeof PoliciesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/session': {
@@ -323,6 +343,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinLinksRoute: JoinLinksRoute,
   MailboxRoute: MailboxRoute,
   MembersRoute: MembersRoute,
+  PoliciesRoute: PoliciesRoute,
   SessionRoute: SessionRoute,
   SettingsRoute: SettingsRoute,
   WizardRoute: WizardRoute,

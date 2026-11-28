@@ -131,6 +131,28 @@ export interface TenantPolicyDto {
   roleCount: number;
 }
 
+/** GET /api/policies/{id}: the policy with its permissions and the roles using it. */
+export interface PolicyDetailDto {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: PermissionDto[];
+  roles: EntityRefDto[];
+}
+
+/** POST /api/policies. Keys must be in the catalogue; System-only keys are refused. */
+export interface CreatePolicyRequest {
+  name: string;
+  description?: string | null;
+  permissionKeys?: string[];
+}
+
+/** PUT /api/policies/{id}: name and description only (the permissions have their own call). */
+export interface UpdatePolicyRequest {
+  name: string;
+  description?: string | null;
+}
+
 /** An id and a name, for links (the roles using a policy, the policies granting a permission). */
 export interface EntityRefDto {
   id: string;
