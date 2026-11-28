@@ -14,8 +14,8 @@ import {
   setDefaultRole,
   updateRole,
 } from '../../api/roles';
-import type { PaginatedData } from '../../api/paging';
 import type { CreateRoleRequest, PolicyDto, TenantPolicyDto, TenantRoleDto, UpdateRoleRequest } from '../../api/types';
+import { isPage, withoutPageItems } from '../list/cachedPages';
 import type { ListState } from '../list/listSearch';
 import { rolesKey } from '../members/membersQuery';
 import { onSessionRefreshed } from '../session/sessionQuery';
@@ -89,34 +89,14 @@ export function withoutRole(cached: unknown, roleId: string): unknown {
   if (Array.isArray(cached)) {
     return isRoleList(cached) ? cached.filter((role) => role.id !== roleId) : cached;
   }
-  if (isRolePage(cached)) {
-    const items = cached.items.filter((role) => role.id !== roleId);
-    if (items.length === cached.items.length) {
-      return cached;
-    }
-    const totalRecords = Math.max(0, cached.totalRecords - 1);
-    return {
-      ...cached,
-      items,
-      totalRecords,
-      totalPages: cached.pageSize > 0 ? Math.ceil(totalRecords / cached.pageSize) : cached.totalPages,
-    };
+  if (isPage(cached) && isRoleList(cached.items)) {
+    return withoutPageItems<TenantRoleDto>(cached, (role) => role.id === roleId);
   }
   return cached;
 }
 
 function isRoleList(value: unknown[]): value is TenantRoleDto[] {
   return value.every((v) => typeof v === 'object' && v !== null && 'id' in v && 'isSystem' in v);
-}
-
-function isRolePage(value: unknown): value is PaginatedData<TenantRoleDto> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'items' in value &&
-    Array.isArray((value as { items: unknown }).items) &&
-    isRoleList((value as { items: unknown[] }).items)
-  );
 }
 
 /** The policies not attached yet, by name. */
