@@ -820,7 +820,7 @@ The auth flows are browser journeys that Swagger cannot follow, and the manual t
 
 - **Sample web app** (`samples/GroundUp.Sample.Web`): React, Vite and TypeScript, with MUI, TanStack Query and TanStack Router. It may become the template other GroundUp apps copy. It has its own testing manual (`samples/GroundUp.Sample.Web/TESTING.md`); the API guide stays as the Swagger reference. The Vite dev server proxies `/api`, `/auth`, `/setup` and `/health` to the sample API, so cookies, SameSite and CSRF behave as in a real client. Development only; never packed. It calls only public HTTP endpoints; anything it cannot do through the API is a finding.
 - **Post-sign-in redirect** (GU-87): the callback can redirect to an allowlisted return URL with a non-secret outcome, instead of leaving the browser on JSON. Needed by any browser client.
-- **Roles API** (GU-95) and **policies and permissions API** (GU-96): tenant roles, policies, and the permissions they grant, with built-in role protection, an escalation guard and permission cache eviction.
+- **Roles API** (GU-95) and **policies and permissions API** (GU-96): tenant roles, policies, and the permissions they grant, with built-in role protection, an escalation guard and permission cache eviction. GU-95 also moved the default role for new members from the `auth.application.default-role` setting to `Tenant.DefaultRoleId`.
 - **Console pages**, in order: scaffold and API client (GU-86), redirect (GU-87), setup wizard (GU-88), sign-in, session and tenants (GU-89), roles API (GU-95), policies and permissions API (GU-96), members, invitations and join links (GU-90), roles pages (GU-97), settings (GU-91), sample data (GU-92), diagnostics (GU-93), then the manual testing guide rewritten around the console (GU-94).
 - From here on, a story that adds endpoints or flows also adds its console page (10e, GU-79, GU-80, Notifications).
 
@@ -834,7 +834,7 @@ Riskiest sub-phase. Closes out all 7 flows.
 - First-admin guard: realm registration disabled after first admin signs up. Idempotent — second attempt returns 409.
 - SSO auto-join: enterprise realm callback → auto-create `UserTenant` membership with the tenant's configured default role. The realm itself is the access boundary; the realm admin controls who can authenticate (via federated IdP, manual provisioning). No email-domain allowlist needed.
 - Flow handlers: Enterprise First Admin, Enterprise SSO Auto-Join.
-- Tenant default-role configuration (likely `Tenant.DefaultRoleId`).
+- Tenant default role: `Tenant.DefaultRoleId` exists since GU-95 (set with `PUT /api/roles/{id}/default`, read by `DefaultRoleAssigner`); SSO auto-join reuses it.
 - Login on enterprise tenant subdomain hits `Tenant.RealmName`, never the general realm. No picker shown.
 - Sample app demo wiring (revisited collaboratively).
 - Full integration test sweep across all 7 flows.

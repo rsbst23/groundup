@@ -116,7 +116,7 @@ sequenceDiagram
     GroundUpAPI->>Database: BEGIN TRANSACTION
     GroundUpAPI->>Database: Find/Create User by sub
     GroundUpAPI->>Database: Get default tenant by slug ("community")
-    GroundUpAPI->>Database: Read setting: auth.application.default-role<br/>(cascade: tenant → app → system)
+    GroundUpAPI->>Database: Read the tenant's default role (Tenant.DefaultRoleId, GU-95)
     GroundUpAPI->>Database: Create UserTenant membership
     GroundUpAPI->>Database: Assign default role (if configured)
     GroundUpAPI->>Database: COMMIT

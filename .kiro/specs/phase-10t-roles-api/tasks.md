@@ -37,6 +37,6 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/r
   - [x] 3.4 Check: build, unit 2074 / 0, integration 578 / 0, sample 22/22
 
 - [ ] 4. Docs, full check, PR
-  - [ ] 4.1 ARCHITECTURE.md "Roles"; the API guide (15.1, 6.1, the old setting's SQL, the reset SQL clears `DefaultRoleId`); BUILD_PHASES.md 10e
-  - [ ] 4.2 Full check; push; PR info
+  - [x] 4.1 ARCHITECTURE.md "Roles"; the API guide (15.1, 6.1, the old setting's SQL, the reset SQL clears `DefaultRoleId`); BUILD_PHASES.md 10e
+  - [x] 4.2 Full check (unit 2074 / 0, integration 578 / 0, sample 22/22); push; PR info
   - [ ] 4.3 Jira: GU-95 comment; Done after merge

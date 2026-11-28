@@ -285,3 +285,31 @@ Applications can add rules with `IRoleAssignmentRule`. The last TenantAdmin of a
 - If the person who created the invitation or link has since lost the right to grant its role, acceptance fails with `403`.
 - Invitation emails go through `IInvitationEmailSender`. The default `LoggingInvitationEmailSender` sends nothing: in Development it logs the accept link (so you can test without email), elsewhere it logs a warning without the link. Register a real sender until the Notifications module provides one (GU-64).
 - `AddGroundUpAuth` registers `IMemberManagementService`, `IInvitationService` and `IJoinLinkService` with `AddAuthorized`. If an application replaces one of them without `AddAuthorized`, the app refuses to start, because the permission attributes would have no effect.
+
+## Roles (GU-95)
+
+**Endpoints** (under `/api`, current tenant only; every role id of another tenant is `404`):
+
+| Endpoint | Permission |
+|---|---|
+| `GET /api/roles`, `GET /api/roles/{id}` | `auth.roles.read` |
+| `POST /api/roles` (`{ name, description, roleType }`), `PUT /api/roles/{id}` (`{ name, description }`) | `auth.roles.write` |
+| `DELETE /api/roles/{id}` | `auth.roles.delete` |
+| `GET /api/roles/default` | `auth.roles.read` |
+| `PUT /api/roles/{id}/default`, `DELETE /api/roles/default` | `auth.roles.write`, plus the right to grant the role (set only) |
+
+Each role in a response has `isDefault`. The list is ordered by name and has the usual pagination headers.
+
+**Rules:**
+- Names are trimmed and unique within the tenant ignoring case (a unique index on `lower("Name")`, so two racing requests cannot both win): `409 ROLE_NAME_TAKEN`.
+- `roleType` is `Application` (the default) or `Workspace`. `System` is refused with `400`.
+- The built-in TenantAdmin role (`IsSystem`) keeps its name exactly, not even a change of case, and cannot be deleted or made the default role: `409 ROLE_IS_BUILT_IN`. Its description can change.
+- Only an unused role can be deleted: `409 ROLE_IN_USE`, with the reasons in `errors` (members hold it, pending or expired invitations or active join links grant it, or it is the default role). Revoke or reassign those first. A role's policy links go with it. A grant made while the delete runs makes the delete fail; the database refuses to delete a role that is still referenced.
+- Roles of the System tenant (SuperAdmin) are not reachable through this API.
+- Create, update, delete and default-role changes publish `EntityCreatedEvent`, `EntityUpdatedEvent` and `EntityDeletedEvent` of `RoleDto` when an event bus is registered.
+
+**Default role.** Each tenant can have one default role (`Tenant.DefaultRoleId`). People who join the default tenant by signing in or signing up, and former members who rejoin, get it with source `DefaultRole`. It replaces the `auth.application.default-role` setting, which held a role name; there is no System-wide default role any more.
+
+**Check tenant roles by permission, not by name.** Roles can be renamed, so application code should check permissions (`[RequiresPermission]`, `IPermissionService`). Only the built-in names (`TenantAdmin`, `SuperAdmin`) are fixed.
+
+`AddGroundUpAuth` registers `IRoleService` with `AddAuthorized`, like the services above.
