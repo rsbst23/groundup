@@ -21,10 +21,10 @@ Requirements: `requirements.md`. Design: `design.md`. Three PRs: 90a = task 1 an
   - [x] 1.3 `features/access`: `PermissionKeys`, `can`, `useCan`, `PermissionButton` / `PermissionIconButton`, `RequireTenant`
   - [x] 1.4 Tests: every API function (method, path, body, query, mapping), labels, `can`
   - [x] 1.5 Check: web build, lint, tests 146 / 0. `withQuery` moved from `auth.ts` to `api/query.ts` (shared); `paging.ts` builds `pagedPath`
-- [ ] 2. Members page (design 3) — PR 90a
-  - [ ] 2.1 `membersQuery.ts`, `MembersPage.tsx`, `AddRoleMenu.tsx`, `RemoveMemberDialog.tsx`; `routes/members.tsx`
-  - [ ] 2.2 Self-changes refresh or reset the session
-  - [ ] 2.3 Check: web build, lint, tests; a quick manual run (list, add and remove a role, remove a member, `LAST_ADMIN`); push; PR 90a info
+- [x] 2. Members page (design 3) — PR 90a
+  - [x] 2.1 `membersQuery.ts`, `MembersPage.tsx`, `AddRoleMenu.tsx`, `RemoveMemberDialog.tsx`; `routes/members.tsx`
+  - [x] 2.2 Self-changes refresh or reset the session
+  - [x] 2.3 Check: web build, lint, tests 150 / 0; push; PR 90a info. The manual run is Rob's, in review (no browser here)
 - [ ] 3. Invitations and Join links pages (design 3) — PR 90b
   - [ ] 3.1 `invitationsQuery.ts`, `InvitationsPage.tsx`, `InviteDialog.tsx`; `routes/invitations.tsx`
   - [ ] 3.2 `joinLinksQuery.ts`, `JoinLinksPage.tsx`, `CreateJoinLinkDialog.tsx`, `ShowLinkDialog.tsx`, `joinUrl.ts`; `routes/join-links.tsx`
