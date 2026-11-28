@@ -53,7 +53,7 @@ public sealed class RoleServiceTests
         _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>()).Returns(OperationResult<Guid?>.Ok(null));
         _tenants.SetDefaultRoleIdAsync(TenantId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>()).Returns(OperationResult.Ok());
         GivenUsage(new RoleUsageDto(0, 0, 0, false));
-        _roles.CountPoliciesAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(OperationResult<int>.Ok(0));
+        _roles.GetCountsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(OperationResult<RoleCountsDto>.Ok(new RoleCountsDto(0, 0, 0)));
         _roles.DeleteAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult.Ok());
 
         // The unit of work runs the operation; an exception thrown inside propagates, as in the real one
@@ -132,7 +132,7 @@ public sealed class RoleServiceTests
     {
         var page = new PaginatedData<TenantRoleDto>
         {
-            Items = [TenantRoleDto.From(Editor, isDefault: true, policyCount: 2)],
+            Items = [TenantRoleDto.From(Editor, isDefault: true, new RoleCountsDto(2, 1, 0))],
             PageNumber = 1,
             PageSize = 10,
             TotalRecords = 1
@@ -146,14 +146,16 @@ public sealed class RoleServiceTests
     }
 
     [Fact]
-    public async Task GetAsync_FillsThePolicyCount()
+    public async Task GetAsync_FillsTheCounts()
     {
         _roles.GetByIdAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.Ok(Editor));
-        _roles.CountPoliciesAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<int>.Ok(3));
+        _roles.GetCountsAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleCountsDto>.Ok(new RoleCountsDto(3, 5, 2)));
 
         var result = await _sut.GetAsync(Editor.Id);
 
         result.Data!.PolicyCount.Should().Be(3);
+        result.Data.ActiveMemberCount.Should().Be(5);
+        result.Data.PendingMemberCount.Should().Be(2);
     }
 
     [Fact]

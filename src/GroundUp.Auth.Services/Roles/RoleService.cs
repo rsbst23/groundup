@@ -112,7 +112,7 @@ internal sealed class RoleService : IRoleService
 
         var defaultRoleId = await GetDefaultRoleIdAsync(role.Data!.TenantId, cancellationToken);
         return OperationResult<TenantRoleDto>.Ok(
-            TenantRoleDto.From(role.Data, role.Data.Id == defaultRoleId, await CountPoliciesAsync(roleId, cancellationToken)));
+            TenantRoleDto.From(role.Data, role.Data.Id == defaultRoleId, await CountsAsync(roleId, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -199,7 +199,7 @@ internal sealed class RoleService : IRoleService
 
         var defaultRoleId = await GetDefaultRoleIdAsync(existing.TenantId, cancellationToken);
         return OperationResult<TenantRoleDto>.Ok(
-            TenantRoleDto.From(updated.Data, updated.Data.Id == defaultRoleId, await CountPoliciesAsync(roleId, cancellationToken)));
+            TenantRoleDto.From(updated.Data, updated.Data.Id == defaultRoleId, await CountsAsync(roleId, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -297,7 +297,7 @@ internal sealed class RoleService : IRoleService
         }
 
         return OperationResult<TenantRoleDto?>.Ok(
-            TenantRoleDto.From(role.Data, isDefault: true, await CountPoliciesAsync(role.Data.Id, cancellationToken)));
+            TenantRoleDto.From(role.Data, isDefault: true, await CountsAsync(role.Data.Id, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -333,7 +333,7 @@ internal sealed class RoleService : IRoleService
         await PublishSafelyAsync(new EntityUpdatedEvent<RoleDto> { Entity = existing, TenantId = existing.TenantId, UserId = _currentUser.UserId }, cancellationToken);
         _logger.LogInformation("Role {RoleId} made the default role of tenant {TenantId} by {CallerId}", roleId, existing.TenantId, _currentUser.UserId);
         return OperationResult<TenantRoleDto>.Ok(
-            TenantRoleDto.From(existing, isDefault: true, await CountPoliciesAsync(existing.Id, cancellationToken)));
+            TenantRoleDto.From(existing, isDefault: true, await CountsAsync(existing.Id, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -559,11 +559,11 @@ internal sealed class RoleService : IRoleService
     }
 
     /// <summary>The tenant's default role id; <c>null</c> when it has none or it cannot be read.</summary>
-    /// <summary>The role's policy count; 0 when it cannot be read (the count is informational).</summary>
-    private async Task<int> CountPoliciesAsync(Guid roleId, CancellationToken cancellationToken)
+    /// <summary>The role's counts; null (zeros) when they cannot be read (they are informational).</summary>
+    private async Task<RoleCountsDto?> CountsAsync(Guid roleId, CancellationToken cancellationToken)
     {
-        var result = await _roleRepository.CountPoliciesAsync(roleId, cancellationToken);
-        return result.Success ? result.Data : 0;
+        var result = await _roleRepository.GetCountsAsync(roleId, cancellationToken);
+        return result.Success ? result.Data : null;
     }
 
     private async Task<Guid?> GetDefaultRoleIdAsync(Guid tenantId, CancellationToken cancellationToken)

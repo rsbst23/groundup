@@ -21,11 +21,18 @@ namespace GroundUp.Auth.Services.Policies;
 public interface IPolicyService
 {
     /// <summary>
-    /// Every permission a tenant policy can grant, grouped by module. System-only keys
-    /// (<see cref="PermissionKeysAuth.SystemOnly"/>) are left out.
+    /// A page of the permissions a tenant policy can grant (GU-97d). System-only keys
+    /// (<see cref="PermissionKeysAuth.SystemOnly"/>) are never listed. Sort: <c>name</c>, <c>key</c>,
+    /// <c>module</c>; filter: <c>module</c>; search: name, key and description. By module then key unless sorted.
     /// </summary>
     [RequiresPermission(PermissionKeysAuth.PermissionsRead)]
-    Task<OperationResult<List<PermissionModuleDto>>> GetCatalogAsync(CancellationToken cancellationToken = default);
+    Task<OperationResult<PaginatedData<PermissionDto>>> ListCatalogAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The catalogue's modules (for a filter), sorted.</summary>
+    [RequiresPermission(PermissionKeysAuth.PermissionsRead)]
+    Task<OperationResult<List<string>>> GetModulesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The current tenant's policies (by name unless sorted), each with its permission keys and how many roles

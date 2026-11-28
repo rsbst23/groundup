@@ -19,8 +19,8 @@ namespace GroundUp.Auth.Services.Roles;
 public interface IRoleService
 {
     /// <summary>
-    /// Lists the current tenant's roles with <c>isDefault</c> and <c>policyCount</c>, by name unless sorted.
-    /// Sort: <c>name</c>, <c>roleType</c>, <c>policyCount</c>; filter: <c>roleType</c>, <c>isSystem</c>;
+    /// Lists the current tenant's roles with <c>isDefault</c> and the policy and member counts, by name unless
+    /// sorted. Sort: <c>name</c>, <c>roleType</c>, <c>policyCount</c>, <c>activeMemberCount</c>, <c>pendingMemberCount</c>; filter: <c>roleType</c>, <c>isSystem</c>;
     /// search: name and description. Other fields are ignored.
     /// </summary>
     /// <returns>A page of roles; 403 <c>TENANT_REQUIRED</c> without a current tenant.</returns>

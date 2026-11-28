@@ -298,7 +298,11 @@ Applications can add rules with `IRoleAssignmentRule`. The last TenantAdmin of a
 | `GET /api/roles/default` | `auth.roles.read` |
 | `PUT /api/roles/{id}/default`, `DELETE /api/roles/default` | `auth.roles.write`, plus the right to grant the role (set only) |
 
-Each role in a response has `isDefault` and `policyCount` (GU-97). The list is ordered by name unless sorted (see "Lists and Permission Refusals") and has the usual pagination headers.
+Each role in a response has `isDefault`, `policyCount` (GU-97), `activeMemberCount` and `pendingMemberCount` (GU-97d). The list is ordered by name unless sorted (see "Lists and Permission Refusals") and has the usual pagination headers.
+
+**Member counts are counted on read.** The counts are distinct people holding the role from any source, by membership status (Pending counts open invitations to the role; Inactive is not counted). They are computed in the list query with the existing indexes (`UserRole.RoleId`, `UserTenant (UserId, TenantId)`), at most a page of roles at a time. No counter is stored on the role: about eight paths grant or remove roles, and every membership status change moves people between the counts, so a stored counter would drift. If it is ever measured slow, add a cache or a rebuildable summary table.
+
+**Role members.** `GET /api/roles/{id}/members` lists the Active and Pending members holding the role, with the members list's fields (`TenantMemberDto`). It needs `auth.members.read` and `auth.roles.read`; another tenant's role is `404`. Adding and removing use `POST`/`DELETE /api/members/{userId}/roles/{roleId}`.
 
 **Rules:**
 - Names are trimmed and unique within the tenant ignoring case (a unique index on `lower("Name")`, so two racing requests cannot both win): `409 ROLE_NAME_TAKEN`.
@@ -322,7 +326,7 @@ A role grants permissions through policies: Role → Policy → Permission. A **
 
 | Endpoint | Permission |
 |---|---|
-| `GET /api/permissions` (grouped by module) | `auth.permissions.read` |
+| `GET /api/permissions` (paged, `FilterParams`; GU-97d), `GET /api/permissions/modules` | `auth.permissions.read` |
 | `GET /api/policies`, `GET /api/policies/{id}` | `auth.permissions.read` |
 | `POST /api/policies` (`{ name, description, permissionKeys? }`), `PUT /api/policies/{id}` (`{ name, description }`), `PUT /api/policies/{id}/permissions` (`{ permissionKeys }`, replaces the set), `DELETE /api/policies/{id}` | `auth.permissions.write` |
 | `GET /api/roles/{id}/policies`, `GET /api/roles/{id}/permissions` | `auth.roles.read` |
@@ -370,7 +374,9 @@ Enum values are accepted as the number or the name (`2` or `Revoked`). A value t
 | Members | `email`, `displayName`, `status` | `status` | email, display name | email |
 | Invitations | `email`, `roleName`, `status`, `expiresAt`, `createdAt` | `status`, `roleId` | email | newest first |
 | Join links | `roleName`, `status`, `useCount`, `expiresAt`, `createdAt` | `status`, `roleId` | role name | newest first |
-| Roles | `name`, `roleType`, `policyCount` | `roleType`, `isSystem` | name, description | name |
+| Roles | `name`, `roleType`, `policyCount`, `activeMemberCount`, `pendingMemberCount` | `roleType`, `isSystem` | name, description | name |
+| Role members (`/api/roles/{id}/members`) | `email`, `displayName`, `status` | `status` | email, display name | email |
+| Permission catalogue (`/api/permissions`) | `name`, `key`, `module` | `module` | name, key, description | module, then key |
 | Policies | `name`, `roleCount`, `permissionCount` | none | name, description | name |
 
 `status` is the status the list shows: an invitation past its expiry is Expired even though it is stored as Pending, and a link past its expiry or use limit is Expired or UsedUp. Sorting by `status` follows the enum's numeric order. The service and repository list methods take `FilterParams` (they took `PaginationParams` before; SDK callers pass a `FilterParams`).

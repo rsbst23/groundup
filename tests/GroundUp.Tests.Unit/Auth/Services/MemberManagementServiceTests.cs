@@ -80,6 +80,45 @@ public sealed class MemberManagementServiceTests
     }
 
     [Fact]
+    public async Task ListRoleMembersAsync_NoTenantSelected_TenantRequired()
+    {
+        _tenantContext.TenantId.Returns(Guid.Empty);
+
+        var result = await _sut.ListRoleMembersAsync(Guid.NewGuid(), new FilterParams());
+
+        result.ErrorCode.Should().Be(GroundUp.Core.ErrorCodes.TenantRequired);
+    }
+
+    [Fact]
+    public async Task ListRoleMembersAsync_RoleNotInTheTenant_NotFound()
+    {
+        var roleId = Guid.NewGuid();
+        _roles.GetByIdAsync(roleId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<RoleDto>.Ok(new RoleDto(roleId, "Other", null, RoleType.Application, Guid.NewGuid(), false)));
+
+        var result = await _sut.ListRoleMembersAsync(roleId, new FilterParams());
+
+        result.StatusCode.Should().Be(404);
+        await _userTenants.DidNotReceiveWithAnyArgs().GetRoleMembersAsync(default, default, default!, default);
+    }
+
+    [Fact]
+    public async Task ListRoleMembersAsync_RoleOfTheTenant_ReadsItsMembers()
+    {
+        var roleId = Guid.NewGuid();
+        var filters = new FilterParams { SearchTerm = "car" };
+        var page = new PaginatedData<TenantMemberDto> { Items = [], PageNumber = 1, PageSize = 10, TotalRecords = 0 };
+        _roles.GetByIdAsync(roleId, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<RoleDto>.Ok(new RoleDto(roleId, "Editor", null, RoleType.Application, TenantId, false)));
+        _userTenants.GetRoleMembersAsync(TenantId, roleId, filters, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<PaginatedData<TenantMemberDto>>.Ok(page));
+
+        var result = await _sut.ListRoleMembersAsync(roleId, filters);
+
+        result.Data.Should().BeSameAs(page);
+    }
+
+    [Fact]
     public async Task ListMembersAsync_ReadsTheCurrentTenant()
     {
         var page = new PaginatedData<TenantMemberDto> { Items = [], PageNumber = 1, PageSize = 10, TotalRecords = 0 };

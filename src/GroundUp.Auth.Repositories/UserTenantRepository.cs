@@ -139,10 +139,26 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
 
     /// <inheritdoc />
     /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
-    public async Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
+    public Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
         Guid tenantId,
         FilterParams filterParams,
         CancellationToken cancellationToken = default)
+        => ListMembersAsync(tenantId, roleId: null, filterParams, cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public Task<OperationResult<PaginatedData<TenantMemberDto>>> GetRoleMembersAsync(
+        Guid tenantId,
+        Guid roleId,
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default)
+        => ListMembersAsync(tenantId, roleId, filterParams, cancellationToken);
+
+    private async Task<OperationResult<PaginatedData<TenantMemberDto>>> ListMembersAsync(
+        Guid tenantId,
+        Guid? roleId,
+        FilterParams filterParams,
+        CancellationToken cancellationToken)
     {
         var options = new ListQueryOptions<UserTenant>
         {
@@ -155,10 +171,17 @@ public sealed class UserTenantRepository : BaseTenantRepository<UserTenant, User
             TieBreaker = ut => ut.UserId
         };
 
-        var paged = await Context.Set<UserTenant>()
+        var members = Context.Set<UserTenant>()
             .AsNoTracking()
             .Where(ut => ut.TenantId == tenantId
-                && (ut.Status == MembershipStatus.Active || ut.Status == MembershipStatus.Pending))
+                && (ut.Status == MembershipStatus.Active || ut.Status == MembershipStatus.Pending));
+        if (roleId is { } role)
+        {
+            var userRoles = Context.Set<UserRole>();
+            members = members.Where(ut => userRoles.Any(ur => ur.UserId == ut.UserId && ur.TenantId == tenantId && ur.RoleId == role));
+        }
+
+        var paged = await members
             .ToPagedListAsync(
                 filterParams,
                 ut => new { ut.UserId, ut.User.Email, ut.User.DisplayName, ut.Status },

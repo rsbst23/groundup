@@ -30,12 +30,13 @@ public sealed class PoliciesApiTests : AdminApiTestBase
             await EnsurePermissionAsync(key);
         }
 
-        var response = await SendAsync(HttpMethod.Get, "/api/permissions", org.AdminToken);
+        var response = await SendAsync(HttpMethod.Get, "/api/permissions?pageSize=100", org.AdminToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var modules = (await DataAsync(response)).EnumerateArray().ToList();
-        modules.Select(m => m.GetProperty("module").GetString()).Should().BeInAscendingOrder(StringComparer.Ordinal);
-        var keys = modules.SelectMany(m => m.GetProperty("permissions").EnumerateArray().Select(p => p.GetProperty("key").GetString())).ToList();
+        var items = (await DataAsync(response)).GetProperty("items").EnumerateArray().ToList();
+        // By module first (simple lower-case names, so the database's collation agrees with ordinal order)
+        items.Select(p => p.GetProperty("module").GetString()).Should().BeInAscendingOrder(StringComparer.Ordinal);
+        var keys = items.Select(p => p.GetProperty("key").GetString()).ToList();
         keys.Should().Contain(PermissionKeysAuth.MembersRead);
         keys.Should().NotContain(PermissionKeysAuth.SystemOnly);
     }

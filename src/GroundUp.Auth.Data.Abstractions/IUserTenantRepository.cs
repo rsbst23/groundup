@@ -109,4 +109,19 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
         Guid tenantId,
         FilterParams filterParams,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The Active and Pending members of <paramref name="tenantId"/> who hold <paramref name="roleId"/>
+    /// (any source), with the same fields, order and rows as <see cref="GetMembersAsync"/> (GU-97d).
+    /// System-level bypass: targets the tenant explicitly.
+    /// </summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="roleId">The role.</param>
+    /// <param name="filterParams">Paging, sorting, filters and search.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<PaginatedData<TenantMemberDto>>> GetRoleMembersAsync(
+        Guid tenantId,
+        Guid roleId,
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default);
 }
