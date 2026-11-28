@@ -184,9 +184,14 @@ public class AuthFlowTestFixture : WebApplicationFactory<Program>, IAsyncLifetim
                     sp.GetRequiredService<SoftDeleteInterceptor>());
             });
 
-            services.AddDbContext<AuthDbContext>(options =>
+            // With the interceptors, as AddGroundUpAuthPostgres registers them, so audit and soft-delete
+            // behavior is the production one
+            services.AddDbContext<AuthDbContext>((sp, options) =>
             {
                 options.UseNpgsql(_container.GetConnectionString());
+                options.AddInterceptors(
+                    sp.GetRequiredService<AuditableInterceptor>(),
+                    sp.GetRequiredService<SoftDeleteInterceptor>());
             });
 
             // Replace IIdentityProviderService with a mock so we can simulate

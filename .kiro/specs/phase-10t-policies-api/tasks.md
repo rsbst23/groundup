@@ -34,7 +34,7 @@ Requirements: `requirements.md`. Design: `design.md`. Two PRs on branch `phase-1
   - [x] 3.2 `IRoleService` / `RoleService`: get policies, attach, detach, permissions
   - [x] 3.3 Registration (`AddAuthorized<IPolicyService, PolicyService>()`, validators); the startup check includes `IPolicyService`
   - [x] 3.4 Unit tests (`PolicyServiceTests`, `RoleServiceTests` additions, attributes)
-  - [x] 3.5 Check: build, unit 2173 / 0, integration 600 / 0, sample 22/22; push; PR 1 info. Found: `BaseRepository`/`BaseTenantRepository.UpdateAsync` copy every mapped DTO field onto the entity, so an update resets `CreatedAt`/`CreatedBy` (seen on a role rename through the sample app); outside GU-96, raised with Rob
+  - [x] 3.5 Check: build, unit 2173 / 0, integration 600 / 0, sample 22/22; push; PR 1 info. Found: `BaseRepository`/`BaseTenantRepository.UpdateAsync` copy every mapped DTO field onto the entity, so an update resets `CreatedAt`/`CreatedBy` (seen on a role rename through the sample app). Fixed in PR 1 (Rob): `BaseRepository.KeepManagedValues` restores the creation and soft-delete fields after `SetValues` in the base updates and `TenantRepository.UpdateAsync`. The auth test fixture now registers the audit and soft-delete interceptors on `AuthDbContext`, as the app does (without them the rename test could not see the bug)
 - [ ] 4. Controllers, `/auth/me`, integration tests (design 7, 8, 9)
   - [ ] 4.1 `PermissionsController`, `PoliciesController`, `RolesController` additions
   - [ ] 4.2 `AuthController.Me` async with `permissions` and `allPermissions`; `AuthControllerTests`

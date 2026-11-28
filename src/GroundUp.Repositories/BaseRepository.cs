@@ -72,6 +72,39 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         Context.Entry(entity).State = EntityState.Detached;
     }
 
+    /// <summary>
+    /// Restores the values an update must never take from a DTO: the creation audit fields
+    /// (<see cref="IAuditable.CreatedAt"/>, <see cref="IAuditable.CreatedBy"/>) and the soft-delete
+    /// fields (<see cref="ISoftDeletable"/>). DTOs do not carry them, so copying a mapped DTO onto a
+    /// tracked entity would otherwise reset them (the creation time to <see cref="DateTime.MinValue"/>).
+    /// Call it after <c>CurrentValues.SetValues</c> in every update. <see cref="IAuditable.UpdatedAt"/>
+    /// and <see cref="IAuditable.UpdatedBy"/> are set by the save interceptor.
+    /// </summary>
+    /// <param name="entity">The tracked entity being updated.</param>
+    protected void KeepManagedValues(object entity)
+    {
+        var entry = Context.Entry(entity);
+        if (entity is IAuditable)
+        {
+            Restore(entry, nameof(IAuditable.CreatedAt));
+            Restore(entry, nameof(IAuditable.CreatedBy));
+        }
+
+        if (entity is ISoftDeletable)
+        {
+            Restore(entry, nameof(ISoftDeletable.IsDeleted));
+            Restore(entry, nameof(ISoftDeletable.DeletedAt));
+            Restore(entry, nameof(ISoftDeletable.DeletedBy));
+        }
+
+        static void Restore(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string property)
+        {
+            var value = entry.Property(property);
+            value.CurrentValue = value.OriginalValue;
+            value.IsModified = false;
+        }
+    }
+
     #region GetAllAsync
 
     /// <inheritdoc />
@@ -214,6 +247,7 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
             // Map DTO values onto the tracked entity
             var updated = _mapToEntity(dto);
             Context.Entry(entity).CurrentValues.SetValues(updated);
+            KeepManagedValues(entity);
 
             await Context.SaveChangesAsync(cancellationToken);
             return OperationResult<TDto>.Ok(_mapToDto(entity));

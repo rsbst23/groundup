@@ -69,6 +69,13 @@ public sealed class RolesApiTests : AuthFlowTestBase
         data.GetProperty("roleType").GetInt32().Should().Be((int)RoleType.Application);
         data.GetProperty("tenantId").GetGuid().Should().Be(org.TenantId);
         var id = data.GetProperty("id").GetGuid();
+        DateTime createdAt;
+        string? createdBy;
+        await using (var before = Fixture.CreateAuthDbContext())
+        {
+            var created1 = await before.Roles.AsNoTracking().SingleAsync(r => r.Id == id);
+            (createdAt, createdBy) = (created1.CreatedAt, created1.CreatedBy);
+        }
 
         var renamed = await SendAsync(HttpMethod.Put, $"/api/roles/{id}", org.AdminToken, new { name = "Approver", description = (string?)null });
 
@@ -78,6 +85,10 @@ public sealed class RolesApiTests : AuthFlowTestBase
         row.Name.Should().Be("Approver");
         row.Description.Should().BeNull();
         row.RoleType.Should().Be(RoleType.Application);
+        createdAt.Should().BeAfter(DateTime.UtcNow.AddHours(-1), "the insert sets it");
+        row.CreatedAt.Should().Be(createdAt, "a rename keeps the creation time");
+        row.CreatedBy.Should().Be(createdBy).And.NotBeNull();
+        row.UpdatedAt.Should().NotBeNull();
     }
 
     [Fact]

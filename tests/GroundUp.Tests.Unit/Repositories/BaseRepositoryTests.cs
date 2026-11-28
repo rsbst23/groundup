@@ -97,6 +97,27 @@ public sealed class BaseRepositoryTests : IDisposable
         Assert.Equal(404, result.StatusCode);
     }
 
+    [Fact]
+    public async Task UpdateAsync_SoftDeletableEntity_KeepsTheDeletionFields()
+    {
+        // The DTO does not carry IsDeleted/DeletedAt/DeletedBy; an update must not reset them
+        using var context = TestDbContext.Create();
+        var deletedAt = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var entity = new SoftDeletableTestEntity { Id = Guid.NewGuid(), Name = "Before", IsDeleted = true, DeletedAt = deletedAt, DeletedBy = "admin" };
+        context.SoftDeletableTestEntities.Add(entity);
+        await context.SaveChangesAsync();
+
+        var result = await new SoftDeletableTestRepository(context).UpdateAsync(entity.Id, new TestDto { Id = entity.Id, Name = "After" });
+
+        Assert.True(result.Success);
+        context.ChangeTracker.Clear();
+        var row = await context.SoftDeletableTestEntities.FindAsync(entity.Id);
+        Assert.Equal("After", row!.Name);
+        Assert.True(row.IsDeleted);
+        Assert.Equal(deletedAt, row.DeletedAt);
+        Assert.Equal("admin", row.DeletedBy);
+    }
+
     #endregion
 
     #region DeleteAsync — Hard Delete
