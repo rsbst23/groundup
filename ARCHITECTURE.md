@@ -253,7 +253,7 @@ A single-label default domain such as `localhost` logs a warning: browsers drop 
 |---|---|
 | SuperAdmin | a SuperAdmin |
 | TenantAdmin | a TenantAdmin of that tenant, or a SuperAdmin |
-| Any other role | a holder of `auth.roles.assign`, while the current tenant is the role's tenant |
+| Any other role | a TenantAdmin of that tenant or a SuperAdmin; or a holder of `auth.roles.assign`, while the current tenant is the role's tenant, who also holds every permission the role grants (GU-96, `PERMISSION_NOT_HELD`) |
 
 Applications can add rules with `IRoleAssignmentRule`. The last TenantAdmin of a tenant cannot be removed (`LAST_ADMIN`), and nor can the last SuperAdmin (`LAST_SUPERADMIN`). Removing a member needs the right to remove each role they hold.
 
@@ -313,3 +313,39 @@ Each role in a response has `isDefault`. The list is ordered by name and has the
 **Check tenant roles by permission, not by name.** Roles can be renamed, so application code should check permissions (`[RequiresPermission]`, `IPermissionService`). Only the built-in names (`TenantAdmin`, `SuperAdmin`) are fixed.
 
 `AddGroundUpAuth` registers `IRoleService` with `AddAuthorized`, like the services above.
+
+## Policies and Permissions (GU-96)
+
+A role grants permissions through policies: Role → Policy → Permission. A **permission** is a key defined by the module that checks it (`auth.members.read`, `settings.read`); the catalogue is global and read-only from a tenant. A **policy** is a tenant's named set of permissions. A role can have several policies, and a policy can be used by several roles. TenantAdmin and SuperAdmin need no policies: they pass every permission check.
+
+**Endpoints** (under `/api`, current tenant only; another tenant's policy or role is `404`):
+
+| Endpoint | Permission |
+|---|---|
+| `GET /api/permissions` (grouped by module) | `auth.permissions.read` |
+| `GET /api/policies`, `GET /api/policies/{id}` | `auth.permissions.read` |
+| `POST /api/policies` (`{ name, description, permissionKeys? }`), `PUT /api/policies/{id}` (`{ name, description }`), `PUT /api/policies/{id}/permissions` (`{ permissionKeys }`, replaces the set), `DELETE /api/policies/{id}` | `auth.permissions.write` |
+| `GET /api/roles/{id}/policies`, `GET /api/roles/{id}/permissions` | `auth.roles.read` |
+| `POST /api/roles/{id}/policies/{policyId}` (201, or 200 when already attached), `DELETE /api/roles/{id}/policies/{policyId}` | `auth.roles.write` |
+
+`GET /api/roles/{id}/permissions` lists each key with the policies that grant it; for TenantAdmin it returns `allPermissions: true`. `GET /auth/me` also returns the caller's `permissions` in the token's tenant, or `allPermissions: true` for a SuperAdmin or a TenantAdmin of that tenant. Clients use it to hide actions; the server still checks every request.
+
+**Rules:**
+- Policy names are trimmed and unique within the tenant ignoring case (`409 POLICY_NAME_TAKEN`, enforced by a unique index).
+- Keys must exist in the catalogue. **System-only keys** (`auth.roles.assign-system`, `auth.tenants.write`, `auth.tenants.delete`, in `PermissionKeysAuth.SystemOnly`) are not listed and cannot be added to a tenant policy. Both give `400`.
+- A policy used by a role cannot be deleted (`409 POLICY_IN_USE`, naming the roles). Detach it first. The database refuses the delete too, so a role attached while a delete runs makes it fail.
+- The built-in TenantAdmin role's policies cannot be changed (`409 ROLE_IS_BUILT_IN`).
+
+**Escalation guard.** A caller who is neither SuperAdmin nor TenantAdmin of the current tenant can only grant permissions they hold themselves, measured in the current tenant:
+- adding permissions to a policy (only the keys being added are checked; keeping or removing keys is not)
+- creating a policy with permissions
+- attaching a policy to a role (every permission of the policy)
+- granting a role to a member, creating an invitation or join link for it, or making it the default role (every permission of the role). The acceptance of an invitation or join link re-checks it for its creator.
+
+A refusal is `403 PERMISSION_NOT_HELD` with the missing keys in `errors`. Removing permissions, detaching policies and removing roles are never refused by the guard. Grants the system makes itself (the TenantAdmin of a new organization, the default role at sign-in) are not checked.
+
+**Cache.** Resolved permissions are cached per user and tenant (`PermissionCacheTtlMinutes`). Every change to a policy's permissions, a role's policies, or a policy delete bumps the tenant's permission version (`PermissionCacheVersions`), so every user of the tenant gets the change on their next request, without signing in again. This does not need an event bus. It holds for the instance that made the change; other instances see it when their cached sets expire, until the distributed cache (GU-47). Granting or removing a role evicts that user's entry, as before.
+
+Changes publish `EntityCreatedEvent`/`EntityUpdatedEvent`/`EntityDeletedEvent` of `PolicyDto`, and created and deleted events of `RolePolicyDto` and `PolicyPermissionDto`, when an event bus is registered.
+
+`AddGroundUpAuth` registers `IPolicyService` with `AddAuthorized`, like the services above.

@@ -98,4 +98,37 @@ public sealed class RolesController : BaseController
     [HttpDelete("default")]
     public async Task<ActionResult<OperationResult>> ClearDefault(CancellationToken cancellationToken = default)
         => ToActionResult(await _roleService.ClearDefaultAsync(cancellationToken));
+
+    /// <summary>
+    /// The policies attached to a role (GU-96). Needs <c>auth.roles.read</c>. TenantAdmin has none.
+    /// </summary>
+    [HttpGet("{id:guid}/policies")]
+    public async Task<ActionResult<OperationResult<List<PolicyDto>>>> GetPolicies(Guid id, CancellationToken cancellationToken = default)
+        => ToActionResult(await _roleService.GetPoliciesAsync(id, cancellationToken));
+
+    /// <summary>
+    /// Attaches a policy to a role (GU-96): 201, or 200 when already attached. Needs
+    /// <c>auth.roles.write</c> and every permission of the policy (unless TenantAdmin or SuperAdmin).
+    /// Members holding the role get the permissions on their next request.
+    /// </summary>
+    [HttpPost("{id:guid}/policies/{policyId:guid}")]
+    public async Task<ActionResult<OperationResult<RolePolicyDto>>> AttachPolicy(
+        Guid id, Guid policyId, CancellationToken cancellationToken = default)
+        => ToActionResult(await _roleService.AttachPolicyAsync(id, policyId, cancellationToken));
+
+    /// <summary>
+    /// Detaches a policy from a role (GU-96). Needs <c>auth.roles.write</c>. 404 when not attached.
+    /// </summary>
+    [HttpDelete("{id:guid}/policies/{policyId:guid}")]
+    public async Task<ActionResult<OperationResult>> DetachPolicy(
+        Guid id, Guid policyId, CancellationToken cancellationToken = default)
+        => ToActionResult(await _roleService.DetachPolicyAsync(id, policyId, cancellationToken));
+
+    /// <summary>
+    /// What a role allows (GU-96): each permission with the policies granting it, or
+    /// <c>allPermissions</c> for TenantAdmin. Needs <c>auth.roles.read</c>.
+    /// </summary>
+    [HttpGet("{id:guid}/permissions")]
+    public async Task<ActionResult<OperationResult<RolePermissionsDto>>> GetPermissions(Guid id, CancellationToken cancellationToken = default)
+        => ToActionResult(await _roleService.GetPermissionsAsync(id, cancellationToken));
 }

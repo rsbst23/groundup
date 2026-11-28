@@ -24,6 +24,7 @@ public sealed class AuthControllerTests
     private readonly IAuthSessionService _authSessionService;
     private readonly IAuthCookieWriter _authCookieWriter;
     private readonly IMembershipService _membershipService = Substitute.For<IMembershipService>();
+    private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
     private readonly AuthOptions _authOptions;
     private readonly KeycloakOptions _keycloakOptions;
     private readonly IAntiforgery _antiforgery;
@@ -40,6 +41,8 @@ public sealed class AuthControllerTests
 
     public AuthControllerTests()
     {
+        _permissionService.GetPermissionSummaryAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new PermissionSummaryDto(false, []));
         _authFlowService = Substitute.For<IAuthFlowService>();
         _authSessionService = Substitute.For<IAuthSessionService>();
         _authCookieWriter = Substitute.For<IAuthCookieWriter>();
@@ -506,13 +509,13 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void Me_Authenticated_DoesNotIssueAntiforgeryTokens()
+    public async Task Me_Authenticated_DoesNotIssueAntiforgeryTokens()
     {
         // Arrange — tokens come only from GET /auth/csrf now
         SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()) });
 
         // Act
-        _sut.Me();
+        await _sut.Me();
 
         // Assert
         _antiforgery.DidNotReceive().GetAndStoreTokens(Arg.Any<HttpContext>());
@@ -523,19 +526,19 @@ public sealed class AuthControllerTests
     #region GET /auth/me
 
     [Fact]
-    public void Me_Unauthenticated_Returns401()
+    public async Task Me_Unauthenticated_Returns401()
     {
         // Arrange — controller has DefaultHttpContext with no authenticated user (default)
 
         // Act
-        var result = _sut.Me();
+        var result = (await _sut.Me());
 
         // Assert
         result.Should().BeOfType<UnauthorizedResult>();
     }
 
     [Fact]
-    public void Me_PendingSelectionPrincipalNoTidClaim_ReturnsIdentityWithNullTenant()
+    public async Task Me_PendingSelectionPrincipalNoTidClaim_ReturnsIdentityWithNullTenant()
     {
         // Arrange — Keycloak-token principal with sub but no tid
         var claims = new[]
@@ -547,7 +550,7 @@ public sealed class AuthControllerTests
         SetAuthenticatedUser(claims);
 
         // Act
-        var result = _sut.Me();
+        var result = (await _sut.Me());
 
         // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -559,7 +562,7 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void Me_AuthenticatedGroundUpToken_ReturnsFullClaims()
+    public async Task Me_AuthenticatedGroundUpToken_ReturnsFullClaims()
     {
         // Arrange — GroundUp JWT with sub (userId GUID), tid, email, name, roles
         var claims = new[]
@@ -574,7 +577,7 @@ public sealed class AuthControllerTests
         SetAuthenticatedUser(claims);
 
         // Act
-        var result = _sut.Me();
+        var result = (await _sut.Me());
 
         // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -591,7 +594,7 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void Me_TokenTimeClaims_ReturnsIssuedAtExpiresAtAndAuthTimeInUtc()
+    public async Task Me_TokenTimeClaims_ReturnsIssuedAtExpiresAtAndAuthTimeInUtc()
     {
         // Arrange
         SetAuthenticatedUser(new[]
@@ -603,7 +606,7 @@ public sealed class AuthControllerTests
         });
 
         // Act
-        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
 
         // Assert
         body["issuedAt"].Should().Be(DateTimeOffset.FromUnixTimeSeconds(1795800000));
@@ -613,7 +616,7 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void Me_NoAuthTimeClaim_ReturnsNullAuthTime()
+    public async Task Me_NoAuthTimeClaim_ReturnsNullAuthTime()
     {
         // Arrange — a Keycloak principal on the tenant picker has iat and exp but may lack auth_time
         SetAuthenticatedUser(new[]
@@ -624,7 +627,7 @@ public sealed class AuthControllerTests
         });
 
         // Act
-        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
 
         // Assert
         body["authTime"].Should().BeNull();
@@ -632,7 +635,7 @@ public sealed class AuthControllerTests
     }
 
     [Fact]
-    public void Me_UnparseableTimeClaim_ReturnsNull()
+    public async Task Me_UnparseableTimeClaim_ReturnsNull()
     {
         // Arrange
         SetAuthenticatedUser(new[]
@@ -642,11 +645,57 @@ public sealed class AuthControllerTests
         });
 
         // Act
-        var body = GetAnonymousObjectProperties(((OkObjectResult)_sut.Me()).Value!);
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
 
         // Assert
         body["expiresAt"].Should().BeNull();
         body["issuedAt"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Me_GroundUpUser_ReturnsTheirPermissionSummary()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", TestTenantId.ToString()) });
+        _permissionService.GetPermissionSummaryAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(new PermissionSummaryDto(false, ["auth.members.read", "docs.read"]));
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
+
+        // Assert
+        body["allPermissions"].Should().Be(false);
+        body["permissions"].Should().BeEquivalentTo(new List<string> { "auth.members.read", "docs.read" });
+    }
+
+    [Fact]
+    public async Task Me_Admin_ReturnsAllPermissions()
+    {
+        // Arrange
+        SetAuthenticatedUser(new[] { new Claim("sub", TestUserId.ToString()), new Claim("tid", TestTenantId.ToString()) });
+        _permissionService.GetPermissionSummaryAsync(TestUserId, Arg.Any<CancellationToken>())
+            .Returns(new PermissionSummaryDto(true, []));
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
+
+        // Assert
+        body["allPermissions"].Should().Be(true);
+    }
+
+    [Fact]
+    public async Task Me_IdentityProviderSub_NoPermissionsWithoutALookup()
+    {
+        // Arrange: a pending-selection token carries the identity provider's sub, not a GroundUp user id
+        SetAuthenticatedUser(new[] { new Claim("sub", "keycloak-sub-12345") });
+
+        // Act
+        var body = GetAnonymousObjectProperties(((OkObjectResult)(await _sut.Me())).Value!);
+
+        // Assert
+        body["allPermissions"].Should().Be(false);
+        (body["permissions"] as List<string>).Should().BeEmpty();
+        await _permissionService.DidNotReceiveWithAnyArgs().GetPermissionSummaryAsync(default, default);
     }
 
     #endregion
@@ -1463,7 +1512,8 @@ public sealed class AuthControllerTests
             Options.Create(_authOptions),
             Options.Create(_keycloakOptions),
             _antiforgery,
-            Options.Create(new AntiforgeryOptions { Cookie = { Name = "CsrfToken" } }));
+            Options.Create(new AntiforgeryOptions { Cookie = { Name = "CsrfToken" } }),
+            _permissionService);
 
         controller.ControllerContext = new ControllerContext
         {

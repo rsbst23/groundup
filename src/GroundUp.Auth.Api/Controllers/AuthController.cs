@@ -29,6 +29,7 @@ public sealed class AuthController : ControllerBase
     private readonly IOptions<KeycloakOptions> _keycloakOptions;
     private readonly IAntiforgery _antiforgery;
     private readonly IOptions<AntiforgeryOptions> _antiforgeryOptions;
+    private readonly IPermissionService _permissionService;
 
     /// <summary>
     /// Initializes a new instance of <see cref="AuthController"/>.
@@ -42,6 +43,7 @@ public sealed class AuthController : ControllerBase
     /// <param name="keycloakOptions">Keycloak identity provider configuration.</param>
     /// <param name="antiforgery">Issues the CSRF request token returned by <c>GET /auth/csrf</c>.</param>
     /// <param name="antiforgeryOptions">Antiforgery cookie settings, used to clear the cookie at logout.</param>
+    /// <param name="permissionService">Resolves the caller's permissions for <c>GET /auth/me</c>.</param>
     public AuthController(
         IAuthFlowService authFlowService,
         IAuthSessionService authSessionService,
@@ -51,8 +53,10 @@ public sealed class AuthController : ControllerBase
         IOptions<AuthOptions> authOptions,
         IOptions<KeycloakOptions> keycloakOptions,
         IAntiforgery antiforgery,
-        IOptions<AntiforgeryOptions> antiforgeryOptions)
+        IOptions<AntiforgeryOptions> antiforgeryOptions,
+        IPermissionService permissionService)
     {
+        _permissionService = permissionService;
         _authFlowService = authFlowService;
         _authSessionService = authSessionService;
         _authCookieWriter = authCookieWriter;
@@ -216,9 +220,12 @@ public sealed class AuthController : ControllerBase
     /// <returns>
     /// HTTP 200 with user claims when authenticated; HTTP 401 when unauthenticated.
     /// For pending-selection principals (Keycloak token, no tid), returns identity with null tenant.
+    /// Also returns the caller's permissions in the token's tenant (GU-96): <c>allPermissions</c> is
+    /// true for a SuperAdmin and for a TenantAdmin of that tenant, otherwise <c>permissions</c> lists
+    /// the keys, sorted. Clients use it to hide actions; the server still checks every request.
     /// </returns>
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(CancellationToken cancellationToken = default)
     {
         if (HttpContext.User.Identity?.IsAuthenticated != true)
         {
@@ -251,6 +258,12 @@ public sealed class AuthController : ControllerBase
             .Select(c => c.Value)
             .ToList();
 
+        // The tenant context is the token's tid (JwtTenantResolutionMiddleware). A sub that is not a
+        // GroundUp user id (a pending-selection identity-provider token) has no permissions.
+        var access = userId is { } knownUserId
+            ? await _permissionService.GetPermissionSummaryAsync(knownUserId, cancellationToken)
+            : new PermissionSummaryDto(false, []);
+
         // The token's times, so a browser client can show the session without reading the HttpOnly cookie
         return Ok(new
         {
@@ -259,6 +272,8 @@ public sealed class AuthController : ControllerBase
             displayName,
             tenantId,
             roles,
+            allPermissions = access.AllPermissions,
+            permissions = access.Permissions,
             issuedAt = ReadUnixTimeClaim("iat"),
             expiresAt = ReadUnixTimeClaim("exp"),
             authTime = ReadUnixTimeClaim("auth_time")
