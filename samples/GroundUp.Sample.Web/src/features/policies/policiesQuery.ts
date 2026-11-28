@@ -2,21 +2,22 @@ import { keepPreviousData, queryOptions, useMutation, useQueryClient } from '@ta
 import {
   createPolicy,
   deletePolicy,
-  getPermissionCatalog,
+  getPermissionModules,
   getPolicy,
+  listPermissionCatalog,
   listPolicyPage,
   setPolicyPermissions,
   updatePolicy,
+  type CatalogState,
 } from '../../api/policies';
-import type { CreatePolicyRequest, PolicyDetailDto, TenantPolicyDto } from '../../api/types';
+import type { CreatePolicyRequest, TenantPolicyDto, UpdatePolicyRequest } from '../../api/types';
 import { withoutPageItems } from '../list/cachedPages';
 import type { ListState } from '../list/listSearch';
 import { rolesKey } from '../members/membersQuery';
 import { policiesKey } from '../roles/rolesQuery';
 import { onSessionRefreshed } from '../session/sessionQuery';
-import { keysChanged, sortedKeys } from './permissionChoices';
 
-/** The permission catalogue: global and fixed while the app runs. */
+/** The permission catalogue: global (not per tenant) and read-only from a tenant. */
 export const permissionCatalogKey = ['permissions'] as const;
 
 /** One view (page, sort, search) of the Policies table. */
@@ -28,44 +29,30 @@ export function policyPageQueryOptions(tenantId: string, state: ListState) {
   });
 }
 
-/** One policy with its permissions and roles (the edit dialog). */
-export function policyQueryOptions(tenantId: string, policyId: string | null) {
+/** One policy with its permissions and roles (the editor page). */
+export function policyQueryOptions(tenantId: string, policyId: string) {
   return queryOptions({
     queryKey: [...policiesKey, tenantId, 'policy', policyId] as const,
-    queryFn: ({ signal }) => getPolicy(policyId!, signal),
-    enabled: policyId !== null,
+    queryFn: ({ signal }) => getPolicy(policyId, signal),
   });
 }
 
-/** The permission catalogue by module. */
-export function permissionCatalogQueryOptions() {
+/** One view (page, sort, search, module) of the permission catalogue. */
+export function permissionCatalogQueryOptions(state: CatalogState) {
   return queryOptions({
-    queryKey: permissionCatalogKey,
-    queryFn: ({ signal }) => getPermissionCatalog(signal),
+    queryKey: [...permissionCatalogKey, 'catalog', state] as const,
+    queryFn: ({ signal }) => listPermissionCatalog(state, signal),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The catalogue's modules, for the filter; fixed while the app runs. */
+export function permissionModulesQueryOptions() {
+  return queryOptions({
+    queryKey: [...permissionCatalogKey, 'modules'] as const,
+    queryFn: ({ signal }) => getPermissionModules(signal),
     staleTime: Infinity,
   });
-}
-
-/** What the edit dialog saves: the policy as loaded, and the new values. */
-export interface PolicyEdit {
-  before: PolicyDetailDto;
-  name: string;
-  description: string | null;
-  keys: ReadonlySet<string>;
-}
-
-/**
- * Saves an edit with only the calls needed: the name and description, then the permission set.
- * If the second call fails the first stays saved; the error says what failed.
- */
-export async function savePolicyEdit(edit: PolicyEdit): Promise<void> {
-  const { before } = edit;
-  if (edit.name !== before.name || edit.description !== before.description) {
-    await updatePolicy(before.id, { name: edit.name, description: edit.description });
-  }
-  if (keysChanged(before.permissions.map((p) => p.key), edit.keys)) {
-    await setPolicyPermissions(before.id, sortedKeys(edit.keys));
-  }
 }
 
 /**
@@ -81,16 +68,26 @@ export function usePolicyActions() {
   };
   return {
     create: useMutation({ mutationFn: (request: CreatePolicyRequest) => createPolicy(request), onSuccess: reload }),
-    // Reload even after a failure: the name may have been saved before the permissions failed
-    save: useMutation({ mutationFn: savePolicyEdit, onSettled: reload }),
+    update: useMutation({
+      mutationFn: ({ policyId, request }: { policyId: string; request: UpdatePolicyRequest }) => updatePolicy(policyId, request),
+      onSuccess: reload,
+    }),
+    setPermissions: useMutation({
+      mutationFn: ({ policyId, keys }: { policyId: string; keys: string[] }) => setPolicyPermissions(policyId, keys),
+      onSuccess: reload,
+    }),
+    /** `leave` runs after the delete and before the reload, like deleting a role from its page. */
     remove: useMutation({
-      mutationFn: (policy: TenantPolicyDto) => deletePolicy(policy.id),
-      onSuccess: (_, policy) => {
+      mutationFn: ({ policy }: { policy: TenantPolicyDto | { id: string }; leave?: () => Promise<unknown> }) =>
+        deletePolicy(policy.id),
+      onSuccess: async (_, { policy, leave }) => {
         // Take the row out of every cached page at once, so it is gone before the reload
         queryClient.setQueriesData({ queryKey: policiesKey }, (cached: unknown) =>
           withoutPageItems<TenantPolicyDto>(cached, (p) => p.id === policy.id),
         );
-        return reload();
+        await leave?.();
+        queryClient.removeQueries({ queryKey: [...policiesKey], predicate: (q) => q.queryKey[2] === 'policy' && q.queryKey[3] === policy.id });
+        await reload();
       },
     }),
   };

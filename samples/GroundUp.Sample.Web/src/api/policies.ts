@@ -2,7 +2,7 @@ import type { ListState } from '../features/list/listSearch';
 import { apiFetch } from './client';
 import { listPath, pagedPath, type PaginatedData } from './paging';
 import { segment } from './query';
-import type { CreatePolicyRequest, PermissionModuleDto, PolicyDetailDto, TenantPolicyDto, UpdatePolicyRequest } from './types';
+import type { CreatePolicyRequest, PermissionDto, PolicyDetailDto, TenantPolicyDto, UpdatePolicyRequest } from './types';
 
 /** The API's largest page; the attach picker shows at most this many policies, by name. */
 export const MAX_POLICIES = 100;
@@ -47,7 +47,22 @@ export async function deletePolicy(policyId: string): Promise<void> {
   await apiFetch<unknown>(`/api/policies/${segment(policyId)}`, { method: 'DELETE' });
 }
 
-/** GET /api/permissions: the catalogue by module (System-only keys are not listed). */
-export async function getPermissionCatalog(signal?: AbortSignal): Promise<PermissionModuleDto[]> {
-  return (await apiFetch<PermissionModuleDto[]>('/api/permissions', { signal })).data;
+/** A view of the permission catalogue: the list view plus a module filter. */
+export interface CatalogState extends ListState {
+  module?: string;
+}
+
+/**
+ * GET /api/permissions (GU-97d): a page of the catalogue, by module then key unless sorted. Sort: name,
+ * key, module; filter: module; search: name, key, description. System-only keys are never listed.
+ */
+export async function listPermissionCatalog(state: CatalogState, signal?: AbortSignal): Promise<PaginatedData<PermissionDto>> {
+  const base = listPath('/api/permissions', { page: state.page, sort: state.sort, q: state.q });
+  const path = state.module ? `${base}&${new URLSearchParams({ 'filters[module]': state.module })}` : base;
+  return (await apiFetch<PaginatedData<PermissionDto>>(path, { signal })).data;
+}
+
+/** GET /api/permissions/modules: the catalogue's modules, sorted. */
+export async function getPermissionModules(signal?: AbortSignal): Promise<string[]> {
+  return (await apiFetch<string[]>('/api/permissions/modules', { signal })).data;
 }

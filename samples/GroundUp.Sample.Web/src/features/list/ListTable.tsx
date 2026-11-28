@@ -42,6 +42,8 @@ export interface ListTableProps<T> {
   searchLabel?: string;
   /** The status filter's options. Omit to hide the filter. */
   statusOptions?: StatusOption[];
+  /** Other filters (for example a module select), shown next to the search box; the page keeps their state. */
+  filters?: ReactNode;
   emptyText: string;
 }
 
@@ -59,6 +61,7 @@ export function ListTable<T>({
   onChange,
   searchLabel,
   statusOptions,
+  filters,
   emptyText,
 }: ListTableProps<T>) {
   const sorted = parseSort(state.sort);
@@ -81,7 +84,7 @@ export function ListTable<T>({
 
   return (
     <>
-      {(searchLabel || statusOptions) && (
+      {(searchLabel || statusOptions || filters) && (
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ my: 2 }}>
           {searchLabel && (
             <TextField
@@ -124,6 +127,7 @@ export function ListTable<T>({
               ))}
             </TextField>
           )}
+          {filters}
         </Stack>
       )}
 

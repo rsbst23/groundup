@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Route as InvitationsRoute } from '../../routes/invitations';
 import { Route as JoinLinksRoute } from '../../routes/join-links';
 import { Route as MembersRoute } from '../../routes/members';
-import { Route as PoliciesRoute } from '../../routes/policies';
+import { Route as PolicyRoute } from '../../routes/policies.$policyId';
+import { Route as PoliciesRoute } from '../../routes/policies.index';
+import { policyEditorSearchSchema } from '../policies/policySearch';
 import { Route as RoleRoute } from '../../routes/roles.$roleId';
 import { Route as RolesRoute } from '../../routes/roles.index';
 import { roleDetailSearchSchema } from '../roles/roleSearch';
@@ -46,6 +48,7 @@ describe('list routes', () => {
       expect(route.options.validateSearch).toBe(listSearchSchema);
     }
     expect(RoleRoute.options.validateSearch).toBe(roleDetailSearchSchema);
+    expect(PolicyRoute.options.validateSearch).toBe(policyEditorSearchSchema);
   });
 });
 

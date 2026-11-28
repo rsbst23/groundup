@@ -1,23 +1,23 @@
-import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
-import type { PolicyDetailDto, TenantPolicyDto } from '../../api/types';
+import type { TenantPolicyDto } from '../../api/types';
 import { ErrorPanel } from '../../components/ErrorPanel';
+import { RouterLink } from '../../components/RouterLink';
 import { PermissionButton } from '../access/PermissionButton';
-import { can, PermissionKeys } from '../access/permissions';
+import { PermissionKeys } from '../access/permissions';
 import { RequirePermission } from '../access/RequirePermission';
 import { RequireTenant } from '../access/RequireTenant';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { toListSearch } from '../list/listSearch';
 import { ListTable, type ListColumn } from '../list/ListTable';
 import { useListView, usePageBack } from '../list/useListView';
 import { useSession } from '../session/sessionQuery';
-import { sortedKeys } from './permissionChoices';
-import { policyPageQueryOptions, policyQueryOptions, usePolicyActions } from './policiesQuery';
-import { PolicyDialog } from './PolicyDialog';
+import { policyPageQueryOptions, usePolicyActions } from './policiesQuery';
+import { PolicyInfoDialog } from './PolicyInfoDialog';
 
 /** The current organization's policies: named sets of permissions that roles grant (GU-96, GU-97). */
 export function PoliciesPage() {
@@ -34,35 +34,26 @@ function PoliciesTable() {
   const { me, currentTenant } = useSession();
   const tenantId = me!.tenantId!;
   const organizationName = currentTenant?.name ?? 'this organization';
-  const canWrite = can(me, PermissionKeys.PermissionsWrite);
-  const navigate = useNavigate({ from: '/policies' });
-  const view = useListView(useSearch({ from: '/policies' }), (search, replace) => void navigate({ search, replace }));
+  const navigate = useNavigate({ from: '/policies/' });
+  const view = useListView(useSearch({ from: '/policies/' }), (search, replace) => void navigate({ search, replace }));
   const [creating, setCreating] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [dialogKey, setDialogKey] = useState(0);
   const [deleting, setDeleting] = useState<TenantPolicyDto | null>(null);
   const [actionError, setActionError] = useState<{ title: string; error: unknown } | null>(null);
 
   const policies = useQuery(policyPageQueryOptions(tenantId, view.state));
   usePageBack(policies.data, policies.isPlaceholderData, view);
-  const editing = useQuery(policyQueryOptions(tenantId, editingId));
   const actions = usePolicyActions();
-  // The policy being edited, once loaded
-  const loaded: PolicyDetailDto | undefined = editingId !== null && editing.data?.id === editingId ? editing.data : undefined;
-
-  const open = (policy: TenantPolicyDto) => {
-    actions.save.reset();
-    setActionError(null);
-    setEditingId(policy.id);
-  };
+  const listSearch = toListSearch(view.state);
 
   const columns: ListColumn<TenantPolicyDto>[] = [
     {
       label: 'Name',
       sortField: 'name',
       render: (policy) => (
-        <Link component="button" variant="body2" onClick={() => open(policy)}>
+        <RouterLink to="/policies/$policyId" params={{ policyId: policy.id }} search={listSearch}>
           {policy.name}
-        </Link>
+        </RouterLink>
       ),
     },
     {
@@ -104,6 +95,7 @@ function PoliciesTable() {
           variant="contained"
           onClick={() => {
             actions.create.reset();
+            setDialogKey((k) => k + 1);
             setCreating(true);
           }}
         >
@@ -111,18 +103,12 @@ function PoliciesTable() {
         </PermissionButton>
       </Stack>
       <Typography color="text.secondary" gutterBottom>
-        A policy is a named set of permissions. Attach it to roles on their pages; everyone with those roles gets its
-        permissions at once.
+        A policy is a named set of permissions. Open one to choose its permissions; attach it to roles on their pages.
       </Typography>
 
       {actionError && (
         <Stack sx={{ my: 2 }}>
           <ErrorPanel error={actionError.error} title={actionError.title} />
-        </Stack>
-      )}
-      {editing.isError && (
-        <Stack sx={{ my: 2 }}>
-          <ErrorPanel error={editing.error} title="Could not load the policy" />
         </Stack>
       )}
 
@@ -141,35 +127,23 @@ function PoliciesTable() {
         />
       )}
 
-      {creating && (
-        <PolicyDialog
-          policy={null}
-          open
-          canWrite={canWrite}
-          busy={actions.create.isPending}
-          error={actions.create.error}
-          onClose={() => setCreating(false)}
-          onSubmit={(values) =>
-            actions.create.mutate(
-              { name: values.name, description: values.description, permissionKeys: sortedKeys(values.keys) },
-              { onSuccess: () => setCreating(false) },
-            )
-          }
-        />
-      )}
-
-      {loaded && (
-        <PolicyDialog
-          key={loaded.id}
-          policy={loaded}
-          open
-          canWrite={canWrite}
-          busy={actions.save.isPending}
-          error={actions.save.error}
-          onClose={() => setEditingId(null)}
-          onSubmit={(values) => actions.save.mutate({ before: loaded, ...values }, { onSuccess: () => setEditingId(null) })}
-        />
-      )}
+      <PolicyInfoDialog
+        key={dialogKey}
+        title="New policy"
+        submitLabel="Create and choose permissions"
+        open={creating}
+        busy={actions.create.isPending}
+        error={actions.create.error}
+        onClose={() => setCreating(false)}
+        onSubmit={(request) =>
+          actions.create.mutate(request, {
+            onSuccess: (policy) => {
+              setCreating(false);
+              void navigate({ to: '/policies/$policyId', params: { policyId: policy.id }, search: listSearch });
+            },
+          })
+        }
+      />
 
       <ConfirmDialog
         open={deleting !== null}
@@ -180,10 +154,13 @@ function PoliciesTable() {
         onClose={() => setDeleting(null)}
         onConfirm={() =>
           deleting &&
-          actions.remove.mutate(deleting, {
-            onError: (error) => setActionError({ title: `Could not delete the policy ${deleting.name}`, error }),
-            onSettled: () => setDeleting(null),
-          })
+          actions.remove.mutate(
+            { policy: deleting },
+            {
+              onError: (error) => setActionError({ title: `Could not delete the policy ${deleting.name}`, error }),
+              onSettled: () => setDeleting(null),
+            },
+          )
         }
       >
         Delete the policy <strong>{deleting?.name}</strong>? Only a policy no role uses can be deleted; detach it from its

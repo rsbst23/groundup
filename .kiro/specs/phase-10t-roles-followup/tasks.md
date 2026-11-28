@@ -36,11 +36,11 @@
   - [x] 3.4 Node tests; build, lint, test, commit, stop for review
   - _Requirements: 4_
 
-- [ ] 4. Policy editor page
-  - [ ] 4.1 API functions (`listPermissionCatalog`, `getPermissionModules`); `ListTable` `filters` slot
-  - [ ] 4.2 Routes `policies.index.tsx` and `policies.$policyId.tsx`; `PolicyInfoDialog`; the policies table links; `PolicyDialog` removed
-  - [ ] 4.3 `workingSet.ts` and `PolicyEditorPage` (available, in this policy, save, discard, the leave prompt, read-only, not found)
-  - [ ] 4.4 Node tests; build, lint, test, commit, stop for review
+- [x] 4. Policy editor page
+  - [x] 4.1 API functions (`listPermissionCatalog`, `getPermissionModules`); `ListTable` `filters` slot
+  - [x] 4.2 Routes `policies.index.tsx` and `policies.$policyId.tsx`; `PolicyInfoDialog`; the policies table links; `PolicyDialog` removed
+  - [x] 4.3 `workingSet.ts` and `PolicyEditorPage` (available, in this policy, save, discard, the leave prompt, read-only, not found)
+  - [x] 4.4 Node tests; build, lint, test, commit, stop for review
   - _Requirements: 5_
 
 - [ ] 5. TESTING.md

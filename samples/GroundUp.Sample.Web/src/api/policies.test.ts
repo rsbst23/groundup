@@ -1,19 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { keysChanged, moduleState, sortedKeys, toggleKey, toggleModule } from '../features/policies/permissionChoices';
-import { savePolicyEdit } from '../features/policies/policiesQuery';
+import { policiesListSearch, policyEditorSearchSchema, toCatalogSearch, toCatalogState } from '../features/policies/policySearch';
+import {
+  addKey,
+  addKeys,
+  changes,
+  currentKeys,
+  isDirty,
+  removeKey,
+  startWorkingSet,
+  undoRemoval,
+  workingRows,
+} from '../features/policies/workingSet';
 import { clearCsrfToken } from './csrf';
 import { clearInspector } from './inspector';
 import {
   createPolicy,
   deletePolicy,
-  getPermissionCatalog,
+  getPermissionModules,
   getPolicy,
+  listPermissionCatalog,
   listPolicyPage,
   setPolicyPermissions,
   updatePolicy,
 } from './policies';
 import { jsonResponse, mockFetch } from './testing';
-import type { PermissionModuleDto, PolicyDetailDto } from './types';
+import type { PolicyDetailDto } from './types';
 
 beforeEach(() => {
   clearCsrfToken();
@@ -24,6 +35,7 @@ afterEach(() => vi.unstubAllGlobals());
 const csrf = () => jsonResponse(200, { token: 'csrf-1' });
 const ok = <T>(data: T, statusCode = 200) => () => jsonResponse(statusCode, { data, success: true, message: 'Success', statusCode });
 const done = () => jsonResponse(200, { success: true, statusCode: 200, message: 'Success' });
+const page = <T>(items: T[]) => ({ items, pageNumber: 1, pageSize: 25, totalRecords: items.length, totalPages: 1 });
 
 const permission = (key: string) => ({ id: key, key, name: key, description: null, module: key.split('.')[0]! });
 const detail = (overrides: Partial<PolicyDetailDto> = {}): PolicyDetailDto => ({
@@ -42,7 +54,7 @@ function callsTo(mock: ReturnType<typeof mockFetch>, url: string) {
 describe('policies API', () => {
   it('lists a view of the policies table', async () => {
     const policy = { id: 'p1', name: 'Basics', description: null, permissionKeys: [], roleCount: 2 };
-    mockFetch({ '/api/policies?pageNumber=1&pageSize=25&sortBy=roleCount+desc&searchTerm=bas': [ok({ items: [policy], pageNumber: 1, pageSize: 25, totalRecords: 1, totalPages: 1 })] });
+    mockFetch({ '/api/policies?pageNumber=1&pageSize=25&sortBy=roleCount+desc&searchTerm=bas': [ok(page([policy]))] });
 
     const result = await listPolicyPage({ page: 1, sort: 'roleCount desc', q: 'bas' });
 
@@ -58,86 +70,100 @@ describe('policies API', () => {
     });
 
     expect((await getPolicy('p/1')).name).toBe('Basics');
-    await createPolicy({ name: 'Basics', description: null, permissionKeys: ['auth.members.read'] });
+    await createPolicy({ name: 'Basics', description: null });
     await updatePolicy('p/1', { name: 'B', description: 'x' });
     await setPolicyPermissions('p/1', ['a.read', 'b.read']);
     await deletePolicy('p/1');
 
-    expect(callsTo(mock, '/api/policies')[0]!.body).toBe('{"name":"Basics","description":null,"permissionKeys":["auth.members.read"]}');
+    expect(callsTo(mock, '/api/policies')[0]!.body).toBe('{"name":"Basics","description":null}');
     expect(callsTo(mock, '/api/policies/p%2F1').map((c) => c.method ?? 'GET')).toEqual(['GET', 'PUT', 'DELETE']);
-    expect(callsTo(mock, '/api/policies/p%2F1')[1]!.body).toBe('{"name":"B","description":"x"}');
     const set = callsTo(mock, '/api/policies/p%2F1/permissions')[0]!;
     expect(set.method).toBe('PUT');
     expect(set.body).toBe('{"permissionKeys":["a.read","b.read"]}');
   });
 
-  it('reads the permission catalogue', async () => {
-    const catalog = [{ module: 'auth', permissions: [permission('auth.members.read')] }];
-    mockFetch({ '/api/permissions': [ok(catalog)] });
-
-    await expect(getPermissionCatalog()).resolves.toEqual(catalog);
-  });
-});
-
-describe('savePolicyEdit', () => {
-  it('sends only the name when only the name changed', async () => {
-    const mock = mockFetch({ '/auth/csrf': [csrf], '/api/policies/p1': [ok(detail({ name: 'New' }))] });
-
-    await savePolicyEdit({ before: detail(), name: 'New', description: null, keys: new Set(['auth.members.read']) });
-
-    expect(callsTo(mock, '/api/policies/p1')).toHaveLength(1);
-    expect(callsTo(mock, '/api/policies/p1/permissions')).toHaveLength(0);
-  });
-
-  it('sends only the permissions, sorted, when only they changed', async () => {
-    const mock = mockFetch({ '/auth/csrf': [csrf], '/api/policies/p1/permissions': [ok(detail())] });
-
-    await savePolicyEdit({ before: detail(), name: 'Basics', description: null, keys: new Set(['z.read', 'auth.members.read']) });
-
-    expect(callsTo(mock, '/api/policies/p1')).toHaveLength(0);
-    expect(callsTo(mock, '/api/policies/p1/permissions')[0]!.body).toBe('{"permissionKeys":["auth.members.read","z.read"]}');
-  });
-
-  it('sends nothing when nothing changed, and stops at a failure', async () => {
-    const unchanged = mockFetch({});
-    await savePolicyEdit({ before: detail(), name: 'Basics', description: null, keys: new Set(['auth.members.read']) });
-    expect(unchanged).not.toHaveBeenCalled();
-
+  it('lists a view of the catalogue, with the module filter', async () => {
     mockFetch({
-      '/auth/csrf': [csrf],
-      '/api/policies/p1': [() => jsonResponse(409, { success: false, statusCode: 409, message: 'Taken', errorCode: 'POLICY_NAME_TAKEN' })],
+      '/api/permissions?pageNumber=2&pageSize=25&sortBy=key&searchTerm=read&filters%5Bmodule%5D=auth': [ok(page([permission('auth.members.read')]))],
+      '/api/permissions?pageNumber=1&pageSize=25': [ok(page([]))],
     });
-    await expect(
-      savePolicyEdit({ before: detail(), name: 'Taken', description: null, keys: new Set(['other.read']) }),
-    ).rejects.toMatchObject({ errorCode: 'POLICY_NAME_TAKEN' });
+
+    expect((await listPermissionCatalog({ page: 2, sort: 'key', q: 'read', module: 'auth' })).items).toHaveLength(1);
+    expect((await listPermissionCatalog({ page: 1 })).items).toEqual([]);
+  });
+
+  it('reads the modules', async () => {
+    mockFetch({ '/api/permissions/modules': [ok(['auth', 'settings'])] });
+
+    await expect(getPermissionModules()).resolves.toEqual(['auth', 'settings']);
   });
 });
 
-describe('permission choices', () => {
-  const module: PermissionModuleDto = { module: 'auth', permissions: [permission('auth.a'), permission('auth.b')] };
+describe('working set', () => {
+  const saved = startWorkingSet(['a', 'b']);
 
-  it('toggles one key without changing the input', () => {
-    const selected = new Set(['auth.a']);
-
-    expect([...toggleKey(selected, 'auth.b')]).toEqual(['auth.a', 'auth.b']);
-    expect([...toggleKey(selected, 'auth.a')]).toEqual([]);
-    expect([...selected]).toEqual(['auth.a']);
+  it('starts clean', () => {
+    expect(isDirty(saved)).toBe(false);
+    expect([...currentKeys(saved)].sort()).toEqual(['a', 'b']);
   });
 
-  it('reports a module as all, some or none', () => {
-    expect(moduleState(module, new Set())).toBe('none');
-    expect(moduleState(module, new Set(['auth.a']))).toBe('some');
-    expect(moduleState(module, new Set(['auth.a', 'auth.b', 'other.x']))).toBe('all');
+  it('adds new keys and ignores keys already in the policy', () => {
+    const ws = addKeys(saved, ['c', 'a', 'c']);
+
+    expect(changes(ws)).toEqual({ added: ['c'], removed: [] });
+    expect([...currentKeys(ws)].sort()).toEqual(['a', 'b', 'c']);
   });
 
-  it('selects a whole module, or clears it when all were selected', () => {
-    expect(sortedKeys(toggleModule(module, new Set(['auth.a', 'other.x'])))).toEqual(['auth.a', 'auth.b', 'other.x']);
-    expect(sortedKeys(toggleModule(module, new Set(['auth.a', 'auth.b', 'other.x'])))).toEqual(['other.x']);
+  it('removes a saved key as an unsaved removal, and an added key outright', () => {
+    const ws = removeKey(removeKey(addKey(saved, 'c'), 'c'), 'a');
+
+    expect(changes(ws)).toEqual({ added: [], removed: ['a'] });
+    expect([...currentKeys(ws)]).toEqual(['b']);
+    expect(isDirty(ws)).toBe(true);
   });
 
-  it('detects a changed set, ignoring order', () => {
-    expect(keysChanged(['a', 'b'], new Set(['b', 'a']))).toBe(false);
-    expect(keysChanged(['a'], new Set(['a', 'b']))).toBe(true);
-    expect(keysChanged(['a', 'b'], new Set(['a', 'c']))).toBe(true);
+  it('restores a removed key by undo or by adding it again', () => {
+    const removed = removeKey(saved, 'a');
+
+    expect(isDirty(undoRemoval(removed, 'a'))).toBe(false);
+    expect(isDirty(addKey(removed, 'a'))).toBe(false);
+  });
+
+  it('lists the rows with their state, removed ones included', () => {
+    const ws = addKey(removeKey(saved, 'a'), 'c');
+
+    expect(workingRows(ws)).toEqual([
+      { key: 'a', state: 'removed' },
+      { key: 'b', state: 'saved' },
+      { key: 'c', state: 'added' },
+    ]);
+  });
+
+  it('does not change the input', () => {
+    removeKey(addKey(saved, 'c'), 'a');
+
+    expect(isDirty(saved)).toBe(false);
+  });
+});
+
+describe('policy editor search', () => {
+  it('keeps the list view and the catalogue view apart', () => {
+    const search = policyEditorSearchSchema.parse({ page: 2, available: { page: 3, q: 'read', module: 'auth', sort: 'key desc' } });
+
+    expect(toCatalogState(search.available)).toEqual({ page: 3, sort: 'key desc', q: 'read', module: 'auth' });
+    expect(policiesListSearch(search)).toEqual({ page: 2, sort: undefined, q: undefined, status: undefined });
+  });
+
+  it('drops invalid values and leaves defaults out', () => {
+    expect(policyEditorSearchSchema.parse({ available: 'x' }).available).toBeUndefined();
+    expect(policyEditorSearchSchema.parse({ available: { module: '' } }).available?.module).toBeUndefined();
+    expect(toCatalogState(undefined)).toEqual({ page: 1, sort: undefined, q: undefined, module: undefined });
+    expect(toCatalogSearch({ page: 1, q: ' ', module: '' })).toEqual({
+      page: undefined,
+      sort: undefined,
+      q: undefined,
+      status: undefined,
+      module: undefined,
+    });
   });
 });

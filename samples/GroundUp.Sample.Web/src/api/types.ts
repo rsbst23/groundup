@@ -172,12 +172,6 @@ export interface PermissionDto {
   module: string;
 }
 
-/** GET /api/permissions: the catalogue by module. */
-export interface PermissionModuleDto {
-  module: string;
-  permissions: PermissionDto[];
-}
-
 /** A permission a role grants and the policies granting it. */
 export interface RolePermissionDto {
   key: string;

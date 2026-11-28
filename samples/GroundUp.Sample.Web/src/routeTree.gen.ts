@@ -16,12 +16,13 @@ import { Route as InvitationsRouteImport } from './routes/invitations'
 import { Route as JoinLinksRouteImport } from './routes/join-links'
 import { Route as MailboxRouteImport } from './routes/mailbox'
 import { Route as MembersRouteImport } from './routes/members'
-import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as SessionRouteImport } from './routes/session'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WizardRouteImport } from './routes/wizard'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
+import { Route as PoliciesIndexRouteImport } from './routes/policies.index'
+import { Route as PoliciesPolicyIdRouteImport } from './routes/policies.$policyId'
 import { Route as RolesIndexRouteImport } from './routes/roles.index'
 import { Route as RolesRoleIdRouteImport } from './routes/roles.$roleId'
 
@@ -60,11 +61,6 @@ const MembersRoute = MembersRouteImport.update({
   path: '/members',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PoliciesRoute = PoliciesRouteImport.update({
-  id: '/policies',
-  path: '/policies',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SessionRoute = SessionRouteImport.update({
   id: '/session',
   path: '/session',
@@ -90,6 +86,16 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
   path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoliciesIndexRoute = PoliciesIndexRouteImport.update({
+  id: '/policies/',
+  path: '/policies/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliciesPolicyIdRoute = PoliciesPolicyIdRouteImport.update({
+  id: '/policies/$policyId',
+  path: '/policies/$policyId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RolesIndexRoute = RolesIndexRouteImport.update({
   id: '/roles/',
   path: '/roles/',
@@ -109,13 +115,14 @@ export interface FileRoutesByFullPath {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
-  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
   '/invite/$token': typeof InviteTokenRoute
   '/join/$token': typeof JoinTokenRoute
+  '/policies/$policyId': typeof PoliciesPolicyIdRoute
   '/roles/$roleId': typeof RolesRoleIdRoute
+  '/policies/': typeof PoliciesIndexRoute
   '/roles/': typeof RolesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -126,13 +133,14 @@ export interface FileRoutesByTo {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
-  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
   '/invite/$token': typeof InviteTokenRoute
   '/join/$token': typeof JoinTokenRoute
+  '/policies/$policyId': typeof PoliciesPolicyIdRoute
   '/roles/$roleId': typeof RolesRoleIdRoute
+  '/policies': typeof PoliciesIndexRoute
   '/roles': typeof RolesIndexRoute
 }
 export interface FileRoutesById {
@@ -144,13 +152,14 @@ export interface FileRoutesById {
   '/join-links': typeof JoinLinksRoute
   '/mailbox': typeof MailboxRoute
   '/members': typeof MembersRoute
-  '/policies': typeof PoliciesRoute
   '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/wizard': typeof WizardRoute
   '/invite/$token': typeof InviteTokenRoute
   '/join/$token': typeof JoinTokenRoute
+  '/policies/$policyId': typeof PoliciesPolicyIdRoute
   '/roles/$roleId': typeof RolesRoleIdRoute
+  '/policies/': typeof PoliciesIndexRoute
   '/roles/': typeof RolesIndexRoute
 }
 export interface FileRouteTypes {
@@ -163,13 +172,14 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
-    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
     | '/invite/$token'
     | '/join/$token'
+    | '/policies/$policyId'
     | '/roles/$roleId'
+    | '/policies/'
     | '/roles/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -180,13 +190,14 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
-    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
     | '/invite/$token'
     | '/join/$token'
+    | '/policies/$policyId'
     | '/roles/$roleId'
+    | '/policies'
     | '/roles'
   id:
     | '__root__'
@@ -197,13 +208,14 @@ export interface FileRouteTypes {
     | '/join-links'
     | '/mailbox'
     | '/members'
-    | '/policies'
     | '/session'
     | '/settings'
     | '/wizard'
     | '/invite/$token'
     | '/join/$token'
+    | '/policies/$policyId'
     | '/roles/$roleId'
+    | '/policies/'
     | '/roles/'
   fileRoutesById: FileRoutesById
 }
@@ -215,13 +227,14 @@ export interface RootRouteChildren {
   JoinLinksRoute: typeof JoinLinksRoute
   MailboxRoute: typeof MailboxRoute
   MembersRoute: typeof MembersRoute
-  PoliciesRoute: typeof PoliciesRoute
   SessionRoute: typeof SessionRoute
   SettingsRoute: typeof SettingsRoute
   WizardRoute: typeof WizardRoute
   InviteTokenRoute: typeof InviteTokenRoute
   JoinTokenRoute: typeof JoinTokenRoute
+  PoliciesPolicyIdRoute: typeof PoliciesPolicyIdRoute
   RolesRoleIdRoute: typeof RolesRoleIdRoute
+  PoliciesIndexRoute: typeof PoliciesIndexRoute
   RolesIndexRoute: typeof RolesIndexRoute
 }
 
@@ -276,13 +289,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MembersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/policies': {
-      id: '/policies'
-      path: '/policies'
-      fullPath: '/policies'
-      preLoaderRoute: typeof PoliciesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/session': {
       id: '/session'
       path: '/session'
@@ -318,6 +324,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/policies/': {
+      id: '/policies/'
+      path: '/policies'
+      fullPath: '/policies/'
+      preLoaderRoute: typeof PoliciesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/policies/$policyId': {
+      id: '/policies/$policyId'
+      path: '/policies/$policyId'
+      fullPath: '/policies/$policyId'
+      preLoaderRoute: typeof PoliciesPolicyIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/roles/': {
       id: '/roles/'
       path: '/roles'
@@ -343,13 +363,14 @@ const rootRouteChildren: RootRouteChildren = {
   JoinLinksRoute: JoinLinksRoute,
   MailboxRoute: MailboxRoute,
   MembersRoute: MembersRoute,
-  PoliciesRoute: PoliciesRoute,
   SessionRoute: SessionRoute,
   SettingsRoute: SettingsRoute,
   WizardRoute: WizardRoute,
   InviteTokenRoute: InviteTokenRoute,
   JoinTokenRoute: JoinTokenRoute,
+  PoliciesPolicyIdRoute: PoliciesPolicyIdRoute,
   RolesRoleIdRoute: RolesRoleIdRoute,
+  PoliciesIndexRoute: PoliciesIndexRoute,
   RolesIndexRoute: RolesIndexRoute,
 }
 export const routeTree = rootRouteImport
