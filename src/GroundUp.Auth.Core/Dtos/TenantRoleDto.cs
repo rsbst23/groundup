@@ -14,6 +14,8 @@ namespace GroundUp.Auth.Core.Dtos;
 /// <param name="IsSystem">True for a built-in role (TenantAdmin), which cannot be renamed or deleted.</param>
 /// <param name="IsDefault">True when new members of the tenant get this role.</param>
 /// <param name="PolicyCount">How many policies are attached to the role (GU-97); 0 for TenantAdmin, which needs none.</param>
+/// <param name="ActiveMemberCount">The distinct active members holding the role (GU-97d).</param>
+/// <param name="PendingMemberCount">The distinct pending members holding the role: open invitations to it (GU-97d).</param>
 public sealed record TenantRoleDto(
     Guid Id,
     string Name,
@@ -22,14 +24,17 @@ public sealed record TenantRoleDto(
     Guid TenantId,
     bool IsSystem,
     bool IsDefault,
-    int PolicyCount = 0)
+    int PolicyCount = 0,
+    int ActiveMemberCount = 0,
+    int PendingMemberCount = 0)
 {
     /// <summary>
     /// Builds the DTO from a <see cref="RoleDto"/>.
     /// </summary>
     /// <param name="role">The role.</param>
     /// <param name="isDefault">Whether it is the tenant's default role.</param>
-    /// <param name="policyCount">How many policies are attached to the role.</param>
-    public static TenantRoleDto From(RoleDto role, bool isDefault, int policyCount = 0)
-        => new(role.Id, role.Name, role.Description, role.RoleType, role.TenantId, role.IsSystem, isDefault, policyCount);
+    /// <param name="counts">The role's policy and member counts; zero when null.</param>
+    public static TenantRoleDto From(RoleDto role, bool isDefault, RoleCountsDto? counts = null)
+        => new(role.Id, role.Name, role.Description, role.RoleType, role.TenantId, role.IsSystem, isDefault,
+            counts?.PolicyCount ?? 0, counts?.ActiveMemberCount ?? 0, counts?.PendingMemberCount ?? 0);
 }

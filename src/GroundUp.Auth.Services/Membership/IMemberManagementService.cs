@@ -25,6 +25,16 @@ public interface IMemberManagementService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The current tenant's Active and Pending members holding the role (GU-97d), with the same fields
+    /// as <see cref="ListMembersAsync"/>. 404 when the role is not in the current tenant.
+    /// </summary>
+    [RequiresPermission(PermissionKeysAuth.MembersRead, PermissionKeysAuth.RolesRead)]
+    Task<OperationResult<PaginatedData<TenantMemberDto>>> ListRoleMembersAsync(
+        Guid roleId,
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Removes a member from the current tenant, like leaving: the membership is deactivated, all the
     /// member's roles in the tenant are removed, and their existing tokens for the tenant stop working.
     /// The caller must also be allowed to remove each role the member holds (so only a TenantAdmin or

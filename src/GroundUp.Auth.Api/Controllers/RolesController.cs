@@ -1,5 +1,6 @@
 using GroundUp.Api.Controllers;
 using GroundUp.Auth.Core.Dtos;
+using GroundUp.Auth.Services.Membership;
 using GroundUp.Auth.Services.Roles;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
@@ -17,18 +18,42 @@ namespace GroundUp.Auth.Api.Controllers;
 public sealed class RolesController : BaseController
 {
     private readonly IRoleService _roleService;
+    private readonly IMemberManagementService _memberService;
 
     /// <summary>
     /// Initializes a new instance of <see cref="RolesController"/>.
     /// </summary>
-    public RolesController(IRoleService roleService)
+    public RolesController(IRoleService roleService, IMemberManagementService memberService)
     {
         _roleService = roleService;
+        _memberService = memberService;
     }
 
     /// <summary>
-    /// Lists the tenant's roles, each with <c>isDefault</c> and <c>policyCount</c>. Needs <c>auth.roles.read</c>.
-    /// Accepts <c>FilterParams</c>: <c>sortBy</c> (name, roleType, policyCount), <c>filters[roleType]</c>,
+    /// Lists the Active and Pending members holding the role (GU-97d), with the members list's fields:
+    /// <c>sortBy</c> (email, displayName, status), <c>filters[status]</c>, <c>searchTerm</c> (email, display
+    /// name). Needs <c>auth.members.read</c> and <c>auth.roles.read</c>; 404 for a role of another tenant.
+    /// Pagination metadata is also returned in the headers.
+    /// </summary>
+    [HttpGet("{id:guid}/members")]
+    public async Task<ActionResult<OperationResult<PaginatedData<TenantMemberDto>>>> ListMembers(
+        Guid id,
+        [FromQuery] FilterParams filterParams,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _memberService.ListRoleMembersAsync(id, filterParams, cancellationToken);
+        if (result.Success && result.Data is not null)
+        {
+            AddPaginationHeaders(result.Data);
+        }
+
+        return ToActionResult(result);
+    }
+
+    /// <summary>
+    /// Lists the tenant's roles, each with <c>isDefault</c>, <c>policyCount</c>, <c>activeMemberCount</c> and
+    /// <c>pendingMemberCount</c>. Needs <c>auth.roles.read</c>. Accepts <c>FilterParams</c>: <c>sortBy</c> (name,
+    /// roleType, policyCount, activeMemberCount, pendingMemberCount), <c>filters[roleType]</c>,
     /// <c>filters[isSystem]</c>, <c>searchTerm</c> (name, description); other fields are ignored. Pagination
     /// metadata is also returned in the X-Total-Count, X-Page-Number, X-Page-Size and X-Total-Pages headers.
     /// </summary>

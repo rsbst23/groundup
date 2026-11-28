@@ -38,20 +38,24 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         ArgumentNullException.ThrowIfNull(filterParams);
         var tenants = Context.Set<Tenant>();
         var rolePolicies = Context.Set<RolePolicy>();
+        var userTenants = Context.Set<UserTenant>();
+        var userRoles = Context.Set<UserRole>();
         Expression<Func<Role, int>> policyCount = r => rolePolicies.Count(rp => rp.RoleId == r.Id);
-
         var options = new ListQueryOptions<Role>
         {
             Fields = new ListFieldMap<Role>()
                 .Sort("name", r => r.Name)
                 .SortAndFilter("roleType", r => r.RoleType)
                 .Sort("policyCount", policyCount)
+                .Sort("activeMemberCount", MemberCount(MembershipStatus.Active))
+                .Sort("pendingMemberCount", MemberCount(MembershipStatus.Pending))
                 .Filter("isSystem", r => r.IsSystem)
                 .Search(r => r.Name, r => r.Description),
             DefaultOrder = q => q.OrderBy(r => r.Name),
             TieBreaker = r => r.Id
         };
 
+        // The counts repeat MemberCount's expression: a projection cannot call another expression
         return await GetAllAsync(
             filterParams,
             queryShaper: null,
@@ -63,21 +67,46 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
                 r.TenantId,
                 r.IsSystem,
                 tenants.Where(t => t.Id == r.TenantId).Select(t => t.DefaultRoleId).FirstOrDefault() == r.Id,
-                rolePolicies.Count(rp => rp.RoleId == r.Id)),
+                rolePolicies.Count(rp => rp.RoleId == r.Id),
+                userTenants.Count(ut => ut.TenantId == r.TenantId && ut.Status == MembershipStatus.Active
+                    && userRoles.Any(ur => ur.UserId == ut.UserId && ur.TenantId == r.TenantId && ur.RoleId == r.Id)),
+                userTenants.Count(ut => ut.TenantId == r.TenantId && ut.Status == MembershipStatus.Pending
+                    && userRoles.Any(ur => ur.UserId == ut.UserId && ur.TenantId == r.TenantId && ur.RoleId == r.Id))),
             options,
             cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult<int>> CountPoliciesAsync(Guid roleId, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<RoleCountsDto>> GetCountsAsync(Guid roleId, CancellationToken cancellationToken = default)
     {
         var tenantId = TenantContext.TenantId;
-        var count = await Context.Set<RolePolicy>()
-            .AsNoTracking()
-            .CountAsync(rp => rp.RoleId == roleId && rp.Role.TenantId == tenantId, cancellationToken);
-        return OperationResult<int>.Ok(count);
+        var counts = await DbSet.AsNoTracking()
+            .Where(r => r.Id == roleId && r.TenantId == tenantId)
+            .Select(r => new
+            {
+                Policies = Context.Set<RolePolicy>().Count(rp => rp.RoleId == r.Id),
+                Active = Context.Set<UserTenant>().Count(ut => ut.TenantId == r.TenantId && ut.Status == MembershipStatus.Active
+                    && Context.Set<UserRole>().Any(ur => ur.UserId == ut.UserId && ur.TenantId == r.TenantId && ur.RoleId == r.Id)),
+                Pending = Context.Set<UserTenant>().Count(ut => ut.TenantId == r.TenantId && ut.Status == MembershipStatus.Pending
+                    && Context.Set<UserRole>().Any(ur => ur.UserId == ut.UserId && ur.TenantId == r.TenantId && ur.RoleId == r.Id))
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return OperationResult<RoleCountsDto>.Ok(
+            counts is null ? new RoleCountsDto(0, 0, 0) : new RoleCountsDto(counts.Policies, counts.Active, counts.Pending));
     }
 
+    /// <summary>
+    /// The distinct people holding the role (any source) whose membership of its tenant has
+    /// <paramref name="status"/>. Memberships are unique per user and tenant, so each person counts once.
+    /// </summary>
+    private Expression<Func<Role, int>> MemberCount(MembershipStatus status)
+    {
+        var userTenants = Context.Set<UserTenant>();
+        var userRoles = Context.Set<UserRole>();
+        return r => userTenants.Count(ut => ut.TenantId == r.TenantId && ut.Status == status
+            && userRoles.Any(ur => ur.UserId == ut.UserId && ur.TenantId == r.TenantId && ur.RoleId == r.Id));
+    }
     /// <inheritdoc />
     public async Task<OperationResult<List<PolicyDto>>> GetPoliciesForRoleAsync(
         Guid roleId,

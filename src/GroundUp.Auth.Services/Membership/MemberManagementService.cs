@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
@@ -65,6 +66,33 @@ internal sealed class MemberManagementService : IMemberManagementService
         }
 
         return await _userTenantRepository.GetMembersAsync(tenantId, filterParams, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<PaginatedData<TenantMemberDto>>> ListRoleMembersAsync(
+        Guid roleId,
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filterParams);
+        var tenantId = _tenantContext.TenantId;
+        if (tenantId == Guid.Empty)
+        {
+            return OperationResult<PaginatedData<TenantMemberDto>>.Fail(
+                "A tenant must be selected to list members.", 403, ErrorCodes.TenantRequired);
+        }
+
+        // Tenant-scoped read: a role of another tenant is not found; the System tenant's roles are not
+        // reachable through the roles API either
+        var role = tenantId == AuthRoleNames.SystemTenantId
+            ? OperationResult<RoleDto>.NotFound()
+            : await _roleRepository.GetByIdAsync(roleId, cancellationToken);
+        if (!role.Success || role.Data is null || role.Data.TenantId != tenantId)
+        {
+            return OperationResult<PaginatedData<TenantMemberDto>>.NotFound("Role not found.");
+        }
+
+        return await _userTenantRepository.GetRoleMembersAsync(tenantId, roleId, filterParams, cancellationToken);
     }
 
     /// <inheritdoc />
