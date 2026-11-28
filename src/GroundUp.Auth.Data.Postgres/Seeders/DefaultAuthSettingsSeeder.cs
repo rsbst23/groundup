@@ -87,17 +87,8 @@ public sealed class DefaultAuthSettingsSeeder : IDataSeeder
             AllowedLevelNames: ["system"]),
             cancellationToken);
 
-        await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(
-            Key: "auth.application.default-role",
-            DataType: SettingDataType.String,
-            DefaultValue: "",
-            DisplayName: "Default Role",
-            Description: "The name of the role given to users who join the default tenant by signing in or signing up, and to former members who rejoin. Leave empty for no role. A name that matches no role in the tenant is skipped.",
-            Category: "Application",
-            GroupKey: "auth.application",
-            GroupDisplayName: "Auth Application",
-            AllowedLevelNames: ["system", "tenant"]),
-            cancellationToken);
+        // The default role for new members is Tenant.DefaultRoleId, set through the roles API (GU-95).
+        // The former auth.application.default-role setting is no longer defined; existing rows are left alone.
 
         // Invitations (GU-68)
         await _settingsService.EnsureDefinitionAsync(new EnsureSettingDefinitionRequest(

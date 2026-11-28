@@ -3,8 +3,6 @@ using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Roles;
-using GroundUp.Core;
-using GroundUp.Core.Abstractions;
 using GroundUp.Core.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -12,7 +10,8 @@ using NSubstitute;
 namespace GroundUp.Tests.Unit.Auth.Roles;
 
 /// <summary>
-/// GU-68 Requirements 5.6-5.7: the default role given when joining the default tenant.
+/// GU-68 Requirement 5.7 and GU-95 Requirement 5: the tenant's default role, given when joining the
+/// default tenant.
 /// </summary>
 public sealed class DefaultRoleAssignerTests
 {
@@ -20,27 +19,25 @@ public sealed class DefaultRoleAssignerTests
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly RoleDto Member = new(Guid.NewGuid(), "Member", null, RoleType.Application, TenantId, false);
 
-    private readonly ISettingsService _settings = Substitute.For<ISettingsService>();
+    private readonly ITenantRepository _tenants = Substitute.For<ITenantRepository>();
     private readonly IRoleRepository _roles = Substitute.For<IRoleRepository>();
     private readonly IRoleGrantWriter _writer = Substitute.For<IRoleGrantWriter>();
-    private readonly TenantContext _tenantContext = new();
     private readonly DefaultRoleAssigner _sut;
 
     public DefaultRoleAssignerTests()
     {
-        _roles.GetByNameAsync(TenantId, "Member", Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.Ok(Member));
-        _roles.GetByNameAsync(TenantId, Arg.Is<string>(n => n != "Member"), Arg.Any<CancellationToken>())
-            .Returns(OperationResult<RoleDto>.NotFound());
+        _roles.FindByIdAnyTenantAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.NotFound());
+        _roles.FindByIdAnyTenantAsync(Member.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.Ok(Member));
         _writer.GrantAsync(default, default, default, default, default, default)
             .ReturnsForAnyArgs(OperationResult<RoleGrantResult>.Ok(
                 new RoleGrantResult(new UserRoleDto(Guid.NewGuid(), UserId, Member.Id, TenantId), Created: true)));
-        _sut = new DefaultRoleAssigner(_settings, _roles, _writer, _tenantContext, NullLogger<DefaultRoleAssigner>.Instance);
+        _sut = new DefaultRoleAssigner(_tenants, _roles, _writer, NullLogger<DefaultRoleAssigner>.Instance);
     }
 
     [Fact]
-    public async Task AssignAsync_ConfiguredRoleExists_GrantsItWithSourceDefaultRole()
+    public async Task AssignAsync_TenantHasADefaultRole_GrantsItWithSourceDefaultRole()
     {
-        GivenSetting(" Member ");
+        GivenDefault(Member.Id);
 
         await _sut.AssignAsync(UserId, TenantId);
 
@@ -49,31 +46,9 @@ public sealed class DefaultRoleAssignerTests
     }
 
     [Fact]
-    public async Task AssignAsync_ReadsTheSettingForTheJoinedTenant_AndRestoresTheContext()
+    public async Task AssignAsync_NoDefaultRole_GrantsNothing()
     {
-        var previous = Guid.NewGuid();
-        _tenantContext.TenantId = previous;
-        Guid seenTenant = Guid.Empty;
-        _settings.GetAsync<string>(DefaultRoleAssigner.SettingKey, Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                seenTenant = _tenantContext.TenantId;
-                return OperationResult<string>.Ok("Member");
-            });
-
-        await _sut.AssignAsync(UserId, TenantId);
-
-        seenTenant.Should().Be(TenantId, "the tenant value of the setting must be read for the joined tenant");
-        _tenantContext.TenantId.Should().Be(previous);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("Missing")]
-    public async Task AssignAsync_NoRoleOrUnknownRole_GrantsNothing(string value)
-    {
-        GivenSetting(value);
+        _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>()).Returns(OperationResult<Guid?>.Ok(null));
 
         await _sut.AssignAsync(UserId, TenantId);
 
@@ -81,10 +56,42 @@ public sealed class DefaultRoleAssignerTests
     }
 
     [Fact]
-    public async Task AssignAsync_SettingsFail_GrantsNothingAndDoesNotThrow()
+    public async Task AssignAsync_UnknownTenant_GrantsNothing()
     {
-        _settings.GetAsync<string>(DefaultRoleAssigner.SettingKey, Arg.Any<CancellationToken>())
-            .Returns<Task<OperationResult<string>>>(_ => throw new InvalidOperationException("db down"));
+        _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>()).Returns(OperationResult<Guid?>.NotFound());
+
+        await _sut.AssignAsync(UserId, TenantId);
+
+        await _writer.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task AssignAsync_DefaultRoleOfAnotherTenant_Skipped()
+    {
+        var foreign = Member with { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() };
+        _roles.FindByIdAnyTenantAsync(foreign.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.Ok(foreign));
+        GivenDefault(foreign.Id);
+
+        await _sut.AssignAsync(UserId, TenantId);
+
+        await _writer.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task AssignAsync_DefaultRoleMissing_Skipped()
+    {
+        GivenDefault(Guid.NewGuid());
+
+        await _sut.AssignAsync(UserId, TenantId);
+
+        await _writer.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task AssignAsync_ReadFails_GrantsNothingAndDoesNotThrow()
+    {
+        _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>())
+            .Returns<Task<OperationResult<Guid?>>>(_ => throw new InvalidOperationException("db down"));
 
         var act = () => _sut.AssignAsync(UserId, TenantId);
 
@@ -92,7 +99,18 @@ public sealed class DefaultRoleAssignerTests
         await _writer.DidNotReceiveWithAnyArgs().GrantAsync(default, default, default, default, default, default);
     }
 
-    private void GivenSetting(string value)
-        => _settings.GetAsync<string>(DefaultRoleAssigner.SettingKey, Arg.Any<CancellationToken>())
-            .Returns(OperationResult<string>.Ok(value));
+    [Fact]
+    public async Task AssignAsync_GrantFails_DoesNotThrow()
+    {
+        GivenDefault(Member.Id);
+        _writer.GrantAsync(default, default, default, default, default, default)
+            .ReturnsForAnyArgs(OperationResult<RoleGrantResult>.Fail("nope", 409));
+
+        var act = () => _sut.AssignAsync(UserId, TenantId);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    private void GivenDefault(Guid roleId)
+        => _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>()).Returns(OperationResult<Guid?>.Ok(roleId));
 }

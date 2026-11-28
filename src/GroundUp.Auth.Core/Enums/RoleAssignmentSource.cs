@@ -15,7 +15,7 @@ public enum RoleAssignmentSource
     /// <summary>Granted by a join link.</summary>
     JoinLink = 2,
 
-    /// <summary>Granted by the <c>auth.application.default-role</c> setting when joining.</summary>
+    /// <summary>Granted as the tenant's default role (<c>Tenant.DefaultRoleId</c>) when joining.</summary>
     DefaultRole = 3,
 
     /// <summary>Granted by the system while provisioning (organization creation, SuperAdmin bootstrap).</summary>

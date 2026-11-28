@@ -42,27 +42,25 @@ internal static class FlowHandlerTestDoubles
         new(userRepository, AccessRevoker(), NullLogger<SignInUserResolver>.Instance);
 
     /// <summary>
-    /// The real default-role assigner over <paramref name="settingsService"/>. Unless given, the role
-    /// repository finds no role by name and the grant writer is a substitute, so a configured default
-    /// role is logged and skipped.
+    /// The real default-role assigner. Unless given, the tenant repository reports no default role for
+    /// any tenant and the grant writer is a substitute, so nothing is granted.
     /// </summary>
     public static DefaultRoleAssigner DefaultRoleAssigner(
-        ISettingsService settingsService,
+        ITenantRepository? tenantRepository = null,
         IRoleRepository? roleRepository = null,
         IRoleGrantWriter? roleGrantWriter = null)
     {
-        if (roleRepository is null)
+        if (tenantRepository is null)
         {
-            roleRepository = Substitute.For<IRoleRepository>();
-            roleRepository.GetByNameAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                .Returns(OperationResult<RoleDto>.NotFound());
+            tenantRepository = Substitute.For<ITenantRepository>();
+            tenantRepository.GetDefaultRoleIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(OperationResult<Guid?>.Ok(null));
         }
 
         return new DefaultRoleAssigner(
-            settingsService,
-            roleRepository,
+            tenantRepository,
+            roleRepository ?? Substitute.For<IRoleRepository>(),
             roleGrantWriter ?? Substitute.For<IRoleGrantWriter>(),
-            new TenantContext(),
             NullLogger<DefaultRoleAssigner>.Instance);
     }
 

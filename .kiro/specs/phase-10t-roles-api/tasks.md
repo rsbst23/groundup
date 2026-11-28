@@ -30,11 +30,11 @@ Requirements: `requirements.md`. Design: `design.md`. One PR (branch `phase-10/r
   - [x] 2.4 Unit tests (`RoleServiceTests`: tenant required for every method, System tenant, each rule, reasons, transaction order, events, no event bus, attributes)
   - [x] 2.5 Check: build, unit 2073 / 0, integration 551 / 0, sample 22/22
 
-- [ ] 3. Default role on joining (design 5) and the API tests
-  - [ ] 3.1 `DefaultRoleAssigner` reads `Tenant.DefaultRoleId`; the seeder no longer ensures the setting
-  - [ ] 3.2 Tests that used the setting move to the tenant's default role
-  - [ ] 3.3 `RolesApiTests` (design 7 integration list)
-  - [ ] 3.4 Check: build, all three suites
+- [x] 3. Default role on joining (design 5) and the API tests
+  - [x] 3.1 `DefaultRoleAssigner` reads `Tenant.DefaultRoleId` (no `ISettingsService`, no tenant-context switch); the seeder no longer ensures the setting. Found: `CreateRoleDto.RoleType` defaulted to `System` (enum value 0) when omitted, which the API refuses; it now defaults to `Application`, as agreed
+  - [x] 3.2 Tests that used the setting: `DefaultRoleAssignerTests` rewritten; the flow handler tests' setting stubs removed (the test double reports no default role); `DefaultAuthSettingsSeederTests` (10 definitions); `DefaultTenantAuthFlowFixture` sets `Tenant.DefaultRoleId`
+  - [x] 3.3 `RolesApiTests` (design 7 integration list). Through HTTP a tenantless caller gets `403 FORBIDDEN` from the authorization proxy before the service's `TENANT_REQUIRED` (as for the members API)
+  - [x] 3.4 Check: build, unit 2074 / 0, integration 578 / 0, sample 22/22
 
 - [ ] 4. Docs, full check, PR
   - [ ] 4.1 ARCHITECTURE.md "Roles"; the API guide (15.1, 6.1, the old setting's SQL, the reset SQL clears `DefaultRoleId`); BUILD_PHASES.md 10e

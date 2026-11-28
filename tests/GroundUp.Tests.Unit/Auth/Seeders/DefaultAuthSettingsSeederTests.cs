@@ -32,13 +32,13 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyElevenTimes()
+    public async Task SeedAsync_CallsEnsureDefinitionAsync_ExactlyTenTimes()
     {
         // Act
         await _sut.SeedAsync();
 
         // Assert
-        await _settingsService.Received(11).EnsureDefinitionAsync(
+        await _settingsService.Received(10).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }
@@ -134,17 +134,14 @@ public sealed class DefaultAuthSettingsSeederTests
     }
 
     [Fact]
-    public async Task SeedAsync_CreatesDefaultRoleSetting_AtSystemAndTenantLevels()
+    public async Task SeedAsync_NoLongerDefinesTheDefaultRoleSetting()
     {
         // Act
         await _sut.SeedAsync();
 
-        // Assert
-        await _settingsService.Received(1).EnsureDefinitionAsync(
-            Arg.Is<EnsureSettingDefinitionRequest>(r =>
-                r.Key == "auth.application.default-role"
-                && r.DefaultValue == ""
-                && r.AllowedLevelNames.SequenceEqual(new[] { "system", "tenant" })),
+        // Assert: the default role is Tenant.DefaultRoleId since GU-95
+        await _settingsService.DidNotReceive().EnsureDefinitionAsync(
+            Arg.Is<EnsureSettingDefinitionRequest>(r => r.Key == "auth.application.default-role"),
             Arg.Any<CancellationToken>());
     }
 
@@ -193,8 +190,8 @@ public sealed class DefaultAuthSettingsSeederTests
         await _sut.SeedAsync();
         await _sut.SeedAsync();
 
-        // Assert — 22 total calls (11 per run), all succeed without error
-        await _settingsService.Received(22).EnsureDefinitionAsync(
+        // Assert — 20 total calls (10 per run), all succeed without error
+        await _settingsService.Received(20).EnsureDefinitionAsync(
             Arg.Any<EnsureSettingDefinitionRequest>(),
             Arg.Any<CancellationToken>());
     }

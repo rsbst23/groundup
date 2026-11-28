@@ -150,7 +150,7 @@ public sealed class LoginFlowHandlerPropertyTests
             authCookieWriter,
             authFlowStateService,
             settingsService,
-            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(settingsService),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(),
             httpContextAccessor,
             new GroundUp.Core.TenantContext(),
             logger);
