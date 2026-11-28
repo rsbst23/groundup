@@ -26,8 +26,11 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
     /// <param name="roleId">The role identifier.</param>
     /// <param name="policyId">The policy identifier to assign.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A success result, or NotFound if the role or policy does not exist.</returns>
-    Task<OperationResult> AssignPolicyAsync(
+    /// <returns>
+    /// 201 with the new link, 200 with the existing one, or NotFound if the role or policy does not
+    /// exist in the current tenant.
+    /// </returns>
+    Task<OperationResult<RolePolicyDto>> AssignPolicyAsync(
         Guid roleId,
         Guid policyId,
         CancellationToken cancellationToken = default);
@@ -38,8 +41,8 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
     /// <param name="roleId">The role identifier.</param>
     /// <param name="policyId">The policy identifier to remove.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A success result, or NotFound if the assignment does not exist.</returns>
-    Task<OperationResult> RemovePolicyAsync(
+    /// <returns>The removed link, or NotFound if the assignment does not exist.</returns>
+    Task<OperationResult<RolePolicyDto>> RemovePolicyAsync(
         Guid roleId,
         Guid policyId,
         CancellationToken cancellationToken = default);
@@ -76,6 +79,18 @@ public interface IRoleRepository : IBaseRepository<RoleDto>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The usage, or NotFound for a role that is not in the current tenant.</returns>
     Task<OperationResult<RoleUsageDto>> GetUsageAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The permissions a role grants, one row per permission and policy, ordered by key (GU-96).
+    /// System-level read by role id: role grants are also checked in sign-in callbacks, before a
+    /// tenant is selected, so the caller checks the role's tenant itself.
+    /// </summary>
+    /// <param name="roleId">The role.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The grants (empty for a role without policies or an unknown id).</returns>
+    Task<OperationResult<List<RoleGrantDto>>> GetPermissionGrantsAsync(
         Guid roleId,
         CancellationToken cancellationToken = default);
 }

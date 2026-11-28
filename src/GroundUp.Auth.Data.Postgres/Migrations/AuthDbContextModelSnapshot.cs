@@ -838,7 +838,7 @@ namespace GroundUp.Auth.Data.Postgres.Migrations
                     b.HasOne("GroundUp.Auth.Core.Entities.Policy", "Policy")
                         .WithMany("RolePolicies")
                         .HasForeignKey("PolicyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("GroundUp.Auth.Core.Entities.Role", "Role")

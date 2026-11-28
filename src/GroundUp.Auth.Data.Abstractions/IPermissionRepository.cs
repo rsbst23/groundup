@@ -32,4 +32,21 @@ public interface IPermissionRepository : IBaseRepository<PermissionDto>
         string module,
         FilterParams filterParams,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every permission in the catalogue, ordered by module then key (GU-96). The catalogue is small
+    /// (one row per permission key), so it is not paged.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<PermissionDto>>> ListAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The permissions with these exact keys (GU-96). Keys that match no permission are left out, so
+    /// the caller can tell which keys are unknown.
+    /// </summary>
+    /// <param name="keys">The keys to look up.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<PermissionDto>>> GetByKeysAsync(
+        IReadOnlyCollection<string> keys,
+        CancellationToken cancellationToken = default);
 }

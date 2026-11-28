@@ -27,5 +27,9 @@ public class PolicyConfiguration : IEntityTypeConfiguration<Policy>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.TenantId);
+
+        // GU-96: names are unique per tenant ignoring case. The expression index
+        // IX_AuthPolicies_TenantId_LowerName on (TenantId, lower(Name)) is created in the
+        // AddPolicyNameIndexAndRestrictPolicyDelete migration (EF cannot express it).
     }
 }

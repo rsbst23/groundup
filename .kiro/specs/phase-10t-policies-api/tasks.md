@@ -17,12 +17,12 @@ Requirements: `requirements.md`. Design: `design.md`. Two PRs on branch `phase-1
 - **A policy that already holds a system-only key** (only possible with SQL): setting its permissions without that key removes it; keeping it is refused like any system-only key. Documented, not special-cased.
 
 ## Tasks
-- [ ] 1. Data, DTOs, repositories (design 1, 2, 3)
-  - [ ] 1.1 `PermissionKeysAuth.SystemOnly`; `AuthErrorCodes` (`POLICY_NAME_TAKEN`, `POLICY_IN_USE`, `PERMISSION_NOT_HELD`); the new DTOs; `CreatePolicyDto.PermissionKeys`; validators (`CreatePolicyDto` keys, `UpdatePolicyDto`, `SetPolicyPermissionsDto`)
-  - [ ] 1.2 Migration `AddPolicyNameIndexAndRestrictPolicyDelete` (duplicate check, expression index, `RolePolicy.PolicyId` to `RESTRICT`; `Down`); `RolePolicyConfiguration`
-  - [ ] 1.3 `IPermissionRepository.ListAllAsync` / `GetByKeysAsync`; `IPolicyRepository.ListAsync` / `GetDetailAsync` / `ReplacePermissionsAsync` and the `DeleteAsync` override; `IRoleRepository.AssignPolicyAsync` / `RemovePolicyAsync` return the link, `GetPermissionGrantsAsync`
-  - [ ] 1.4 Tests: `PolicyIndexMigrationTests`; repository tests (list with keys and role counts, detail lists only same-tenant roles, replace adds and removes and reports both, another tenant's policy 404, FK refusal → 409, permission grants for a role, attach returns 201 then 200 with the same link); validator unit tests
-  - [ ] 1.5 Check: build, all three suites
+- [x] 1. Data, DTOs, repositories (design 1, 2, 3)
+  - [x] 1.1 `PermissionKeysAuth.SystemOnly`; `AuthErrorCodes` (`POLICY_NAME_TAKEN`, `POLICY_IN_USE`, `PERMISSION_NOT_HELD`); the new DTOs; `CreatePolicyDto.PermissionKeys`; validators (`CreatePolicyDto` keys, `UpdatePolicyDto`, `SetPolicyPermissionsDto`)
+  - [x] 1.2 Migration `AddPolicyNameIndexAndRestrictPolicyDelete` (duplicate check, expression index, `RolePolicy.PolicyId` to `RESTRICT`; `Down`); `RolePolicyConfiguration`
+  - [x] 1.3 `IPermissionRepository.ListAllAsync` / `GetByKeysAsync`; `IPolicyRepository.ListAsync` / `GetDetailAsync` / `ReplacePermissionsAsync` and the `DeleteAsync` override; `IRoleRepository.AssignPolicyAsync` / `RemovePolicyAsync` return the link, `GetPermissionGrantsAsync`
+  - [x] 1.4 Tests: `PolicyIndexMigrationTests`; repository tests (list with keys and role counts, detail lists only same-tenant roles, replace adds and removes and reports both, another tenant's policy 404, FK refusal → 409, permission grants for a role, attach returns 201 then 200 with the same link); validator unit tests
+  - [x] 1.5 Check: build, unit 2085 / 0, integration 600 / 0, sample 22/22. Found: with the link tracked in the same context, EF refuses a restricted delete itself (InvalidOperationException) before the database does; a request's context does not track it, so the repository catches only the database's refusal and the test clears the tracker
 - [ ] 2. Cache versioning and the escalation guard (design 4, 5, 8 summary)
   - [ ] 2.1 `PermissionCacheVersions` (singleton), `CachedPermissions`; `PermissionService` stores and checks the version (read before loading); `GetPermissionSummaryAsync` on `IPermissionService`
   - [ ] 2.2 `PermissionHoldGuard`; `RoleGrantPolicy` checks the role's keys on Assign for roles of kind Other
