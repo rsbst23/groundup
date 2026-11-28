@@ -6,7 +6,11 @@ export const PermissionKeys = {
   MembersRead: 'auth.members.read',
   MembersManage: 'auth.members.manage',
   RolesRead: 'auth.roles.read',
+  RolesWrite: 'auth.roles.write',
+  RolesDelete: 'auth.roles.delete',
   RolesAssign: 'auth.roles.assign',
+  PermissionsRead: 'auth.permissions.read',
+  PermissionsWrite: 'auth.permissions.write',
   InvitationsSend: 'auth.invitations.send',
   JoinLinksManage: 'auth.joinlinks.manage',
 } as const;

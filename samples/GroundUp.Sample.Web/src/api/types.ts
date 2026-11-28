@@ -90,6 +90,81 @@ export interface TenantRoleDto {
   tenantId: string;
   isSystem: boolean;
   isDefault: boolean;
+  /** How many policies are attached (GU-97); 0 for TenantAdmin, which needs none. */
+  policyCount: number;
+}
+
+/** A role–policy link (attach). */
+export interface RolePolicyLink {
+  id: string;
+  roleId: string;
+  policyId: string;
+}
+
+/** POST /api/roles. `roleType` is a RoleType (Application by default; System is refused). */
+export interface CreateRoleRequest {
+  name: string;
+  description?: string | null;
+  roleType?: number;
+}
+
+/** PUT /api/roles/{id}. TenantAdmin's name cannot change (its description can). */
+export interface UpdateRoleRequest {
+  name: string;
+  description?: string | null;
+}
+
+/** A policy as the role's policy list returns it. */
+export interface PolicyDto {
+  id: string;
+  name: string;
+  description: string | null;
+  tenantId: string;
+}
+
+/** A policy in the policies list: its permission keys and how many roles use it. */
+export interface TenantPolicyDto {
+  id: string;
+  name: string;
+  description: string | null;
+  permissionKeys: string[];
+  roleCount: number;
+}
+
+/** An id and a name, for links (the roles using a policy, the policies granting a permission). */
+export interface EntityRefDto {
+  id: string;
+  name: string;
+}
+
+/** A permission of the catalogue. `key` is what the API checks; `name` is for people. */
+export interface PermissionDto {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  module: string;
+}
+
+/** GET /api/permissions: the catalogue by module. */
+export interface PermissionModuleDto {
+  module: string;
+  permissions: PermissionDto[];
+}
+
+/** A permission a role grants and the policies granting it. */
+export interface RolePermissionDto {
+  key: string;
+  name: string;
+  module: string;
+  grantedBy: EntityRefDto[];
+}
+
+/** GET /api/roles/{id}/permissions. `allPermissions` is true for TenantAdmin (no list then). */
+export interface RolePermissionsDto {
+  roleId: string;
+  allPermissions: boolean;
+  permissions: RolePermissionDto[];
 }
 
 /** An invitation (GU-68). The token is never returned; the link is only in the email. `status` is an InvitationStatus. */
