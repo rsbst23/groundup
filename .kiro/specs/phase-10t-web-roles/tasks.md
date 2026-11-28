@@ -26,19 +26,19 @@
 
 ## 97b: Roles pages (new branch after 97a merges)
 
-- [ ] 2. Roles list page
-  - [ ] 2.1 Types, `roleTypeLabel`, `api/roles.ts` (page, get, create, update, delete, default get/set/clear, role policies and permissions), `listAllPolicies` in `api/policies.ts`
-  - [ ] 2.2 `rolesQuery.ts` (keys, options, `useRoleActions`)
-  - [ ] 2.3 Routes `roles.index.tsx` and `roles.$roleId.tsx` (placeholder for the detail), the old placeholder removed, `NavMenu`
-  - [ ] 2.4 `RolesPage` with `ListTable`, `DefaultRoleBox`, `CreateRoleDialog`, delete
-  - [ ] 2.5 Node tests (API functions, labels, route schemas)
-  - [ ] 2.6 Build, lint, test, commit, stop for review
+- [x] 2. Roles list page
+  - [x] 2.1 Types, `roleTypeLabel`, `api/roles.ts` (page, get, create, update, delete, default get/set/clear, role policies and permissions), `listAllPolicies` in `api/policies.ts`
+  - [x] 2.2 `rolesQuery.ts` (keys, options, `useRoleActions`)
+  - [x] 2.3 Routes `roles.index.tsx` and `roles.$roleId.tsx` (placeholder for the detail), the old placeholder removed, `NavMenu`
+  - [x] 2.4 `RolesPage` with `ListTable`, `DefaultRoleBox`, `CreateRoleDialog`, delete
+  - [x] 2.5 Node tests (API functions, labels, route schemas)
+  - [x] 2.6 Build, lint, test, commit, stop for review
   - _Requirements: 2, 5_
 
-- [ ] 3. Role detail page
-  - [ ] 3.1 `RoleDetailPage`: header, `EditRoleDialog`, delete, policies (`AttachPolicyDialog`, detach), effective permissions, TenantAdmin view, not found
-  - [ ] 3.2 `attachablePolicies` helper and its tests
-  - [ ] 3.3 Build, lint, test, commit, stop for review; PR 97b info
+- [x] 3. Role detail page
+  - [x] 3.1 `RoleDetailPage`: header, `EditRoleDialog`, delete, policies (`AttachPolicyDialog`, detach), effective permissions, TenantAdmin view, not found
+  - [x] 3.2 `attachablePolicies` helper and its tests
+  - [x] 3.3 Build, lint, test, commit, stop for review; PR 97b info
   - _Requirements: 3, 5_
 
 ## 97c: Policies page (new branch after 97b merges)

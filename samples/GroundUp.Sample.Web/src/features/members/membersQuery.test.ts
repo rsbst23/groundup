@@ -4,7 +4,7 @@ import type { TenantMemberDto, TenantRoleDto } from '../../api/types';
 import { memberName, roleChipLabel, rolesToAdd } from './membersQuery';
 
 const role = (id: string, name: string): TenantRoleDto => ({
-  id, name, description: null, roleType: 1, tenantId: 't1', isSystem: false, isDefault: false,
+  id, name, description: null, roleType: 1, tenantId: 't1', isSystem: false, isDefault: false, policyCount: 0,
 });
 
 const member = (overrides: Partial<TenantMemberDto> = {}): TenantMemberDto => ({

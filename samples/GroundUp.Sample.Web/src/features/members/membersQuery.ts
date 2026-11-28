@@ -1,3 +1,4 @@
+import { withoutPageItems } from '../list/cachedPages';
 import type { ListState } from '../list/listSearch';
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RoleAssignmentSource, roleSourceLabel } from '../../api/labels';
@@ -69,7 +70,13 @@ export function useMemberActions(currentUserId: string | null) {
   return {
     removeMember: useMutation({
       mutationFn: (member: TenantMemberDto) => removeMember(member.userId),
-      onSuccess: (_, member) => afterChange(member.userId, true),
+      onSuccess: (_, member) => {
+        // Take the row out of every cached page at once, so it is gone before the reload
+        queryClient.setQueriesData({ queryKey: membersKey }, (cached: unknown) =>
+          withoutPageItems<TenantMemberDto>(cached, (m) => m.userId === member.userId),
+        );
+        return afterChange(member.userId, true);
+      },
     }),
     addRole: useMutation({
       mutationFn: ({ member, role }: { member: TenantMemberDto; role: TenantRoleDto }) => addMemberRole(member.userId, role.id),

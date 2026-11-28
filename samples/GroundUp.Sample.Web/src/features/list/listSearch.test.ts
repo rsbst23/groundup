@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Route as InvitationsRoute } from '../../routes/invitations';
 import { Route as JoinLinksRoute } from '../../routes/join-links';
 import { Route as MembersRoute } from '../../routes/members';
+import { Route as RoleRoute } from '../../routes/roles.$roleId';
+import { Route as RolesRoute } from '../../routes/roles.index';
 import { lastPageWithRows, listSearchSchema, nextSort, pageBackTarget, parseSort, toListSearch, toListState } from './listSearch';
 
 describe('listSearchSchema', () => {
@@ -38,7 +40,7 @@ describe('listSearchSchema', () => {
 
 describe('list routes', () => {
   it('validate their search params with the list schema', () => {
-    for (const route of [MembersRoute, InvitationsRoute, JoinLinksRoute]) {
+    for (const route of [MembersRoute, InvitationsRoute, JoinLinksRoute, RolesRoute, RoleRoute]) {
       expect(route.options.validateSearch).toBe(listSearchSchema);
     }
   });
