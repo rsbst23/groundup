@@ -734,7 +734,8 @@ The sample app has no email sender and no accept page. In Development the defaul
 
 ### 15.1 Set up (once)
 1. **Add a Member role to My Test Org.** New organizations only get TenantAdmin. As Alice in My Test Org: `POST /api/roles` with `{ "name": "Member", "description": "Regular member" }`. **Expected:** 201 with the role (`roleType` 1, Application). Note its `id`. If you created it in Part 6.1, `GET /api/roles` lists it; a second create returns `409 ROLE_NAME_TAKEN` (names ignore case).
-2. **Set the accept page URL** (System level, so as Sam; Part 11 shows how to get the System level id): `PUT /api/settings/auth.invitations.accept-url` with `{ "value": "http://localhost:5000/invite/{token}", "levelId": "<System id>" }` (use your port). Until it is set, `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED`.
+2. **Let Members see the member list (GU-96).** A new role grants nothing until a policy is attached. As Alice: `GET /api/permissions` lists the keys by module (`auth.roles.assign-system`, `auth.tenants.write` and `auth.tenants.delete` are not listed). `POST /api/policies` with `{ "name": "Member basics", "permissionKeys": ["auth.members.read"] }` → 201, note its `id`. Then `POST /api/roles/<Member id>/policies/<policy id>` → 201. `GET /api/roles/<Member id>/permissions` shows `auth.members.read` granted by `Member basics`.
+3. **Set the accept page URL** (System level, so as Sam; Part 11 shows how to get the System level id): `PUT /api/settings/auth.invitations.accept-url` with `{ "value": "http://localhost:5000/invite/{token}", "levelId": "<System id>" }` (use your port). Until it is set, `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED`.
 
 ### 15.2 Alice sends the invitation
 1. Log out fully (Recipe 2), then log in as Alice (Recipe 1) and make sure you are in My Test Org (`POST /auth/set-tenant` if you get the picker).
@@ -747,7 +748,8 @@ The sample app has no email sender and no accept page. In Development the defaul
 2. Log out fully (Recipe 2). Alice's Keycloak session must end, or Keycloak refuses to register a second person.
 3. `POST /auth/invitations/accept` with `{ "token": "<token>" }`. **Expected:** the `redirectUrl` contains `prompt=create` and `login_hint=invitee%40example.com`, because Carol has no Keycloak account.
 4. Open it. **Expected:** the Keycloak **registration** form, with the email filled in. Register with password `Test123!`.
-5. **Expected:** the callback succeeds. `GET /auth/me` shows Carol in My Test Org with the Member role.
+5. **Expected:** the callback succeeds. `GET /auth/me` shows Carol in My Test Org with the Member role, `"allPermissions": false` and `"permissions": ["auth.members.read"]`.
+6. As Carol, `GET /api/members` → 200 (the Member role's policy grants it). `DELETE /api/members/<someone>` → 403: Carol does not hold `auth.members.manage`.
 
 ### 15.4 The link only works once
 1. `POST /auth/invitations/lookup` with the same token. **Expected:** `usable: false`, `reason: "accepted"`.
@@ -759,6 +761,16 @@ The sample app has no email sender and no accept page. In Development the defaul
 3. **Expected:** `GET /api/members` no longer lists `nobody@example.com`; `POST /auth/invitations/lookup` with its token returns `reason: "revoked"`.
 
 **Resend** works the same way (`POST /api/invitations/<id>/resend`): the console shows a new link, and the old token's lookup returns `not_found`.
+
+### 15.6 Permission changes apply without signing in again (GU-96)
+Needs two sessions: Alice in your normal browser, Carol in a private window (sign in as Carol there with Recipe 1).
+1. As Carol: `GET /api/members` → 200.
+2. As Alice: `PUT /api/policies/<policy id>/permissions` with `{ "permissionKeys": [] }` → 200.
+3. As Carol, without signing in again: `GET /api/members` → **403**, and `GET /auth/me` shows `"permissions": []`.
+4. As Alice: put `auth.members.read` back (`{ "permissionKeys": ["auth.members.read"] }`). Carol's next `GET /api/members` → 200.
+5. **Escalation guard:** Alice is TenantAdmin, so she can add any key. A member who holds `auth.permissions.write` but not `auth.members.manage` gets `403 PERMISSION_NOT_HELD` (with `auth.members.manage` in `errors`) when adding it to a policy. The automated tests cover this; to try it by hand, give Carol a role with a policy holding `auth.permissions.read` and `auth.permissions.write`.
+
+This holds on one app instance. With several instances, others see the change when their cached permissions expire (`PermissionCacheTtlMinutes`, 15 by default).
 
 ---
 

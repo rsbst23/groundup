@@ -41,6 +41,6 @@ Requirements: `requirements.md`. Design: `design.md`. Two PRs on branch `phase-1
   - [x] 4.3 `PoliciesApiTests`, `RolePoliciesApiTests` (design 9 integration list, including the cache and guard cases and `/auth/me`), sharing `AdminApiTestBase`. The cache test fails with the version bump removed (checked)
   - [x] 4.4 Check: build, unit 2177 / 0, integration 622 / 0, sample 22/22
 - [ ] 5. Docs, full check, PR 2
-  - [ ] 5.1 ARCHITECTURE.md "Policies and permissions"; the API guide (15.1 policy, the no-sign-in check); web TESTING.md note if `/auth/me` output is shown there
-  - [ ] 5.2 Full check (and the web checks); push; PR 2 info
+  - [x] 5.1 ARCHITECTURE.md "Policies and Permissions (GU-96)" and the role rule row; the API guide (15.1 step 2 policy, 15.3 permissions in `/auth/me`, new 15.6 no-sign-in check); web TESTING.md does not show `/auth/me` fields, unchanged
+  - [x] 5.2 Full check (unit 2177 / 0, integration 622 / 0, sample 22/22; web build, lint, 125 / 0); push; PR 2 info
   - [ ] 5.3 Jira: GU-96 comment; Done after merge
