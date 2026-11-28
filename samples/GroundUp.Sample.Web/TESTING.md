@@ -251,8 +251,8 @@ Buttons you do not have the permission for are disabled; hover to see which perm
 
 ### 5.1 Set up (once)
 1. **Restart the app** (Shift+F5, F5) so the sample API seeds the accept URL: in Development it sets `auth.invitations.accept-url` to `http://localhost:5173/invite/{token}` when it is empty. If the web app runs on another port, change the setting through Swagger (the API guide's 15.1, step 3).
-2. **A Member role.** The roles pages come with GU-97; until then use Swagger as Alice in My Test Org: `POST /api/roles` with `{ "name": "Member" }`. Skip it if Part 6.1 or 15.1 of the API guide already created it.
-3. **Optional: let Members see the member list** (for 5.10): `POST /api/policies` with `{ "name": "Member basics", "permissionKeys": ["auth.members.read"] }`, then `POST /api/roles/<Member id>/policies/<policy id>`.
+2. **A Member role**: Part 6.1, step 2 (Roles › New role). Skip it if it exists already.
+3. **Optional: let Members see the member list** (for 5.10): Part 6.2 (the Member basics policy with `auth.members.read`, attached to Member).
 
 ### 5.2 The members list and the last-admin guard (Alice)
 1. Open **Members**. **Expected:** Alice, Active, with the chip **TenantAdmin · Provisioning** (she got it by creating the organization).
@@ -322,12 +322,49 @@ After 5.9 there are three members, two invitations and three join links.
 
 ---
 
+## Part 6: Roles and Policies (GU-97)
+
+The roles and policies pages replace the API guide's 15.1 steps 1 and 2. Start as Alice, TenantAdmin of My Test Org. The 403 → 200 check (6.5) also needs Carol, a member with the Member role (Part 5.4).
+
+### 6.1 Roles and the default role (Alice)
+1. Open **Roles**. **Expected:** TenantAdmin with **built-in**, type **Built-in**, policies **All**, no **Delete**. The box above the table says "No default role. New members who join by signing in get no role." (unless one was set earlier).
+2. **New role**: name `Member`, description `Regular member`, type Application. **Expected:** the Member role's page opens; it has no policies and "None." under Effective permissions. If Member exists already, the dialog shows **409 ROLE_NAME_TAKEN** (try `member` too: names ignore case).
+3. **‹ Roles**, then **Set** (or **Change**) in the default role box and pick Member. **Expected:** "Default role: Member…", and Member has the **default** chip.
+4. Open **TenantAdmin**. **Expected:** "TenantAdmin has all permissions in this organization", no policy section, the button reads **Edit description**, and in the dialog the name cannot be changed.
+
+### 6.2 A policy for Members (Alice)
+1. Open **Policies**, **New policy**: name `Member basics`, tick **auth** › the members read permission (`auth.members.read`). **Expected:** the module heading's box shows a dash (some selected); **Create** adds the row with Permissions 1 and Roles 0.
+2. Open **Roles** › **Member** › **Attach policy**, pick Member basics (the dialog shows what it grants), **Attach**. **Expected:** the policy is listed, and Effective permissions shows the members read permission "Granted by Member basics". **Roles** shows Policies 1 for Member; **Policies** shows Roles 1 for Member basics.
+3. Click **Member basics** on the Policies page. **Expected:** the dialog lists "Used by: Member" (a link to the role).
+
+### 6.3 Refusals (Alice)
+1. **Roles**: **Delete** on Member. **Expected:** **409 ROLE_IN_USE** with the reasons (it is the default role; members hold it if Part 5 ran). Clear the default role first to see that reason go.
+2. **Policies**: **Delete** on Member basics. **Expected:** **409 POLICY_IN_USE** naming Member.
+3. **New role** named `TenantAdmin`. **Expected:** **409 ROLE_NAME_TAKEN**.
+4. A throwaway role: **New role** `Temp`, then **Delete** it from its page. **Expected:** the roles list opens and Temp is gone at once.
+
+### 6.4 Sorting and search
+1. **Roles**: click **Policies** twice (most policies first), **Type**, **Name**. **Expected:** the order changes and the address bar has `sort=…`. Search `regular`: only Member (its description).
+2. **Policies**: sort by **Permissions** and **Roles**; search `basics`.
+3. On a role's page, **‹ Roles** returns to the same sort and search.
+
+### 6.5 A permission change applies without signing in again (Alice and Carol)
+Use two browsers: Alice in your normal one, Carol in a private window (sign in as Carol there).
+1. As Carol, open **Members**. **Expected:** the list (Member basics grants `auth.members.read`).
+2. As Alice, **Policies** › **Member basics**: untick the members read permission, **Save**.
+3. As Carol, reload **Members** (no sign-in). **Expected:** "Permission needed. You need the permission auth.members.read to see this page." (the session reloaded her permissions), and the Requests panel shows no call to `/api/members`.
+4. As Alice, tick it again and **Save**. As Carol, reload **Members**. **Expected:** the list again.
+5. As Carol, open **Roles**. **Expected:** "You need the permission auth.roles.read…" (Member basics does not grant it).
+
+**Record the result** in `.kiro/specs/phase-10t-web-roles/tasks.md`, task 5.
+
+---
+
 ## Parts to Come
 
 | Part | Story | Page |
 |---|---|---|
 | 4 | GU-88 | Setup wizard (placeholder above) |
-| 6 | GU-97 | Roles, policies and permissions |
 | 7 | GU-91 | Settings (then the API guide's 14.4 moves here) |
 | 8 | GU-92 | Sample data |
 | 9 | GU-93 | Diagnostics |
