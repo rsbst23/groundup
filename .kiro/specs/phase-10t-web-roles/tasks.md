@@ -43,16 +43,16 @@
 
 ## 97c: Policies page (new branch after 97b merges)
 
-- [ ] 4. Policies page
-  - [ ] 4.1 `api/policies.ts` (page, get, create, update, set permissions, delete, catalogue), `policiesQuery.ts`
-  - [ ] 4.2 Route `policies.tsx`, `NavMenu` entry, `PoliciesPage` with `ListTable` and delete
-  - [ ] 4.3 `PolicyDialog` with the catalogue by module; `permissionChoices.ts` (`toggleKey`, `moduleState`, `changedKeys`)
-  - [ ] 4.4 Node tests (API functions, helpers, route schema)
-  - [ ] 4.5 Build, lint, test, commit, stop for review
+- [x] 4. Policies page
+  - [x] 4.1 `api/policies.ts` (page, get, create, update, set permissions, delete, catalogue), `policiesQuery.ts`
+  - [x] 4.2 Route `policies.tsx`, `NavMenu` entry, `PoliciesPage` with `ListTable` and delete
+  - [x] 4.3 `PolicyDialog` with the catalogue by module; `permissionChoices.ts` (`toggleKey`, `moduleState`, `changedKeys`)
+  - [x] 4.4 Node tests (API functions, helpers, route schema)
+  - [x] 4.5 Build, lint, test, commit, stop for review
   - _Requirements: 4, 5_
 
-- [ ] 5. TESTING.md and the API guide
-  - [ ] 5.1 TESTING.md Part 6 (roles and policies, TenantAdmin limits, refusals, the 403 → 200 check, sorting and search); 5.1 uses Part 6; the "Parts to Come" table
-  - [ ] 5.2 API guide 15.1 points to Part 6
-  - [ ] 5.3 Commit, stop for review; PR 97c info
+- [x] 5. TESTING.md and the API guide
+  - [x] 5.1 TESTING.md Part 6 (roles and policies, TenantAdmin limits, refusals, the 403 → 200 check, sorting and search); 5.1 uses Part 6; the "Parts to Come" table
+  - [x] 5.2 API guide 15.1 points to Part 6
+  - [x] 5.3 Commit, stop for review; PR 97c info
   - _Requirements: 6.4_

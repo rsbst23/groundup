@@ -18,6 +18,7 @@ const areas = [
   { to: '/invitations', label: 'Invitations' },
   { to: '/join-links', label: 'Join links' },
   { to: '/roles', label: 'Roles' },
+  { to: '/policies', label: 'Policies' },
   { to: '/settings', label: 'Settings' },
   { to: '/data', label: 'Data' },
   { to: '/diagnostics', label: 'Diagnostics' },
