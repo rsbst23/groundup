@@ -95,7 +95,7 @@ Internal, scoped:
 Task<OperationResult> CheckHoldsAsync(Guid callerUserId, IEnumerable<string> keys, CancellationToken ct);
 ```
 - Empty `keys` → success.
-- Otherwise each key goes through `IPermissionService.HasPermissionAsync(caller, key)`. That already gives SuperAdmin and the current tenant's TenantAdmin every key (Requirement 4's exemption), and resolves everyone else from their cached set in the **current tenant**.
+- Otherwise one `IPermissionService.GetPermissionSummaryAsync(caller)` call (section 8): `AllPermissions` (SuperAdmin, or TenantAdmin of the current tenant: Requirement 4's exemption) passes; otherwise each key is looked up in the caller's set for the **current tenant**.
 - Missing keys → `403 PERMISSION_NOT_HELD`, message "You can only grant permissions you hold yourself.", `errors` = the missing keys, sorted.
 
 Uses:
