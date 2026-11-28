@@ -33,14 +33,16 @@ public sealed class JoinLinksController : BaseController
         => ToActionResult(await _joinLinkService.CreateAsync(request, cancellationToken));
 
     /// <summary>
-    /// Lists the tenant's join links, newest first. Pagination metadata is also returned in the
+    /// Lists the tenant's join links, newest first unless sorted. Accepts <c>FilterParams</c>:
+    /// <c>sortBy</c> (roleName, status, useCount, expiresAt, createdAt), <c>filters[status]</c>,
+    /// <c>filters[roleId]</c>, <c>searchTerm</c> (role name); other fields are ignored. Pagination metadata is also returned in the
     /// X-Total-Count, X-Page-Number, X-Page-Size and X-Total-Pages headers.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OperationResult<PaginatedData<JoinLinkDto>>>> List(
-        [FromQuery] PaginationParams paging, CancellationToken cancellationToken = default)
+        [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
     {
-        var result = await _joinLinkService.ListAsync(paging, cancellationToken);
+        var result = await _joinLinkService.ListAsync(filterParams, cancellationToken);
         if (result.Success && result.Data is not null)
         {
             AddPaginationHeaders(result.Data);

@@ -17,10 +17,17 @@ public static class AuthorizationServiceCollectionExtensions
     /// <typeparam name="TImplementation">The concrete service implementation type.</typeparam>
     /// <param name="services">The service collection.</param>
     /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// An attributed method of <typeparamref name="TInterface"/> does not return <c>Task&lt;OperationResult&gt;</c>
+    /// or <c>Task&lt;OperationResult&lt;T&gt;&gt;</c>.
+    /// </exception>
     public static IServiceCollection AddAuthorized<TInterface, TImplementation>(this IServiceCollection services)
         where TInterface : class
         where TImplementation : class, TInterface
     {
+        // Fail at registration, not on the first call, when an attributed method cannot report a refusal
+        AuthorizationInterceptor<TInterface>.EnsureAttributedMethodsReturnOperationResult();
+
         services.AddScoped<TImplementation>();
         services.AddScoped<TInterface>(sp =>
         {

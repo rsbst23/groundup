@@ -86,12 +86,12 @@ internal sealed class JoinLinkService : IJoinLinkService
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(PaginationParams paging, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(FilterParams filterParams, CancellationToken cancellationToken = default)
     {
         var tenantId = _tenantContext.TenantId;
         return tenantId == Guid.Empty
             ? OperationResult<PaginatedData<JoinLinkDto>>.Fail("A tenant must be selected to list join links.", 403, ErrorCodes.TenantRequired)
-            : await _joinLinkRepository.ListAsync(tenantId, paging, cancellationToken);
+            : await _joinLinkRepository.ListAsync(tenantId, filterParams, cancellationToken);
     }
 
     /// <inheritdoc />

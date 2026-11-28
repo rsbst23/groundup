@@ -26,9 +26,9 @@ public interface IInvitationService
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
     Task<OperationResult<InvitationDto>> CreateAsync(CreateInvitationDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>Lists the tenant's invitations, newest first.</summary>
+    /// <summary>Lists the tenant's invitations, newest first unless sorted. Sort: <c>email</c>, <c>roleName</c>, <c>status</c>, <c>expiresAt</c>, <c>createdAt</c>; filter: <c>status</c> (as shown, so Expired finds Pending invitations past their expiry), <c>roleId</c>; search: email. Other fields are ignored.</summary>
     [RequiresPermission(PermissionKeysAuth.InvitationsSend)]
-    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(PaginationParams paging, CancellationToken cancellationToken = default);
+    Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(FilterParams filterParams, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a pending (or expired) invitation again with a new token and a fresh expiry; the old

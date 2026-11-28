@@ -24,8 +24,8 @@ public interface IJoinLinkRepository
     /// <summary>Finds a join link by the hash of its token, in any tenant.</summary>
     Task<OperationResult<JoinLinkDto>> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
 
-    /// <summary>Lists the tenant's join links, newest first.</summary>
-    Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(Guid tenantId, PaginationParams paging, CancellationToken cancellationToken = default);
+    /// <summary>Lists the tenant's join links, newest first unless sorted. Sort: <c>roleName</c>, <c>status</c>, <c>useCount</c>, <c>expiresAt</c>, <c>createdAt</c>; filter: <c>status</c> (as shown: Expired, UsedUp), <c>roleId</c>; search: role name. Other fields are ignored.</summary>
+    Task<OperationResult<PaginatedData<JoinLinkDto>>> ListAsync(Guid tenantId, FilterParams filterParams, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the token of a stored-Active link and records who regenerated it; the old link stops working.

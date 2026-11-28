@@ -35,14 +35,16 @@ public sealed class InvitationsController : BaseController
         => ToActionResult(await _invitationService.CreateAsync(request, cancellationToken));
 
     /// <summary>
-    /// Lists the tenant's invitations, newest first. Pagination metadata is also returned in the
+    /// Lists the tenant's invitations, newest first unless sorted. Accepts <c>FilterParams</c>:
+    /// <c>sortBy</c> (email, roleName, status, expiresAt, createdAt), <c>filters[status]</c>,
+    /// <c>filters[roleId]</c>, <c>searchTerm</c> (email); other fields are ignored. Pagination metadata is also returned in the
     /// X-Total-Count, X-Page-Number, X-Page-Size and X-Total-Pages headers.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OperationResult<PaginatedData<InvitationDto>>>> List(
-        [FromQuery] PaginationParams paging, CancellationToken cancellationToken = default)
+        [FromQuery] FilterParams filterParams, CancellationToken cancellationToken = default)
     {
-        var result = await _invitationService.ListAsync(paging, cancellationToken);
+        var result = await _invitationService.ListAsync(filterParams, cancellationToken);
         if (result.Success && result.Data is not null)
         {
             AddPaginationHeaders(result.Data);

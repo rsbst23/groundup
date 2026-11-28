@@ -31,15 +31,17 @@ public sealed class MembersController : BaseController
 
     /// <summary>
     /// Lists the tenant's Active and Pending members with their roles. Needs <c>auth.members.read</c>.
+    /// Accepts <c>FilterParams</c>: <c>sortBy</c> (email, displayName, status), <c>filters[status]</c>,
+    /// <c>searchTerm</c> (email, display name); other fields are ignored.
     /// Pagination metadata is also returned in the X-Total-Count, X-Page-Number, X-Page-Size and
     /// X-Total-Pages headers.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OperationResult<PaginatedData<TenantMemberDto>>>> List(
-        [FromQuery] PaginationParams paging,
+        [FromQuery] FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        var result = await _memberManagementService.ListMembersAsync(paging, cancellationToken);
+        var result = await _memberManagementService.ListMembersAsync(filterParams, cancellationToken);
         if (result.Success && result.Data is not null)
         {
             AddPaginationHeaders(result.Data);

@@ -1,7 +1,7 @@
 using System.Reflection;
+using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Attributes;
-using GroundUp.Core.Exceptions;
 using GroundUp.Core.Results;
 
 namespace GroundUp.Auth.Services.Authorization;
@@ -9,9 +9,15 @@ namespace GroundUp.Auth.Services.Authorization;
 /// <summary>
 /// DispatchProxy-based interceptor that enforces <see cref="RequiresPermissionAttribute"/> and
 /// <see cref="RequiresRoleAttribute"/> attributes on service interface methods.
-/// For methods returning <c>Task&lt;OperationResult&lt;T&gt;&gt;</c> or <c>Task&lt;OperationResult&gt;</c>,
-/// returns <c>OperationResult.Forbidden()</c> when authorization fails.
-/// For all other return types, throws <see cref="ForbiddenAccessException"/> when authorization fails.
+/// <para>
+/// Attributed methods must return <c>Task&lt;OperationResult&gt;</c> or <c>Task&lt;OperationResult&lt;T&gt;&gt;</c>
+/// (checked when the proxy is registered or created). A refusal is a 403 result:
+/// <list type="bullet">
+/// <item><c>PERMISSION_REQUIRED</c> with the permission keys the caller lacks in <c>errors</c>.</item>
+/// <item><c>ROLE_REQUIRED</c> with the listed roles in <c>errors</c> (any one is enough).</item>
+/// <item><c>FORBIDDEN</c> for an unauthenticated caller.</item>
+/// </list>
+/// </para>
 /// </summary>
 /// <typeparam name="TInterface">The service interface type being proxied.</typeparam>
 public class AuthorizationInterceptor<TInterface> : DispatchProxy
@@ -20,6 +26,9 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
     private TInterface _target = null!;
     private IPermissionService _permissionService = null!;
     private ICurrentUser _currentUser = null!;
+
+    /// <summary>Why a call was refused: the error code, the message and the missing keys or roles.</summary>
+    private sealed record Refusal(string Message, string ErrorCode, List<string>? Errors);
 
     /// <inheritdoc />
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
@@ -40,44 +49,12 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
             return targetMethod.Invoke(_target, args);
         }
 
-        // Check if the return type is an OperationResult (Task<OperationResult<T>> or Task<OperationResult>)
-        if (TryGetOperationResultInfo(targetMethod.ReturnType, out var isGenericResult, out var innerType))
+        if (!TryGetOperationResultInfo(targetMethod.ReturnType, out var isGenericResult, out var innerType))
         {
-            // OperationResult return type — return Forbidden() on auth failure
-            return ExecuteWithAuthorizationAsync(targetMethod, args, requiresPermission, requiresRole, isGenericResult, innerType);
+            // Cannot happen: Create and AddAuthorized refuse such interfaces
+            throw new InvalidOperationException(ReturnTypeMessage(targetMethod));
         }
 
-        // Non-OperationResult return type — throw ForbiddenAccessException on auth failure
-        return ExecuteWithExceptionAuthorizationAsync(targetMethod, args, requiresPermission, requiresRole);
-    }
-
-    /// <summary>
-    /// Creates a proxy wrapping the target implementation with authorization enforcement.
-    /// </summary>
-    /// <param name="target">The real service implementation.</param>
-    /// <param name="permissionService">The permission service for authorization checks.</param>
-    /// <param name="currentUser">The current user context.</param>
-    /// <returns>A proxy instance implementing <typeparamref name="TInterface"/>.</returns>
-    public static TInterface Create(TInterface target, IPermissionService permissionService, ICurrentUser currentUser)
-    {
-        var proxy = Create<TInterface, AuthorizationInterceptor<TInterface>>();
-        var interceptor = (AuthorizationInterceptor<TInterface>)(object)proxy;
-        interceptor._target = target;
-        interceptor._permissionService = permissionService;
-        interceptor._currentUser = currentUser;
-        return proxy;
-    }
-
-    private object ExecuteWithAuthorizationAsync(
-        MethodInfo targetMethod,
-        object?[]? args,
-        RequiresPermissionAttribute? requiresPermission,
-        RequiresRoleAttribute? requiresRole,
-        bool isGenericResult,
-        Type? innerType)
-    {
-        // We need to return the correctly typed Task<OperationResult<T>> or Task<OperationResult>
-        // Use a generic helper method via reflection to get the correct return type
         if (isGenericResult && innerType is not null)
         {
             var helperMethod = typeof(AuthorizationInterceptor<TInterface>)
@@ -90,48 +67,69 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
         return ExecuteNonGenericAsync(targetMethod, args, requiresPermission, requiresRole);
     }
 
+    /// <summary>
+    /// Creates a proxy wrapping the target implementation with authorization enforcement.
+    /// </summary>
+    /// <param name="target">The real service implementation.</param>
+    /// <param name="permissionService">The permission service for authorization checks.</param>
+    /// <param name="currentUser">The current user context.</param>
+    /// <returns>A proxy instance implementing <typeparamref name="TInterface"/>.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// An attributed method of <typeparamref name="TInterface"/> does not return an <c>OperationResult</c>.
+    /// </exception>
+    public static TInterface Create(TInterface target, IPermissionService permissionService, ICurrentUser currentUser)
+    {
+        EnsureAttributedMethodsReturnOperationResult();
+
+        var proxy = Create<TInterface, AuthorizationInterceptor<TInterface>>();
+        var interceptor = (AuthorizationInterceptor<TInterface>)(object)proxy;
+        interceptor._target = target;
+        interceptor._permissionService = permissionService;
+        interceptor._currentUser = currentUser;
+        return proxy;
+    }
+
+    /// <summary>
+    /// Throws when a method of <typeparamref name="TInterface"/> has <see cref="RequiresPermissionAttribute"/>
+    /// or <see cref="RequiresRoleAttribute"/> but does not return <c>Task&lt;OperationResult&gt;</c> or
+    /// <c>Task&lt;OperationResult&lt;T&gt;&gt;</c>: a refusal is reported as a result, never as an exception.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Such a method exists; the message names it.</exception>
+    public static void EnsureAttributedMethodsReturnOperationResult()
+    {
+        foreach (var method in typeof(TInterface).GetMethods())
+        {
+            var attributed = method.IsDefined(typeof(RequiresPermissionAttribute), inherit: false)
+                || method.IsDefined(typeof(RequiresRoleAttribute), inherit: false);
+            if (attributed && !TryGetOperationResultInfo(method.ReturnType, out _, out _))
+            {
+                throw new InvalidOperationException(ReturnTypeMessage(method));
+            }
+        }
+    }
+
+    private static string ReturnTypeMessage(MethodInfo method)
+        => $"{typeof(TInterface).Name}.{method.Name} has [RequiresPermission] or [RequiresRole] but returns " +
+           $"{method.ReturnType.Name}; it must return Task<OperationResult> or Task<OperationResult<T>>.";
+
     private async Task<OperationResult<T>> ExecuteGenericAsync<T>(
         MethodInfo targetMethod,
         object?[]? args,
         RequiresPermissionAttribute? requiresPermission,
         RequiresRoleAttribute? requiresRole)
     {
-        var userId = _currentUser.UserId;
-
-        // Unauthenticated user (Guid.Empty) is always forbidden
-        if (userId == Guid.Empty)
+        var refusal = await CheckAsync(requiresPermission, requiresRole);
+        if (refusal is not null)
         {
-            return OperationResult<T>.Forbidden();
+            return OperationResult<T>.Fail(refusal.Message, 403, refusal.ErrorCode, refusal.Errors);
         }
 
-        // Check [RequiresRole] — OR semantics, system roles only
-        if (requiresRole is not null)
-        {
-            var hasRole = await _permissionService.HasAnySystemRoleAsync(userId, requiresRole.Roles);
-            if (!hasRole)
-            {
-                return OperationResult<T>.Forbidden();
-            }
-        }
-
-        // Check [RequiresPermission] — AND semantics
-        if (requiresPermission is not null)
-        {
-            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
-            if (!allSatisfied)
-            {
-                return OperationResult<T>.Forbidden();
-            }
-        }
-
-        // Authorized — invoke the target method
         var result = targetMethod.Invoke(_target, args);
         if (result is Task<OperationResult<T>> typedTask)
         {
             return await typedTask.ConfigureAwait(false);
         }
 
-        // Fallback: shouldn't happen if types are correct
         throw new InvalidOperationException($"Expected Task<OperationResult<{typeof(T).Name}>> but got {result?.GetType().Name ?? "null"}.");
     }
 
@@ -141,189 +139,65 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
         RequiresPermissionAttribute? requiresPermission,
         RequiresRoleAttribute? requiresRole)
     {
-        var userId = _currentUser.UserId;
-
-        // Unauthenticated user (Guid.Empty) is always forbidden
-        if (userId == Guid.Empty)
+        var refusal = await CheckAsync(requiresPermission, requiresRole);
+        if (refusal is not null)
         {
-            return OperationResult.Forbidden();
+            return OperationResult.Fail(refusal.Message, 403, refusal.ErrorCode, refusal.Errors);
         }
 
-        // Check [RequiresRole] — OR semantics, system roles only
-        if (requiresRole is not null)
-        {
-            var hasRole = await _permissionService.HasAnySystemRoleAsync(userId, requiresRole.Roles);
-            if (!hasRole)
-            {
-                return OperationResult.Forbidden();
-            }
-        }
-
-        // Check [RequiresPermission] — AND semantics
-        if (requiresPermission is not null)
-        {
-            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
-            if (!allSatisfied)
-            {
-                return OperationResult.Forbidden();
-            }
-        }
-
-        // Authorized — invoke the target method
         var result = targetMethod.Invoke(_target, args);
         if (result is Task<OperationResult> typedTask)
         {
             return await typedTask.ConfigureAwait(false);
         }
 
-        // Fallback: shouldn't happen if types are correct
         throw new InvalidOperationException($"Expected Task<OperationResult> but got {result?.GetType().Name ?? "null"}.");
     }
 
     /// <summary>
-    /// Handles authorization for methods with non-OperationResult return types.
-    /// Throws <see cref="ForbiddenAccessException"/> when authorization fails.
+    /// The authorization checks, in order: authenticated, then <c>[RequiresRole]</c> (any of the roles,
+    /// system roles only), then <c>[RequiresPermission]</c> (all of the keys). Null when allowed.
+    /// Every key is checked so the refusal names all the missing ones. <see cref="IPermissionService.HasPermissionAsync"/>
+    /// applies the SuperAdmin and TenantAdmin bypass, the same as everywhere else in the framework.
     /// </summary>
-    private object? ExecuteWithExceptionAuthorizationAsync(
-        MethodInfo targetMethod,
-        object?[]? args,
-        RequiresPermissionAttribute? requiresPermission,
-        RequiresRoleAttribute? requiresRole)
+    private async Task<Refusal?> CheckAsync(RequiresPermissionAttribute? requiresPermission, RequiresRoleAttribute? requiresRole)
     {
-        // For async methods returning Task<T>, we need to return the correctly typed Task<T>
-        var returnType = targetMethod.ReturnType;
-
-        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-        {
-            // Task<T> — use a generic helper to preserve the return type
-            var resultType = returnType.GetGenericArguments()[0];
-            var helperMethod = typeof(AuthorizationInterceptor<TInterface>)
-                .GetMethod(nameof(ExecuteWithExceptionGenericTaskAsync), BindingFlags.NonPublic | BindingFlags.Instance)!
-                .MakeGenericMethod(resultType);
-
-            return helperMethod.Invoke(this, [targetMethod, args, requiresPermission, requiresRole])!;
-        }
-
-        if (typeof(Task).IsAssignableFrom(returnType))
-        {
-            // Non-generic Task (void async)
-            return ExecuteWithExceptionTaskAsync(targetMethod, args, requiresPermission, requiresRole);
-        }
-
-        // For synchronous methods, perform the check synchronously
-        // Note: This blocks on async permission checks — acceptable for sync methods on decorated interfaces
         var userId = _currentUser.UserId;
-
         if (userId == Guid.Empty)
         {
-            throw new ForbiddenAccessException();
+            return new Refusal("Forbidden", ErrorCodes.Forbidden, null);
         }
 
-        if (requiresRole is not null)
+        if (requiresRole is not null && !await _permissionService.HasAnySystemRoleAsync(userId, requiresRole.Roles))
         {
-            var hasRole = _permissionService.HasAnySystemRoleAsync(userId, requiresRole.Roles).GetAwaiter().GetResult();
-            if (!hasRole)
-            {
-                throw new ForbiddenAccessException();
-            }
+            var roles = requiresRole.Roles.ToList();
+            var message = roles.Count == 1
+                ? $"You need the role {roles[0]}."
+                : $"You need one of the roles {string.Join(", ", roles)}.";
+            return new Refusal(message, ErrorCodes.RoleRequired, roles);
         }
 
         if (requiresPermission is not null)
         {
-            var allSatisfied = HasAllPermissionsAsync(userId, requiresPermission.Permissions).GetAwaiter().GetResult();
-            if (!allSatisfied)
+            var missing = new List<string>();
+            foreach (var permission in requiresPermission.Permissions)
             {
-                throw new ForbiddenAccessException();
+                if (!await _permissionService.HasPermissionAsync(userId, permission))
+                {
+                    missing.Add(permission);
+                }
+            }
+
+            if (missing.Count > 0)
+            {
+                var message = missing.Count == 1
+                    ? $"You need the permission {missing[0]}."
+                    : $"You need the permissions {string.Join(", ", missing)}.";
+                return new Refusal(message, ErrorCodes.PermissionRequired, missing);
             }
         }
 
-        return targetMethod.Invoke(_target, args);
-    }
-
-    private async Task ExecuteWithExceptionTaskAsync(
-        MethodInfo targetMethod,
-        object?[]? args,
-        RequiresPermissionAttribute? requiresPermission,
-        RequiresRoleAttribute? requiresRole)
-    {
-        await CheckAuthorizationOrThrowAsync(requiresPermission, requiresRole);
-
-        // Authorized — invoke the target method
-        var result = targetMethod.Invoke(_target, args);
-        if (result is Task task)
-        {
-            await task.ConfigureAwait(false);
-        }
-    }
-
-    private async Task<TResult> ExecuteWithExceptionGenericTaskAsync<TResult>(
-        MethodInfo targetMethod,
-        object?[]? args,
-        RequiresPermissionAttribute? requiresPermission,
-        RequiresRoleAttribute? requiresRole)
-    {
-        await CheckAuthorizationOrThrowAsync(requiresPermission, requiresRole);
-
-        // Authorized — invoke the target method
-        var result = targetMethod.Invoke(_target, args);
-        if (result is Task<TResult> typedTask)
-        {
-            return await typedTask.ConfigureAwait(false);
-        }
-
-        throw new InvalidOperationException(
-            $"Expected Task<{typeof(TResult).Name}> but got {result?.GetType().Name ?? "null"}.");
-    }
-
-    /// <summary>
-    /// AND check over the required permissions. Uses <see cref="IPermissionService.HasPermissionAsync"/>
-    /// so the SuperAdmin and TenantAdmin bypass applies, the same as everywhere else in the framework.
-    /// </summary>
-    private async Task<bool> HasAllPermissionsAsync(Guid userId, IEnumerable<string> permissions)
-    {
-        foreach (var permission in permissions)
-        {
-            if (!await _permissionService.HasPermissionAsync(userId, permission))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Performs authorization checks and throws <see cref="ForbiddenAccessException"/> on failure.
-    /// Shared by all exception-based authorization paths.
-    /// </summary>
-    private async Task CheckAuthorizationOrThrowAsync(
-        RequiresPermissionAttribute? requiresPermission,
-        RequiresRoleAttribute? requiresRole)
-    {
-        var userId = _currentUser.UserId;
-
-        if (userId == Guid.Empty)
-        {
-            throw new ForbiddenAccessException();
-        }
-
-        if (requiresRole is not null)
-        {
-            var hasRole = await _permissionService.HasAnySystemRoleAsync(userId, requiresRole.Roles);
-            if (!hasRole)
-            {
-                throw new ForbiddenAccessException();
-            }
-        }
-
-        if (requiresPermission is not null)
-        {
-            var allSatisfied = await HasAllPermissionsAsync(userId, requiresPermission.Permissions);
-            if (!allSatisfied)
-            {
-                throw new ForbiddenAccessException();
-            }
-        }
+        return null;
     }
 
     /// <summary>
@@ -345,8 +219,6 @@ public class AuthorizationInterceptor<TInterface> : DispatchProxy
         // Check for non-generic OperationResult
         if (taskArgument == typeof(OperationResult))
         {
-            isGenericResult = false;
-            innerType = null;
             return true;
         }
 

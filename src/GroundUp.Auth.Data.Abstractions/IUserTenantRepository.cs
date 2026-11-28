@@ -99,14 +99,14 @@ public interface IUserTenantRepository : IBaseRepository<UserTenantDto>
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists the Active and Pending members of <paramref name="tenantId"/>, ordered by email, with
+    /// Lists the Active and Pending members of <paramref name="tenantId"/> (by email unless sorted), with
     /// their roles and each role's sources. System-level bypass: targets the tenant explicitly.
     /// </summary>
     /// <param name="tenantId">The tenant.</param>
-    /// <param name="paging">Page number and size.</param>
+    /// <param name="filterParams">Paging, and the fields <c>email</c>, <c>displayName</c> (sort), <c>status</c> (sort, filter); search on email and display name. Other fields are ignored.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<OperationResult<PaginatedData<TenantMemberDto>>> GetMembersAsync(
         Guid tenantId,
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default);
 }

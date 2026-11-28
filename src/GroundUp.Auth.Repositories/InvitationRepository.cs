@@ -1,10 +1,12 @@
 using GroundUp.Auth.Core.Dtos;
+using System.Linq.Expressions;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Core;
 using GroundUp.Core.Models;
 using GroundUp.Core.Results;
+using GroundUp.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace GroundUp.Auth.Repositories;
@@ -97,24 +99,28 @@ public sealed class InvitationRepository : IInvitationRepository
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<InvitationDto>>> ListAsync(
-        Guid tenantId, PaginationParams paging, CancellationToken cancellationToken = default)
+        Guid tenantId, FilterParams filterParams, CancellationToken cancellationToken = default)
     {
-        var query = Invitations.AsNoTracking().Where(i => i.TenantId == tenantId);
-        var total = await query.CountAsync(cancellationToken);
-        var items = await Project(query
-                .OrderByDescending(i => i.CreatedAt)
-                .ThenBy(i => i.Id)
-                .Skip((paging.PageNumber - 1) * paging.PageSize)
-                .Take(paging.PageSize))
-            .ToListAsync(cancellationToken);
-
-        return OperationResult<PaginatedData<InvitationDto>>.Ok(new PaginatedData<InvitationDto>
+        var now = DateTime.UtcNow;
+        var roles = _context.Set<Role>();
+        var options = new ListQueryOptions<Invitation>
         {
-            Items = items,
-            PageNumber = paging.PageNumber,
-            PageSize = paging.PageSize,
-            TotalRecords = total
-        });
+            Fields = new ListFieldMap<Invitation>()
+                .Sort("email", i => i.Email)
+                .Sort("roleName", i => roles.Where(r => r.Id == i.RoleId).Select(r => r.Name).FirstOrDefault())
+                .SortAndFilter("status", EffectiveStatus(now))
+                .Filter("roleId", i => i.RoleId)
+                .Sort("expiresAt", i => i.ExpiresAt)
+                .Sort("createdAt", i => i.CreatedAt)
+                .Search(i => i.Email),
+            DefaultOrder = q => q.OrderByDescending(i => i.CreatedAt),
+            TieBreaker = i => i.Id
+        };
+
+        var page = await Invitations.AsNoTracking()
+            .Where(i => i.TenantId == tenantId)
+            .ToPagedListAsync(filterParams, Projection(now), options, cancellationToken);
+        return OperationResult<PaginatedData<InvitationDto>>.Ok(page);
     }
 
     /// <inheritdoc />
@@ -198,18 +204,26 @@ public sealed class InvitationRepository : IInvitationRepository
     }
 
     /// <summary>
-    /// Projects to the DTO with the role name and the reported status (Expired for a Pending
-    /// invitation past its expiry).
+    /// The status the lists report: Expired for a Pending invitation past its expiry, otherwise the
+    /// stored status. Filters and sorts on it; <see cref="Projection"/> reports the same value.
     /// </summary>
-    private IQueryable<InvitationDto> Project(IQueryable<Invitation> query)
+    private static Expression<Func<Invitation, InvitationStatus>> EffectiveStatus(DateTime now)
+        => i => i.Status == InvitationStatus.Pending && i.ExpiresAt <= now ? InvitationStatus.Expired : i.Status;
+
+    private IQueryable<InvitationDto> Project(IQueryable<Invitation> query) => query.Select(Projection(DateTime.UtcNow));
+
+    /// <summary>
+    /// Projects to the DTO with the role name and the reported status (see <see cref="EffectiveStatus"/>).
+    /// </summary>
+    private Expression<Func<Invitation, InvitationDto>> Projection(DateTime now)
     {
-        var now = DateTime.UtcNow;
-        return query.Select(i => new InvitationDto(
+        var roles = _context.Set<Role>();
+        return i => new InvitationDto(
             i.Id,
             i.TenantId,
             i.Email,
             i.RoleId,
-            _context.Set<Role>().Where(r => r.Id == i.RoleId).Select(r => r.Name).FirstOrDefault(),
+            roles.Where(r => r.Id == i.RoleId).Select(r => r.Name).FirstOrDefault(),
             i.UserId,
             i.CreatedByUserId,
             i.ExpiresAt,
@@ -217,6 +231,6 @@ public sealed class InvitationRepository : IInvitationRepository
             i.AcceptedByUserId,
             i.AcceptedAt,
             i.RevokedAt,
-            i.CreatedAt));
+            i.CreatedAt);
     }
 }

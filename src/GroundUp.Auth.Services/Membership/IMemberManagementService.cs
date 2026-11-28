@@ -16,11 +16,12 @@ public interface IMemberManagementService
 {
     /// <summary>
     /// Lists the current tenant's Active and Pending members with their roles and each role's
-    /// sources, ordered by email.
+    /// sources, by email unless sorted. Sort: <c>email</c>, <c>displayName</c>, <c>status</c>; filter:
+    /// <c>status</c>; search: email and display name. Other fields are ignored.
     /// </summary>
     [RequiresPermission(PermissionKeysAuth.MembersRead)]
     Task<OperationResult<PaginatedData<TenantMemberDto>>> ListMembersAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default);
 
     /// <summary>

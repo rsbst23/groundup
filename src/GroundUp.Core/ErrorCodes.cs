@@ -27,6 +27,18 @@ public static class ErrorCodes
     public const string Forbidden = "FORBIDDEN";
 
     /// <summary>
+    /// The caller lacks permissions a <c>[RequiresPermission]</c> method needs. <c>errors</c> holds the
+    /// permission keys the caller does not have (all of them are required).
+    /// </summary>
+    public const string PermissionRequired = "PERMISSION_REQUIRED";
+
+    /// <summary>
+    /// The caller has none of the system roles a <c>[RequiresRole]</c> method needs. <c>errors</c> holds
+    /// the listed roles (any one of them is enough).
+    /// </summary>
+    public const string RoleRequired = "ROLE_REQUIRED";
+
+    /// <summary>
     /// The operation needs a current tenant and the caller has none (for example a tenantless session).
     /// </summary>
     public const string TenantRequired = "TENANT_REQUIRED";
