@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Core.Enums;
@@ -5,6 +6,7 @@ using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
+using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +28,54 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
     public RoleRepository(DbContext context, ITenantContext tenantContext)
         : base(context, tenantContext, AuthRoleMapper.ToDto, AuthRoleMapper.ToEntity)
     {
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<PaginatedData<TenantRoleDto>>> ListAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filterParams);
+        var tenants = Context.Set<Tenant>();
+        var rolePolicies = Context.Set<RolePolicy>();
+        Expression<Func<Role, int>> policyCount = r => rolePolicies.Count(rp => rp.RoleId == r.Id);
+
+        var options = new ListQueryOptions<Role>
+        {
+            Fields = new ListFieldMap<Role>()
+                .Sort("name", r => r.Name)
+                .SortAndFilter("roleType", r => r.RoleType)
+                .Sort("policyCount", policyCount)
+                .Filter("isSystem", r => r.IsSystem)
+                .Search(r => r.Name, r => r.Description),
+            DefaultOrder = q => q.OrderBy(r => r.Name),
+            TieBreaker = r => r.Id
+        };
+
+        return await GetAllAsync(
+            filterParams,
+            queryShaper: null,
+            r => new TenantRoleDto(
+                r.Id,
+                r.Name,
+                r.Description,
+                r.RoleType,
+                r.TenantId,
+                r.IsSystem,
+                tenants.Where(t => t.Id == r.TenantId).Select(t => t.DefaultRoleId).FirstOrDefault() == r.Id,
+                rolePolicies.Count(rp => rp.RoleId == r.Id)),
+            options,
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<int>> CountPoliciesAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        var tenantId = TenantContext.TenantId;
+        var count = await Context.Set<RolePolicy>()
+            .AsNoTracking()
+            .CountAsync(rp => rp.RoleId == roleId && rp.Role.TenantId == tenantId, cancellationToken);
+        return OperationResult<int>.Ok(count);
     }
 
     /// <inheritdoc />

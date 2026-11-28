@@ -27,16 +27,18 @@ public sealed class PoliciesController : BaseController
     }
 
     /// <summary>
-    /// Lists the tenant's policies by name, each with its permission keys and how many roles use it.
+    /// Lists the tenant's policies (by name unless sorted), each with its permission keys and how many roles use it.
+    /// Accepts <c>FilterParams</c>: <c>sortBy</c> (name, roleCount, permissionCount), <c>searchTerm</c>
+    /// (name, description); other fields are ignored.
     /// Needs <c>auth.permissions.read</c>. Pagination metadata is also returned in the X-Total-Count,
     /// X-Page-Number, X-Page-Size and X-Total-Pages headers.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OperationResult<PaginatedData<TenantPolicyDto>>>> List(
-        [FromQuery] PaginationParams paging,
+        [FromQuery] FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        var result = await _policyService.ListAsync(paging, cancellationToken);
+        var result = await _policyService.ListAsync(filterParams, cancellationToken);
         if (result.Success && result.Data is not null)
         {
             AddPaginationHeaders(result.Data);

@@ -74,10 +74,10 @@ internal sealed class RoleService : IRoleService
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<TenantRoleDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(paging);
+        ArgumentNullException.ThrowIfNull(filterParams);
 
         var tenantId = _tenantContext.TenantId;
         if (tenantId == Guid.Empty)
@@ -91,33 +91,14 @@ internal sealed class RoleService : IRoleService
             return OperationResult<PaginatedData<TenantRoleDto>>.Ok(new PaginatedData<TenantRoleDto>
             {
                 Items = [],
-                PageNumber = paging.PageNumber,
-                PageSize = paging.PageSize,
+                PageNumber = filterParams.PageNumber,
+                PageSize = filterParams.PageSize,
                 TotalRecords = 0
             });
         }
 
-        var page = await _roleRepository.GetAllAsync(
-            new FilterParams
-            {
-                PageNumber = paging.PageNumber,
-                PageSize = paging.PageSize,
-                SortBy = string.IsNullOrWhiteSpace(paging.SortBy) ? nameof(RoleDto.Name) : paging.SortBy
-            },
-            cancellationToken);
-        if (!page.Success || page.Data is null)
-        {
-            return OperationResult<PaginatedData<TenantRoleDto>>.Fail(page.Message, page.StatusCode, page.ErrorCode, page.Errors);
-        }
-
-        var defaultRoleId = await GetDefaultRoleIdAsync(tenantId, cancellationToken);
-        return OperationResult<PaginatedData<TenantRoleDto>>.Ok(new PaginatedData<TenantRoleDto>
-        {
-            Items = page.Data.Items.Select(r => TenantRoleDto.From(r, r.Id == defaultRoleId)).ToList(),
-            PageNumber = page.Data.PageNumber,
-            PageSize = page.Data.PageSize,
-            TotalRecords = page.Data.TotalRecords
-        });
+        // One query: the page with isDefault and policyCount (GU-97)
+        return await _roleRepository.ListAsync(filterParams, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -130,7 +111,8 @@ internal sealed class RoleService : IRoleService
         }
 
         var defaultRoleId = await GetDefaultRoleIdAsync(role.Data!.TenantId, cancellationToken);
-        return OperationResult<TenantRoleDto>.Ok(TenantRoleDto.From(role.Data, role.Data.Id == defaultRoleId));
+        return OperationResult<TenantRoleDto>.Ok(
+            TenantRoleDto.From(role.Data, role.Data.Id == defaultRoleId, await CountPoliciesAsync(roleId, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -216,7 +198,8 @@ internal sealed class RoleService : IRoleService
         _logger.LogInformation("Role {RoleId} updated in tenant {TenantId} by {CallerId}", roleId, existing.TenantId, _currentUser.UserId);
 
         var defaultRoleId = await GetDefaultRoleIdAsync(existing.TenantId, cancellationToken);
-        return OperationResult<TenantRoleDto>.Ok(TenantRoleDto.From(updated.Data, updated.Data.Id == defaultRoleId));
+        return OperationResult<TenantRoleDto>.Ok(
+            TenantRoleDto.From(updated.Data, updated.Data.Id == defaultRoleId, await CountPoliciesAsync(roleId, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -313,7 +296,8 @@ internal sealed class RoleService : IRoleService
             return OperationResult<TenantRoleDto?>.Ok(null);
         }
 
-        return OperationResult<TenantRoleDto?>.Ok(TenantRoleDto.From(role.Data, isDefault: true));
+        return OperationResult<TenantRoleDto?>.Ok(
+            TenantRoleDto.From(role.Data, isDefault: true, await CountPoliciesAsync(role.Data.Id, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -348,7 +332,8 @@ internal sealed class RoleService : IRoleService
 
         await PublishSafelyAsync(new EntityUpdatedEvent<RoleDto> { Entity = existing, TenantId = existing.TenantId, UserId = _currentUser.UserId }, cancellationToken);
         _logger.LogInformation("Role {RoleId} made the default role of tenant {TenantId} by {CallerId}", roleId, existing.TenantId, _currentUser.UserId);
-        return OperationResult<TenantRoleDto>.Ok(TenantRoleDto.From(existing, isDefault: true));
+        return OperationResult<TenantRoleDto>.Ok(
+            TenantRoleDto.From(existing, isDefault: true, await CountPoliciesAsync(existing.Id, cancellationToken)));
     }
 
     /// <inheritdoc />
@@ -574,6 +559,13 @@ internal sealed class RoleService : IRoleService
     }
 
     /// <summary>The tenant's default role id; <c>null</c> when it has none or it cannot be read.</summary>
+    /// <summary>The role's policy count; 0 when it cannot be read (the count is informational).</summary>
+    private async Task<int> CountPoliciesAsync(Guid roleId, CancellationToken cancellationToken)
+    {
+        var result = await _roleRepository.CountPoliciesAsync(roleId, cancellationToken);
+        return result.Success ? result.Data : 0;
+    }
+
     private async Task<Guid?> GetDefaultRoleIdAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var result = await _tenantRepository.GetDefaultRoleIdAsync(tenantId, cancellationToken);

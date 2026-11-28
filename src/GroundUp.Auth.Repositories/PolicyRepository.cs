@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Data.Abstractions;
@@ -135,40 +136,50 @@ public sealed class PolicyRepository : BaseTenantRepository<Policy, PolicyDto>, 
 
     /// <inheritdoc />
     public async Task<OperationResult<PaginatedData<TenantPolicyDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(paging);
+        ArgumentNullException.ThrowIfNull(filterParams);
         var tenantId = TenantContext.TenantId;
         if (tenantId == Guid.Empty)
         {
             return OperationResult<PaginatedData<TenantPolicyDto>>.Fail(TenantRequiredMessage, 403, ErrorCodes.TenantRequired);
         }
 
-        var query = DbSet.AsNoTracking().Where(p => p.TenantId == tenantId);
-        var total = await query.CountAsync(cancellationToken);
-        var rows = await query
-            .OrderBy(p => p.Name)
-            .ThenBy(p => p.Id)
-            .Skip((paging.PageNumber - 1) * paging.PageSize)
-            .Take(paging.PageSize)
-            .Select(p => new
-            {
-                p.Id,
-                p.Name,
-                p.Description,
-                Keys = p.PolicyPermissions.Select(pp => pp.Permission.Key).OrderBy(k => k).ToList(),
-                // Only the tenant's own roles count (links to another tenant's role exist only in hand-edited data)
-                RoleCount = p.RolePolicies.Count(rp => rp.Role.TenantId == tenantId)
-            })
-            .ToListAsync(cancellationToken);
+        // Only the tenant's own roles count (links to another tenant's role exist only in hand-edited data)
+        Expression<Func<Policy, int>> roleCount = p => p.RolePolicies.Count(rp => rp.Role.TenantId == tenantId);
+        var options = new ListQueryOptions<Policy>
+        {
+            Fields = new ListFieldMap<Policy>()
+                .Sort("name", p => p.Name)
+                .Sort("roleCount", roleCount)
+                .Sort("permissionCount", p => p.PolicyPermissions.Count())
+                .Search(p => p.Name, p => p.Description),
+            DefaultOrder = q => q.OrderBy(p => p.Name),
+            TieBreaker = p => p.Id
+        };
+
+        var page = await DbSet.AsNoTracking()
+            .Where(p => p.TenantId == tenantId)
+            .ToPagedListAsync(
+                filterParams,
+                p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Description,
+                    Keys = p.PolicyPermissions.Select(pp => pp.Permission.Key).OrderBy(k => k).ToList(),
+                    RoleCount = p.RolePolicies.Count(rp => rp.Role.TenantId == tenantId)
+                },
+                options,
+                cancellationToken);
 
         return OperationResult<PaginatedData<TenantPolicyDto>>.Ok(new PaginatedData<TenantPolicyDto>
         {
-            Items = rows.Select(r => new TenantPolicyDto(r.Id, r.Name, r.Description, r.Keys, r.RoleCount)).ToList(),
-            PageNumber = paging.PageNumber,
-            PageSize = paging.PageSize,
-            TotalRecords = total
+            Items = page.Items.Select(r => new TenantPolicyDto(r.Id, r.Name, r.Description, r.Keys, r.RoleCount)).ToList(),
+            PageNumber = page.PageNumber,
+            PageSize = page.PageSize,
+            TotalRecords = page.TotalRecords
         });
     }
 

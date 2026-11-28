@@ -100,7 +100,7 @@ public sealed class PolicyServiceTests
     {
         _tenantContext.TenantId.Returns(AuthRoleNames.SystemTenantId);
 
-        (await _sut.ListAsync(new PaginationParams())).Data!.Items.Should().BeEmpty();
+        (await _sut.ListAsync(new FilterParams())).Data!.Items.Should().BeEmpty();
         await _policies.DidNotReceiveWithAnyArgs().ListAsync(default!, default);
     }
 
@@ -412,7 +412,7 @@ public sealed class PolicyServiceTests
         switch (method)
         {
             case "Catalog": { var r = await _sut.GetCatalogAsync(); return (r.StatusCode, r.ErrorCode); }
-            case "List": { var r = await _sut.ListAsync(new PaginationParams()); return (r.StatusCode, r.ErrorCode); }
+            case "List": { var r = await _sut.ListAsync(new FilterParams()); return (r.StatusCode, r.ErrorCode); }
             case "Get": { var r = await _sut.GetAsync(Editors.Id); return (r.StatusCode, r.ErrorCode); }
             case "Create": { var r = await _sut.CreateAsync(new CreatePolicyDto("New", null)); return (r.StatusCode, r.ErrorCode); }
             case "Update": { var r = await _sut.UpdateAsync(Editors.Id, new UpdatePolicyDto("Renamed", null)); return (r.StatusCode, r.ErrorCode); }

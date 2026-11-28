@@ -1,4 +1,5 @@
 using GroundUp.Auth.Core.Dtos;
+using GroundUp.Core.Models;
 using GroundUp.Core.Results;
 using GroundUp.Data.Abstractions;
 
@@ -10,6 +11,24 @@ namespace GroundUp.Auth.Data.Abstractions;
 /// </summary>
 public interface IRoleRepository : IBaseRepository<RoleDto>
 {
+    /// <summary>
+    /// A page of the current tenant's roles with <c>isDefault</c> and <c>policyCount</c> (GU-97), by name
+    /// unless sorted. Sort: <c>name</c>, <c>roleType</c>, <c>policyCount</c>; filter: <c>roleType</c>,
+    /// <c>isSystem</c>; search: name and description. Other fields are ignored.
+    /// </summary>
+    /// <param name="filterParams">Paging, sorting, filters and search.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The page; 403 <c>TENANT_REQUIRED</c> without a current tenant.</returns>
+    Task<OperationResult<PaginatedData<TenantRoleDto>>> ListAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>How many policies are attached to the role (in the current tenant).</summary>
+    /// <param name="roleId">The role identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The count (0 for an unknown role).</returns>
+    Task<OperationResult<int>> CountPoliciesAsync(Guid roleId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Retrieves all policies assigned to a given role.
     /// </summary>

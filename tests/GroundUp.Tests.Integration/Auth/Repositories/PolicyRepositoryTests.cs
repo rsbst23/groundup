@@ -35,7 +35,7 @@ public sealed class PolicyRepositoryTests : AuthIntegrationTestBase
         await LinkPolicyAsync(role, editors);
         await LinkPolicyAsync(await SeedRoleAsync(otherTenantId, "Intruder"), editors);
 
-        var page = await CreatePolicyRepository(tenantId).ListAsync(new PaginationParams { PageSize = 10 });
+        var page = await CreatePolicyRepository(tenantId).ListAsync(new FilterParams { PageSize = 10 });
 
         page.Data!.TotalRecords.Should().Be(2);
         page.Data.Items.Select(p => p.Name).Should().Equal("Auditors", "Editors");
@@ -54,7 +54,7 @@ public sealed class PolicyRepositoryTests : AuthIntegrationTestBase
             await SeedPolicyAsync(tenantId, name);
         }
 
-        var page = await CreatePolicyRepository(tenantId).ListAsync(new PaginationParams { PageNumber = 2, PageSize = 2 });
+        var page = await CreatePolicyRepository(tenantId).ListAsync(new FilterParams { PageNumber = 2, PageSize = 2 });
 
         page.Data!.Items.Select(p => p.Name).Should().Equal("C");
         page.Data.TotalRecords.Should().Be(3);

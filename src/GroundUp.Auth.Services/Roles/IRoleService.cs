@@ -19,12 +19,14 @@ namespace GroundUp.Auth.Services.Roles;
 public interface IRoleService
 {
     /// <summary>
-    /// Lists the current tenant's roles, ordered by name unless <see cref="PaginationParams.SortBy"/> is set.
+    /// Lists the current tenant's roles with <c>isDefault</c> and <c>policyCount</c>, by name unless sorted.
+    /// Sort: <c>name</c>, <c>roleType</c>, <c>policyCount</c>; filter: <c>roleType</c>, <c>isSystem</c>;
+    /// search: name and description. Other fields are ignored.
     /// </summary>
     /// <returns>A page of roles; 403 <c>TENANT_REQUIRED</c> without a current tenant.</returns>
     [RequiresPermission(PermissionKeysAuth.RolesRead)]
     Task<OperationResult<PaginatedData<TenantRoleDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default);
 
     /// <summary>

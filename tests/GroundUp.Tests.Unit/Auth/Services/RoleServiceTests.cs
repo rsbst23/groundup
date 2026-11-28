@@ -53,6 +53,7 @@ public sealed class RoleServiceTests
         _tenants.GetDefaultRoleIdAsync(TenantId, Arg.Any<CancellationToken>()).Returns(OperationResult<Guid?>.Ok(null));
         _tenants.SetDefaultRoleIdAsync(TenantId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>()).Returns(OperationResult.Ok());
         GivenUsage(new RoleUsageDto(0, 0, 0, false));
+        _roles.CountPoliciesAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(OperationResult<int>.Ok(0));
         _roles.DeleteAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult.Ok());
 
         // The unit of work runs the operation; an exception thrown inside propagates, as in the real one
@@ -91,11 +92,11 @@ public sealed class RoleServiceTests
     {
         _tenantContext.TenantId.Returns(AuthRoleNames.SystemTenantId);
 
-        var result = await _sut.ListAsync(new PaginationParams());
+        var result = await _sut.ListAsync(new FilterParams());
 
         result.Success.Should().BeTrue();
         result.Data!.Items.Should().BeEmpty();
-        await _roles.DidNotReceiveWithAnyArgs().GetAllAsync(default!, default);
+        await _roles.DidNotReceiveWithAnyArgs().ListAsync(default!, default);
     }
 
     [Theory]
@@ -127,17 +128,32 @@ public sealed class RoleServiceTests
     // ── List and get ──────────────────────────────────────────────
 
     [Fact]
-    public async Task ListAsync_MarksTheDefaultRoleAndSortsByName()
+    public async Task ListAsync_PassesTheRepositoryPageThrough()
     {
-        GivenDefault(Editor.Id);
-        _roles.GetAllAsync(Arg.Any<FilterParams>(), Arg.Any<CancellationToken>()).Returns(OperationResult<PaginatedData<RoleDto>>.Ok(
-            new PaginatedData<RoleDto> { Items = [Editor, TenantAdmin], PageNumber = 1, PageSize = 10, TotalRecords = 2 }));
+        var page = new PaginatedData<TenantRoleDto>
+        {
+            Items = [TenantRoleDto.From(Editor, isDefault: true, policyCount: 2)],
+            PageNumber = 1,
+            PageSize = 10,
+            TotalRecords = 1
+        };
+        var filters = new FilterParams { SortBy = "policyCount desc", SearchTerm = "ed" };
+        _roles.ListAsync(filters, Arg.Any<CancellationToken>()).Returns(OperationResult<PaginatedData<TenantRoleDto>>.Ok(page));
 
-        var result = await _sut.ListAsync(new PaginationParams());
+        var result = await _sut.ListAsync(filters);
 
-        result.Data!.Items.Select(r => (r.Name, r.IsDefault)).Should().Equal(("Editor", true), (AuthRoleNames.TenantAdmin, false));
-        result.Data.TotalRecords.Should().Be(2);
-        await _roles.Received(1).GetAllAsync(Arg.Is<FilterParams>(f => f.SortBy == "Name"), Arg.Any<CancellationToken>());
+        result.Data.Should().BeSameAs(page);
+    }
+
+    [Fact]
+    public async Task GetAsync_FillsThePolicyCount()
+    {
+        _roles.GetByIdAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleDto>.Ok(Editor));
+        _roles.CountPoliciesAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<int>.Ok(3));
+
+        var result = await _sut.GetAsync(Editor.Id);
+
+        result.Data!.PolicyCount.Should().Be(3);
     }
 
     [Fact]
@@ -695,7 +711,7 @@ public sealed class RoleServiceTests
     {
         switch (method)
         {
-            case "List": { var r = await _sut.ListAsync(new PaginationParams()); return (r.StatusCode, r.ErrorCode); }
+            case "List": { var r = await _sut.ListAsync(new FilterParams()); return (r.StatusCode, r.ErrorCode); }
             case "Get": { var r = await _sut.GetAsync(Editor.Id); return (r.StatusCode, r.ErrorCode); }
             case "Create": { var r = await _sut.CreateAsync(new CreateRoleDto("Viewer", null, RoleType.Application)); return (r.StatusCode, r.ErrorCode); }
             case "Update": { var r = await _sut.UpdateAsync(Editor.Id, new UpdateRoleDto("Writer", null)); return (r.StatusCode, r.ErrorCode); }

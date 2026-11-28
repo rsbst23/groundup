@@ -781,6 +781,8 @@ As Alice, after 15.5 (there is a pending and a revoked invitation):
 3. `GET /api/members?searchTerm=carol`. **Expected:** only Carol (search covers email and display name).
 4. `GET /api/members?sortBy=ExternalUserId&filters[Nope]=1`. **Expected:** 200 with the usual list: fields a list does not allow are ignored.
 
+5. `GET /api/roles?sortBy=policyCount desc` lists the roles with the most policies first (each role has `policyCount`); `GET /api/policies?searchTerm=basics` finds "Member basics" (GU-97).
+
 The allowed fields per list are in ARCHITECTURE.md ("Lists and Permission Refusals"). Sorting by `status` follows the enum number, not the label.
 
 ---

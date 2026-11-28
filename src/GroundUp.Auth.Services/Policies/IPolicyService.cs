@@ -28,11 +28,13 @@ public interface IPolicyService
     Task<OperationResult<List<PermissionModuleDto>>> GetCatalogAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The current tenant's policies ordered by name, each with its permission keys and how many roles use it.
+    /// The current tenant's policies (by name unless sorted), each with its permission keys and how many roles
+    /// use it. Sort: <c>name</c>, <c>roleCount</c>, <c>permissionCount</c>; search: name and description.
+    /// Other fields are ignored.
     /// </summary>
     [RequiresPermission(PermissionKeysAuth.PermissionsRead)]
     Task<OperationResult<PaginatedData<TenantPolicyDto>>> ListAsync(
-        PaginationParams paging,
+        FilterParams filterParams,
         CancellationToken cancellationToken = default);
 
     /// <summary>
