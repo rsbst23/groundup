@@ -37,6 +37,6 @@ Requirements: `requirements.md`. Design: `design.md`. Three PRs: 90a = task 1 an
   - [x] 4.4 Tests: `outcomeSearch`; .NET: mailbox ring, sender, dev tools not registered outside Development, endpoint 200 over HTTP and 401 / 404 on the controller (the shared test host signs every request in), seeder (no value, empty value, existing value). Also: callback messages for the invitation and join-link errors; new routes need `npx vite build` once to regenerate the route tree before `npm run build`
   - [x] 4.5 Check: web 170 / 0; unit 2177 / 0, integration 622 / 0, sample 30/30
 - [ ] 5. Docs, full check, PR 90c
-  - [ ] 5.1 TESTING.md Part 5; "Parts to Come"; the API guide's Parts 15 and 16 point to Part 5
-  - [ ] 5.2 Full check; push; PR 90c info
+  - [x] 5.1 TESTING.md Part 5 (5.1 to 5.10); "Parts to Come"; the API guide's Parts 15 and 16 point to Part 5; ARCHITECTURE.md and the web README: one request path, TanStack Query for API data, Zustand for shared client state when needed, permission-aware buttons, the dev tools
+  - [x] 5.2 Full check (web 170 / 0; unit 2177 / 0, integration 622 / 0, sample 30/30); push; PR 90c info. Manual run of Part 5: Rob, after the merge
   - [ ] 5.3 Jira: GU-90 comment; Done after merge

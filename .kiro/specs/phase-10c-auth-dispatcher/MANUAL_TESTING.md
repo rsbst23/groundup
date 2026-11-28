@@ -728,6 +728,8 @@ Uses the shortest allowed absolute lifetime (10 minutes), so it takes about 11 m
 
 ## Part 15 (Optional): Invitations (Alice Invites Carol)
 
+> From the browser: the web app's TESTING.md, Part 5.1 to 5.7 (with the Mailbox instead of the app log).
+
 Alice invites Carol, who has no account, to My Test Org. Carol registers from the invitation and lands in the organization. Start after Part 10 (or any time Alice is the TenantAdmin of My Test Org).
 
 The sample app has no email sender and no accept page. In Development the default sender writes the accept link to the app console instead of emailing it, and you call the accept endpoints from Swagger.
@@ -775,6 +777,8 @@ This holds on one app instance. With several instances, others see the change wh
 ---
 
 ## Part 16 (Optional): Join Links (Bob Rejoins My Test Org)
+
+> From the browser: the web app's TESTING.md, Part 5.8 and 5.9.
 
 Alice creates a shareable link; Bob, who left My Test Org in Part 9, uses it to join again with the Member role. Needs the Member role from Part 15.1.
 
