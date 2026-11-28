@@ -1,11 +1,15 @@
 import { apiFetch } from './client';
-import { pagedPath, type PaginatedData } from './paging';
+import type { ListState } from '../features/list/listSearch';
+import { listPath, type PaginatedData } from './paging';
 import { segment } from './query';
 import type { CreateInvitationRequest, InvitationDto } from './types';
 
-/** GET /api/invitations: the current tenant's invitations, newest first. Needs auth.invitations.send. */
-export async function listInvitations(page: number, signal?: AbortSignal): Promise<PaginatedData<InvitationDto>> {
-  return (await apiFetch<PaginatedData<InvitationDto>>(pagedPath('/api/invitations', page), { signal })).data;
+/**
+ * GET /api/invitations: the current tenant's invitations (newest first unless sorted). Sort: email,
+ * roleName, status, expiresAt, createdAt; filter: status (as shown); search: email. Needs auth.invitations.send.
+ */
+export async function listInvitations(state: ListState, signal?: AbortSignal): Promise<PaginatedData<InvitationDto>> {
+  return (await apiFetch<PaginatedData<InvitationDto>>(listPath('/api/invitations', state), { signal })).data;
 }
 
 /** POST /api/invitations: creates the invitation and emails its link (the link is never returned). */

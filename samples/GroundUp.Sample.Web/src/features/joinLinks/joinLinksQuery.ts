@@ -1,3 +1,4 @@
+import type { ListState } from '../list/listSearch';
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createJoinLink, listJoinLinks, regenerateJoinLink, revokeJoinLink } from '../../api/joinLinks';
 import { JoinLinkStatus } from '../../api/labels';
@@ -6,11 +7,11 @@ import type { JoinLinkDto } from '../../api/types';
 /** Every join-links query key starts with this; the tenant is part of the key. */
 export const joinLinksKey = ['join-links'] as const;
 
-/** One page of the current tenant's join links, newest first. `page` starts at 1. */
-export function joinLinksQueryOptions(tenantId: string, page: number) {
+/** One view (page, sort, search, status) of the current tenant's join links; each view is cached separately. */
+export function joinLinksQueryOptions(tenantId: string, state: ListState) {
   return queryOptions({
-    queryKey: [...joinLinksKey, tenantId, page] as const,
-    queryFn: ({ signal }) => listJoinLinks(page, signal),
+    queryKey: [...joinLinksKey, tenantId, state] as const,
+    queryFn: ({ signal }) => listJoinLinks(state, signal),
     placeholderData: keepPreviousData,
   });
 }

@@ -8,6 +8,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { ApiError } from '../api/errors';
+import { refusalText } from '../features/access/permissions';
 import { useStartSignIn } from '../features/session/useStartSignIn';
 
 interface ErrorPanelProps {
@@ -20,7 +21,9 @@ interface ErrorPanelProps {
 export function ErrorPanel({ error, title }: ErrorPanelProps) {
   const startSignIn = useStartSignIn();
   const apiError = error instanceof ApiError ? error : null;
-  const message = error instanceof Error ? error.message : String(error);
+  // A permission or role refusal names what is missing (GU-98); the keys are then not listed again
+  const refusal = apiError ? refusalText(apiError) : undefined;
+  const message = refusal ?? (error instanceof Error ? error.message : String(error));
   const status = apiError ? (apiError.status === 0 ? 'No response' : `HTTP ${apiError.status}`) : null;
 
   return (
@@ -46,7 +49,7 @@ export function ErrorPanel({ error, title }: ErrorPanelProps) {
         {apiError?.errorCode && <Chip size="small" label={apiError.errorCode} />}
         <Typography variant="body2">{message}</Typography>
       </Box>
-      {apiError && apiError.errors.length > 0 && (
+      {apiError && !refusal && apiError.errors.length > 0 && (
         <Box component="ul" sx={{ m: 0, mt: 1, pl: 3 }}>
           {apiError.errors.map((detail) => (
             <li key={detail}>

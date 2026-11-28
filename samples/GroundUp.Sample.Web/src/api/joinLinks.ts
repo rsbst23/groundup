@@ -1,11 +1,15 @@
 import { apiFetch } from './client';
-import { pagedPath, type PaginatedData } from './paging';
+import type { ListState } from '../features/list/listSearch';
+import { listPath, type PaginatedData } from './paging';
 import { segment } from './query';
 import type { CreatedJoinLinkDto, CreateJoinLinkRequest, JoinLinkDto } from './types';
 
-/** GET /api/join-links: the current tenant's join links, newest first. Needs auth.joinlinks.manage. */
-export async function listJoinLinks(page: number, signal?: AbortSignal): Promise<PaginatedData<JoinLinkDto>> {
-  return (await apiFetch<PaginatedData<JoinLinkDto>>(pagedPath('/api/join-links', page), { signal })).data;
+/**
+ * GET /api/join-links: the current tenant's join links (newest first unless sorted). Sort: roleName,
+ * status, useCount, expiresAt, createdAt; filter: status (as shown); search: role name. Needs auth.joinlinks.manage.
+ */
+export async function listJoinLinks(state: ListState, signal?: AbortSignal): Promise<PaginatedData<JoinLinkDto>> {
+  return (await apiFetch<PaginatedData<JoinLinkDto>>(listPath('/api/join-links', state), { signal })).data;
 }
 
 /** POST /api/join-links: the response's token is shown only now. */

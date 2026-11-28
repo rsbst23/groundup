@@ -1,3 +1,4 @@
+import type { ListState } from '../list/listSearch';
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createInvitation, listInvitations, resendInvitation, revokeInvitation } from '../../api/invitations';
 import { InvitationStatus } from '../../api/labels';
@@ -7,11 +8,11 @@ import { membersKey } from '../members/membersQuery';
 /** Every invitations query key starts with this; the tenant is part of the key. */
 export const invitationsKey = ['invitations'] as const;
 
-/** One page of the current tenant's invitations, newest first. `page` starts at 1. */
-export function invitationsQueryOptions(tenantId: string, page: number) {
+/** One view (page, sort, search, status) of the current tenant's invitations; each view is cached separately. */
+export function invitationsQueryOptions(tenantId: string, state: ListState) {
   return queryOptions({
-    queryKey: [...invitationsKey, tenantId, page] as const,
-    queryFn: ({ signal }) => listInvitations(page, signal),
+    queryKey: [...invitationsKey, tenantId, state] as const,
+    queryFn: ({ signal }) => listInvitations(state, signal),
     placeholderData: keepPreviousData,
   });
 }
