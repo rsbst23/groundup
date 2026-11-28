@@ -20,11 +20,11 @@
   - [x] 1.4 Build, run all suites, commit, stop for review
   - _Requirements: 1, 2, 6.1_
 
-- [ ] 2. Paged permission catalogue and docs
-  - [ ] 2.1 `IPermissionRepository.ListCatalogAsync`, `ListModulesAsync`; `IPolicyService.ListCatalogAsync`, `GetModulesAsync`; `PermissionsController` (`GET /api/permissions`, `/modules`)
-  - [ ] 2.2 Tests (search by key and description, module filter, sorting, System-only keys hidden, modules); the old grouped tests rewritten
-  - [ ] 2.3 ARCHITECTURE.md (counts on read, the role members endpoint, the catalogue rows), API guide 15.1 and 15.7
-  - [ ] 2.4 Build, run all suites, commit, stop for review; PR 97d-1 info
+- [x] 2. Paged permission catalogue and docs
+  - [x] 2.1 `IPermissionRepository.ListCatalogAsync`, `ListModulesAsync`; `IPolicyService.ListCatalogAsync`, `GetModulesAsync`; `PermissionsController` (`GET /api/permissions`, `/modules`)
+  - [x] 2.2 Tests (search by key and description, module filter, sorting, System-only keys hidden, modules); the old grouped tests rewritten
+  - [x] 2.3 ARCHITECTURE.md (counts on read, the role members endpoint, the catalogue rows), API guide 15.1 and 15.7
+  - [x] 2.4 Build, run all suites, commit, stop for review; PR 97d-1 info
   - _Requirements: 3, 6.1_
 
 ## 97d-2: Web (new branch after 97d-1 merges)

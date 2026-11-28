@@ -107,13 +107,23 @@ public sealed class PolicyServiceTests
     // ── Catalogue ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetCatalogAsync_GroupsByModuleSortedAndHidesSystemOnlyKeys()
+    public async Task ListCatalogAsync_PassesTheRepositoryPageThrough()
     {
-        var modules = (await _sut.GetCatalogAsync()).Data!;
+        var filters = new FilterParams { SearchTerm = "docs", Filters = new() { ["module"] = "docs" } };
+        var page = new PaginatedData<PermissionDto> { Items = Catalogue.Take(1).ToList(), PageNumber = 1, PageSize = 25, TotalRecords = 1 };
+        _permissionCatalogue.ListCatalogAsync(filters, Arg.Any<CancellationToken>()).Returns(OperationResult<PaginatedData<PermissionDto>>.Ok(page));
 
-        modules.Select(m => m.Module).Should().Equal("docs", "settings");
-        modules[0].Permissions.Select(p => p.Key).Should().Equal("docs.read", "docs.write");
-        modules.SelectMany(m => m.Permissions).Should().NotContain(p => PermissionKeysAuth.SystemOnly.Contains(p.Key));
+        var result = await _sut.ListCatalogAsync(filters);
+
+        result.Data.Should().BeSameAs(page);
+    }
+
+    [Fact]
+    public async Task GetModulesAsync_ReadsTheRepository()
+    {
+        _permissionCatalogue.ListModulesAsync(Arg.Any<CancellationToken>()).Returns(OperationResult<List<string>>.Ok(["docs", "settings"]));
+
+        (await _sut.GetModulesAsync()).Data.Should().Equal("docs", "settings");
     }
 
     [Fact]
@@ -378,7 +388,8 @@ public sealed class PolicyServiceTests
     // ── Permissions on the interface ──────────────────────────────
 
     [Theory]
-    [InlineData(nameof(IPolicyService.GetCatalogAsync), PermissionKeysAuth.PermissionsRead)]
+    [InlineData(nameof(IPolicyService.ListCatalogAsync), PermissionKeysAuth.PermissionsRead)]
+    [InlineData(nameof(IPolicyService.GetModulesAsync), PermissionKeysAuth.PermissionsRead)]
     [InlineData(nameof(IPolicyService.ListAsync), PermissionKeysAuth.PermissionsRead)]
     [InlineData(nameof(IPolicyService.GetAsync), PermissionKeysAuth.PermissionsRead)]
     [InlineData(nameof(IPolicyService.CreateAsync), PermissionKeysAuth.PermissionsWrite)]
@@ -411,7 +422,7 @@ public sealed class PolicyServiceTests
     {
         switch (method)
         {
-            case "Catalog": { var r = await _sut.GetCatalogAsync(); return (r.StatusCode, r.ErrorCode); }
+            case "Catalog": { var r = await _sut.ListCatalogAsync(new FilterParams()); return (r.StatusCode, r.ErrorCode); }
             case "List": { var r = await _sut.ListAsync(new FilterParams()); return (r.StatusCode, r.ErrorCode); }
             case "Get": { var r = await _sut.GetAsync(Editors.Id); return (r.StatusCode, r.ErrorCode); }
             case "Create": { var r = await _sut.CreateAsync(new CreatePolicyDto("New", null)); return (r.StatusCode, r.ErrorCode); }

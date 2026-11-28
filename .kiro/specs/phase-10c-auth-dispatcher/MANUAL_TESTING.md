@@ -738,7 +738,7 @@ The sample app has no email sender and no accept page. In Development the defaul
 > From the browser: steps 1 and 2 are the web app's TESTING.md, Part 6.1 and 6.2 (roles and policies pages, GU-97); step 3 is seeded in Development.
 
 1. **Add a Member role to My Test Org.** New organizations only get TenantAdmin. As Alice in My Test Org: `POST /api/roles` with `{ "name": "Member", "description": "Regular member" }`. **Expected:** 201 with the role (`roleType` 1, Application). Note its `id`. If you created it in Part 6.1, `GET /api/roles` lists it; a second create returns `409 ROLE_NAME_TAKEN` (names ignore case).
-2. **Let Members see the member list (GU-96).** A new role grants nothing until a policy is attached. As Alice: `GET /api/permissions` lists the keys by module (`auth.roles.assign-system`, `auth.tenants.write` and `auth.tenants.delete` are not listed). `POST /api/policies` with `{ "name": "Member basics", "permissionKeys": ["auth.members.read"] }` → 201, note its `id`. Then `POST /api/roles/<Member id>/policies/<policy id>` → 201. `GET /api/roles/<Member id>/permissions` shows `auth.members.read` granted by `Member basics`.
+2. **Let Members see the member list (GU-96).** A new role grants nothing until a policy is attached. As Alice: `GET /api/permissions` lists the catalogue, paged (`filters[module]=auth`, `searchTerm=members`; GU-97d) (`auth.roles.assign-system`, `auth.tenants.write` and `auth.tenants.delete` are not listed). `POST /api/policies` with `{ "name": "Member basics", "permissionKeys": ["auth.members.read"] }` → 201, note its `id`. Then `POST /api/roles/<Member id>/policies/<policy id>` → 201. `GET /api/roles/<Member id>/permissions` shows `auth.members.read` granted by `Member basics`.
 3. **Set the accept page URL** (System level, so as Sam; Part 11 shows how to get the System level id): `PUT /api/settings/auth.invitations.accept-url` with `{ "value": "http://localhost:5000/invite/{token}", "levelId": "<System id>" }` (use your port). Until it is set, `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED`.
 
 ### 15.2 Alice sends the invitation
@@ -783,7 +783,7 @@ As Alice, after 15.5 (there is a pending and a revoked invitation):
 3. `GET /api/members?searchTerm=carol`. **Expected:** only Carol (search covers email and display name).
 4. `GET /api/members?sortBy=ExternalUserId&filters[Nope]=1`. **Expected:** 200 with the usual list: fields a list does not allow are ignored.
 
-5. `GET /api/roles?sortBy=policyCount desc` lists the roles with the most policies first (each role has `policyCount`); `GET /api/policies?searchTerm=basics` finds "Member basics" (GU-97).
+5. `GET /api/roles?sortBy=policyCount desc` lists the roles with the most policies first (each role has `policyCount`); `GET /api/policies?searchTerm=basics` finds "Member basics" (GU-97). Each role has `activeMemberCount` and `pendingMemberCount`; `GET /api/roles/<Member id>/members?searchTerm=carol` lists Carol (GU-97d).
 
 The allowed fields per list are in ARCHITECTURE.md ("Lists and Permission Refusals"). Sorting by `status` follows the enum number, not the label.
 

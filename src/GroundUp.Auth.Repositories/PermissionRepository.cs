@@ -1,3 +1,4 @@
+using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
 using GroundUp.Auth.Data.Abstractions;
@@ -22,6 +23,45 @@ public sealed class PermissionRepository : BaseRepository<Permission, Permission
     public PermissionRepository(DbContext context)
         : base(context, AuthPermissionMapper.ToDto, AuthPermissionMapper.ToEntity)
     {
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<PaginatedData<PermissionDto>>> ListCatalogAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filterParams);
+        var systemOnly = PermissionKeysAuth.SystemOnly.ToList();
+        var options = new ListQueryOptions<Permission>
+        {
+            Fields = new ListFieldMap<Permission>()
+                .Sort("name", p => p.Name)
+                .Sort("key", p => p.Key)
+                .SortAndFilter("module", p => p.Module)
+                .Search(p => p.Name, p => p.Key, p => p.Description),
+            DefaultOrder = q => q.OrderBy(p => p.Module).ThenBy(p => p.Key),
+            TieBreaker = p => p.Id
+        };
+
+        return await GetAllAsync(
+            filterParams,
+            q => q.Where(p => !systemOnly.Contains(p.Key)),
+            p => new PermissionDto(p.Id, p.Key, p.Name, p.Description, p.Module),
+            options,
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<List<string>>> ListModulesAsync(CancellationToken cancellationToken = default)
+    {
+        var systemOnly = PermissionKeysAuth.SystemOnly.ToList();
+        var modules = await DbSet.AsNoTracking()
+            .Where(p => !systemOnly.Contains(p.Key))
+            .Select(p => p.Module)
+            .Distinct()
+            .OrderBy(m => m)
+            .ToListAsync(cancellationToken);
+        return OperationResult<List<string>>.Ok(modules);
     }
 
     /// <inheritdoc />

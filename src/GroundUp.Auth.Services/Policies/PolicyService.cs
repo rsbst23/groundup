@@ -67,27 +67,30 @@ internal sealed class PolicyService : IPolicyService
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult<List<PermissionModuleDto>>> GetCatalogAsync(CancellationToken cancellationToken = default)
+    public async Task<OperationResult<PaginatedData<PermissionDto>>> ListCatalogAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(filterParams);
         if (_tenantContext.TenantId == Guid.Empty)
         {
-            return OperationResult<List<PermissionModuleDto>>.Fail(
+            return OperationResult<PaginatedData<PermissionDto>>.Fail(
                 "A tenant must be selected to view permissions.", 403, ErrorCodes.TenantRequired);
         }
 
-        var all = await _permissionRepository.ListAllAsync(cancellationToken);
-        if (!all.Success || all.Data is null)
+        return await _permissionRepository.ListCatalogAsync(filterParams, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<List<string>>> GetModulesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_tenantContext.TenantId == Guid.Empty)
         {
-            return OperationResult<List<PermissionModuleDto>>.Fail(all.Message, all.StatusCode, all.ErrorCode);
+            return OperationResult<List<string>>.Fail(
+                "A tenant must be selected to view permissions.", 403, ErrorCodes.TenantRequired);
         }
 
-        var modules = all.Data
-            .Where(p => !PermissionKeysAuth.SystemOnly.Contains(p.Key))
-            .GroupBy(p => p.Module, StringComparer.Ordinal)
-            .OrderBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => new PermissionModuleDto(g.Key, g.OrderBy(p => p.Key, StringComparer.Ordinal).ToList()))
-            .ToList();
-        return OperationResult<List<PermissionModuleDto>>.Ok(modules);
+        return await _permissionRepository.ListModulesAsync(cancellationToken);
     }
 
     /// <inheritdoc />

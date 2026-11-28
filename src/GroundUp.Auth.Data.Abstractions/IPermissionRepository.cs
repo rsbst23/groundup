@@ -12,6 +12,21 @@ namespace GroundUp.Auth.Data.Abstractions;
 public interface IPermissionRepository : IBaseRepository<PermissionDto>
 {
     /// <summary>
+    /// A page of the permission catalogue a tenant policy can grant (GU-97d): System-only keys are never
+    /// listed. Sort: <c>name</c>, <c>key</c>, <c>module</c>; filter: <c>module</c>; search: name, key and
+    /// description. By module then key unless sorted. Other fields are ignored.
+    /// </summary>
+    /// <param name="filterParams">Paging, sorting, filters and search.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<PaginatedData<PermissionDto>>> ListCatalogAsync(
+        FilterParams filterParams,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The modules of the catalogue (without System-only keys), sorted.</summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<OperationResult<List<string>>> ListModulesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retrieves a permission by its unique programmatic key.
     /// </summary>
     /// <param name="key">The permission key (e.g., "settings.read").</param>
