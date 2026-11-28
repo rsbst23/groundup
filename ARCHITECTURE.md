@@ -49,7 +49,7 @@ Repository and data access interfaces (`IBaseRepository<T>`, `IUnitOfWork`, `IDa
 
 ### GroundUp.Repositories
 
-Base repository implementations with generic CRUD, filtering (via `FilterParams`), sorting, paging, and soft delete support. Database-agnostic — works against an EF Core `DbContext` but contains no provider-specific code. Depends on Core, Data.Abstractions, and Events.
+Base repository implementations with generic CRUD, filtering (via `FilterParams`), sorting, paging, and soft delete support. The list pipeline is also a public extension (`QueryableListExtensions.ToPagedListAsync`) for repositories that build their own base query. Database-agnostic — works against an EF Core `DbContext` but contains no provider-specific code. Depends on Core, Data.Abstractions, and Events.
 
 ### GroundUp.Data.Postgres
 
@@ -349,3 +349,36 @@ A refusal is `403 PERMISSION_NOT_HELD` with the missing keys in `errors`. Removi
 Changes publish `EntityCreatedEvent`/`EntityUpdatedEvent`/`EntityDeletedEvent` of `PolicyDto`, and created and deleted events of `RolePolicyDto` and `PolicyPermissionDto`, when an event bus is registered.
 
 `AddGroundUpAuth` registers `IPolicyService` with `AddAuthorized`, like the services above.
+
+## Lists and Permission Refusals (GU-98)
+
+**List pipeline.** `query.ToPagedListAsync(filterParams, projection, options)` (in `GroundUp.Repositories`) runs filters, search, sorting, count and paging on the entity, then the projection on the page's rows; EF translates it all to SQL. `BaseRepository.GetAllAsync` uses the same pipeline, and `GetAllAsync<TResult>(filterParams, queryShaper, projection, options)` is the projected overload (`BaseTenantRepository` adds the tenant filter before the shaper).
+
+`ListQueryOptions<TEntity>` holds:
+- `Fields`, a `ListFieldMap<TEntity>`: the names callers use (usually the DTO's), each mapped to an expression over the entity, for sorting, filtering or both, plus the search fields. A field can be a navigation (`ut => ut.User.Email`), a subquery or a computed value. Names are case-insensitive; any other name is ignored, not refused. Without a map, names are entity property paths and the search covers every string property.
+- `DefaultOrder`, used when `sortBy` is empty or names no allowed field.
+- `TieBreaker`, a unique key appended to every order so pages never overlap or skip rows.
+
+Enum values are accepted as the number or the name (`2` or `Revoked`). A value that cannot be parsed skips that filter.
+
+**Admin lists.** `GET /api/members`, `/api/invitations` and `/api/join-links` take `FilterParams` (`sortBy=email desc`, `filters[status]=Pending`, `multiValueFilters[status]=...`, `searchTerm=...`, `pageNumber`, `pageSize`):
+
+| List | Sort | Filter | Search | Default order |
+|---|---|---|---|---|
+| Members | `email`, `displayName`, `status` | `status` | email, display name | email |
+| Invitations | `email`, `roleName`, `status`, `expiresAt`, `createdAt` | `status`, `roleId` | email | newest first |
+| Join links | `roleName`, `status`, `useCount`, `expiresAt`, `createdAt` | `status`, `roleId` | role name | newest first |
+
+`status` is the status the list shows: an invitation past its expiry is Expired even though it is stored as Pending, and a link past its expiry or use limit is Expired or UsedUp. Sorting by `status` follows the enum's numeric order. The service and repository list methods take `FilterParams` (they took `PaginationParams` before; SDK callers pass a `FilterParams`).
+
+**Permission refusals.** When the authorization proxy refuses a call, the 403 says why:
+
+| Refusal | `errorCode` | `errors` | Message |
+|---|---|---|---|
+| `[RequiresPermission]` keys not held | `PERMISSION_REQUIRED` | the missing keys (all are required) | "You need the permission auth.members.read." |
+| none of the `[RequiresRole]` roles | `ROLE_REQUIRED` | the listed roles (any one is enough) | "You need one of the roles ..." |
+| not signed in | `FORBIDDEN` | none | "Forbidden" |
+
+Other 403s (refusals made in service code, such as the role rules) keep their own codes. Clients can show the missing permission instead of a bare 403; the sample web app does.
+
+**Attributed methods return `OperationResult`.** A method with `[RequiresPermission]` or `[RequiresRole]` must return `Task<OperationResult>` or `Task<OperationResult<T>>`, so a refusal is always a result, never an exception. `AddAuthorized` throws at registration (and `AuthorizationInterceptor.Create` when called directly) for an interface that breaks the rule, naming the method.

@@ -751,7 +751,7 @@ The sample app has no email sender and no accept page. In Development the defaul
 3. `POST /auth/invitations/accept` with `{ "token": "<token>" }`. **Expected:** the `redirectUrl` contains `prompt=create` and `login_hint=invitee%40example.com`, because Carol has no Keycloak account.
 4. Open it. **Expected:** the Keycloak **registration** form, with the email filled in. Register with password `Test123!`.
 5. **Expected:** the callback succeeds. `GET /auth/me` shows Carol in My Test Org with the Member role, `"allPermissions": false` and `"permissions": ["auth.members.read"]`.
-6. As Carol, `GET /api/members` → 200 (the Member role's policy grants it). `DELETE /api/members/<someone>` → 403: Carol does not hold `auth.members.manage`.
+6. As Carol, `GET /api/members` → 200 (the Member role's policy grants it). `DELETE /api/members/<someone>` → 403 `PERMISSION_REQUIRED` with `errors: ["auth.members.manage"]` and the message "You need the permission auth.members.manage." (GU-98).
 
 ### 15.4 The link only works once
 1. `POST /auth/invitations/lookup` with the same token. **Expected:** `usable: false`, `reason: "accepted"`.
@@ -768,11 +768,20 @@ The sample app has no email sender and no accept page. In Development the defaul
 Needs two sessions: Alice in your normal browser, Carol in a private window (sign in as Carol there with Recipe 1).
 1. As Carol: `GET /api/members` → 200.
 2. As Alice: `PUT /api/policies/<policy id>/permissions` with `{ "permissionKeys": [] }` → 200.
-3. As Carol, without signing in again: `GET /api/members` → **403**, and `GET /auth/me` shows `"permissions": []`.
+3. As Carol, without signing in again: `GET /api/members` → **403** `PERMISSION_REQUIRED` (`errors: ["auth.members.read"]`), and `GET /auth/me` shows `"permissions": []`.
 4. As Alice: put `auth.members.read` back (`{ "permissionKeys": ["auth.members.read"] }`). Carol's next `GET /api/members` → 200.
 5. **Escalation guard:** Alice is TenantAdmin, so she can add any key. A member who holds `auth.permissions.write` but not `auth.members.manage` gets `403 PERMISSION_NOT_HELD` (with `auth.members.manage` in `errors`) when adding it to a policy. The automated tests cover this; to try it by hand, give Carol a role with a policy holding `auth.permissions.read` and `auth.permissions.write`.
 
 This holds on one app instance. With several instances, others see the change when their cached permissions expire (`PermissionCacheTtlMinutes`, 15 by default).
+
+### 15.7 Sorting, searching and filtering the lists (GU-98)
+As Alice, after 15.5 (there is a pending and a revoked invitation):
+1. `GET /api/invitations?sortBy=email`. **Expected:** ordered by email; `sortBy=email desc` reverses it. Without `sortBy`, newest first.
+2. `GET /api/invitations?filters[status]=Revoked` (or `filters[status]=2`). **Expected:** only `nobody@example.com`.
+3. `GET /api/members?searchTerm=carol`. **Expected:** only Carol (search covers email and display name).
+4. `GET /api/members?sortBy=ExternalUserId&filters[Nope]=1`. **Expected:** 200 with the usual list: fields a list does not allow are ignored.
+
+The allowed fields per list are in ARCHITECTURE.md ("Lists and Permission Refusals"). Sorting by `status` follows the enum number, not the label.
 
 ---
 

@@ -33,14 +33,14 @@ Findings, and how the tasks handle them:
   - [x] 2.6 Build, run all suites, commit, stop for review
   - _Requirements: 2, 3_
 
-- [ ] 3. Permission refusals and docs
-  - [ ] 3.1 `ErrorCodes.PermissionRequired`, `ErrorCodes.RoleRequired`
-  - [ ] 3.2 `AuthorizationInterceptor`: a shared check returning the refusal; `Fail(message, 403, code, errors)`; remove the exception and synchronous paths
-  - [ ] 3.3 `AddAuthorized`: the registration check for attributed methods' return types
-  - [ ] 3.4 Unit tests: missing keys exactly, roles listed, unauthenticated `FORBIDDEN`, the registration check names the method; remove the exception-path tests
-  - [ ] 3.5 Integration tests: a 403 body with `PERMISSION_REQUIRED` and `["auth.members.read"]`; update the proxy-refusal assertions (gap 2)
-  - [ ] 3.6 Docs: the API guide (the `FilterParams` query on the three endpoints, the allowed fields, the status order, the two codes, the signature change); ARCHITECTURE (the list pipeline, the refusal codes, the `OperationResult`-only rule for attributed methods)
-  - [ ] 3.7 Build, run all suites, commit, stop for review; PR 98a info
+- [x] 3. Permission refusals and docs
+  - [x] 3.1 `ErrorCodes.PermissionRequired`, `ErrorCodes.RoleRequired`
+  - [x] 3.2 `AuthorizationInterceptor`: a shared check returning the refusal; `Fail(message, 403, code, errors)`; remove the exception and synchronous paths
+  - [x] 3.3 `AddAuthorized`: the registration check for attributed methods' return types
+  - [x] 3.4 Unit tests: missing keys exactly, roles listed, unauthenticated `FORBIDDEN`, the registration check names the method; remove the exception-path tests
+  - [x] 3.5 Integration tests: a 403 body with `PERMISSION_REQUIRED` and `["auth.members.read"]`; update the proxy-refusal assertions (gap 2)
+  - [x] 3.6 Docs: the API guide (the `FilterParams` query on the three endpoints, the allowed fields, the status order, the two codes, the signature change); ARCHITECTURE (the list pipeline, the refusal codes, the `OperationResult`-only rule for attributed methods)
+  - [x] 3.7 Build, run all suites, commit, stop for review; PR 98a info
   - _Requirements: 4, 8.1, 8.2, 8.4_
 
 ## 98b: Web (new branch from main after 98a merges)

@@ -430,6 +430,22 @@ public sealed class AdminListsApiTests : AdminApiTestBase
         (await JoinLinkIdsAsync(j.Org, "filters[status]=Expired")).Should().Equal(j.Expired);
     }
 
+    // ── Refusals ────────────────────────────────────────────
+
+    [Fact]
+    public async Task Members_WithoutReadPermission_PermissionRequiredNamingTheKey()
+    {
+        var org = await SeedOrganizationAsync();
+
+        var response = await SendAsync(HttpMethod.Get, "/api/members", org.MemberToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await BodyAsync(response);
+        body.GetProperty("errorCode").GetString().Should().Be("PERMISSION_REQUIRED");
+        (await ErrorsAsync(response)).Should().Equal("auth.members.read");
+        body.GetProperty("message").GetString().Should().Be("You need the permission auth.members.read.");
+    }
+
     // ── Helpers ─────────────────────────────────────────────
 
     private DateTime _createdAt = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

@@ -394,7 +394,7 @@ public sealed class RolesApiTests : AuthFlowTestBase
         // The authorization proxy refuses first: without a tenant the caller has no tenant permissions.
         // The service's own TENANT_REQUIRED check applies to callers that pass the proxy (unit tests).
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await ErrorCodeAsync(response)).Should().Be("FORBIDDEN");
+        (await ErrorCodeAsync(response)).Should().Be("PERMISSION_REQUIRED");
     }
 
     // ── Helpers ───────────────────────────────────────────────────
