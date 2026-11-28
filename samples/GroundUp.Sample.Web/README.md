@@ -56,7 +56,8 @@ src/
     types.ts       DTO types (written by hand for now)
   components/      shared components (layout, error panel, session banner, inspector)
   features/<area>/ an area's queries, mutations and components; route files stay thin
-  features/access/ permission checks (can, PermissionButton) and RequireTenant
+  features/access/ permission checks (can, PermissionButton), RequireTenant and RequirePermission
+  features/list/   ListTable and the list view in the URL (page, sort, search, status)
   features/common/ shared pieces (dates, ConfirmDialog, RoleSelect)
 ```
 
@@ -72,9 +73,11 @@ Tests sit next to the code as `*.test.ts`; `src/api/testing.ts` has the fetch mo
 - **After anything that changes the user or the tenant** (set tenant, sign out, leave, create organization, refresh), call `onSessionChanged(queryClient)`. It drops the CSRF token, which is tied to the user, and refreshes the session.
 - **CSRF is automatic.** `apiFetch` fetches `GET /auth/csrf` before the first POST, PUT, PATCH or DELETE, keeps it in memory only and retries once after `403 CSRF_VALIDATION_FAILED`. When nobody is signed in it sends no token, which the API accepts. Signing in is a full-page redirect, which reloads the app and empties memory; a client-side sign-in would have to call `clearCsrfToken()`.
 - **Nothing secret is stored.** The Requests panel masks `Authorization`, `Cookie`, `Set-Cookie` and `X-CSRF-Token`, and body fields whose names contain token, password or secret, before recording. A page that must show a value once (a new join link) shows it on the page.
-- **API data lives in TanStack Query.** Query keys start with the area (`['members', tenantId, page]`); after a change, invalidate the area's key and every page showing it reloads. Keys of tenant data include the tenant id.
+- **API data lives in TanStack Query.** Query keys start with the area (`['members', tenantId, view]`); after a change, invalidate the area's key and every page showing it reloads. Keys of tenant data include the tenant id.
 - **Client-only state shared across pages** (not from the API) goes in a Zustand store when it is needed. None is needed yet; the organization picker's open flag is a tiny store in `features/session/pickerRequest.ts`.
 - **Actions follow the session's permissions.** Use `PermissionButton` / `PermissionIconButton` (`features/access`) with the permission the API checks: the button is disabled, with a tooltip naming the permission, when `/auth/me` does not list it. The API still checks every request.
+- **Every admin page wraps its content in `RequirePermission`** (inside `RequireTenant`) with the key its list endpoint needs. Without it the page says "You need the permission … to see this page" and calls nothing. A 403 that still arrives (`PERMISSION_REQUIRED`, `ROLE_REQUIRED`) is shown by `ErrorPanel` with the missing permission or role.
+- **Lists use `ListTable`** with the view in the URL: the route sets `validateSearch: listSearchSchema`, the page uses `useListView` and `usePageBack`, and only columns the API can sort (its field names) get a `sortField`. Sorting, search and filtering run on the server.
 - **A new route file** needs `npx vite build` once (the router plugin regenerates `routeTree.gen.ts`) before `npm run build`, whose type check runs first.
 - **Each page story adds its part to [TESTING.md](TESTING.md).**
 

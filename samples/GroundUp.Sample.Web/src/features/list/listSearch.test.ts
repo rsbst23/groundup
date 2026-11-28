@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { Route as InvitationsRoute } from '../../routes/invitations';
+import { Route as JoinLinksRoute } from '../../routes/join-links';
+import { Route as MembersRoute } from '../../routes/members';
 import { lastPageWithRows, listSearchSchema, nextSort, pageBackTarget, parseSort, toListSearch, toListState } from './listSearch';
 
 describe('listSearchSchema', () => {
@@ -30,6 +33,14 @@ describe('listSearchSchema', () => {
 
   it('defaults to an empty view', () => {
     expect(toListState(listSearchSchema.parse({}))).toEqual({ page: 1, sort: undefined, q: undefined, status: undefined });
+  });
+});
+
+describe('list routes', () => {
+  it('validate their search params with the list schema', () => {
+    for (const route of [MembersRoute, InvitationsRoute, JoinLinksRoute]) {
+      expect(route.options.validateSearch).toBe(listSearchSchema);
+    }
   });
 });
 

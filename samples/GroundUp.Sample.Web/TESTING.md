@@ -304,10 +304,21 @@ Buttons you do not have the permission for are disabled; hover to see which perm
 
 ### 5.10 What a member without admin permissions sees (Bob)
 1. Top bar **Sign out**, **Sign in** as Bob.
-2. Open **Members**. **Expected:** with the optional policy from 5.1, the list loads; **Add role**, **Remove** and the chips' delete buttons are disabled, and hovering names the permission (for example "Needs the permission auth.members.manage"). Without it, an error panel: **HTTP 403**.
-3. Open **Invitations** and **Join links**. **Expected:** an error panel, **HTTP 403** (Bob holds neither `auth.invitations.send` nor `auth.joinlinks.manage`), and the **Invite** / **Create link** buttons disabled.
+2. Open **Members**. **Expected:** with the optional policy from 5.1, the list loads; **Add role**, **Remove** and the chips' delete buttons are disabled, and hovering names the permission (for example "Needs the permission auth.members.manage"). Without it: "Permission needed. You need the permission auth.members.read to see this page." The Requests panel shows no call to `/api/members` (GU-98).
+3. Open **Invitations** and **Join links**. **Expected:** the same message with `auth.invitations.send` and `auth.joinlinks.manage`, and no call to their endpoints.
 
-**Record the result** in `.kiro/specs/phase-10t-web-members/tasks.md`, task 5.2.
+### 5.11 Sorting, searching and filtering (Alice, GU-98)
+After 5.9 there are three members, two invitations and three join links.
+1. **Members**: click **Email**. **Expected:** sorted by email, the header shows an arrow, and the address bar has `?sort=email`. Click it again: `email desc`, reversed. Click **Name**: sorted by name.
+2. Type `car` in **Search name or email**. **Expected:** about a third of a second after you stop typing, only Carol is listed and the address bar has `q=car`. Clear it: everyone is back.
+3. **Status**: **Pending**. **Expected:** "Nothing matches." (everyone has joined). **All**: everyone is back.
+4. Press the browser **Back** button. **Expected:** the previous view (sort, search, status) comes back. Refresh the page: the same view.
+5. **Invitations**: **Status** **Revoked**. **Expected:** only the revoked invitation. Sort by **Role**, **Expires**, **Created**.
+6. **Join links**: **Status** **Used up**. **Expected:** only the first link. **Status** **Revoked**: the revoked link. Type `mem` in **Search role**: links for the Member role.
+7. Open `/members?page=9`. **Expected:** the first page (the list moves back to the last page with rows).
+8. Open `/members?sort=bogus&status=x`. **Expected:** the normal list: values the page does not understand are dropped, and fields the API does not allow are ignored.
+
+**Record the result** in `.kiro/specs/phase-10t-web-members/tasks.md`, task 5.2 (5.1 to 5.10) and in `.kiro/specs/phase-10t-admin-lists/tasks.md` (5.10 and 5.11).
 
 ---
 

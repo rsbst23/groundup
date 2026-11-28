@@ -2,22 +2,19 @@ import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TablePagination from '@mui/material/TablePagination';
-import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useState } from 'react';
-import { joinLinkStatusLabel } from '../../api/labels';
-import { PAGE_SIZE } from '../../api/paging';
+import { JoinLinkStatus, joinLinkStatusLabel } from '../../api/labels';
 import type { JoinLinkDto } from '../../api/types';
 import { ErrorPanel } from '../../components/ErrorPanel';
 import { PermissionButton } from '../access/PermissionButton';
 import { PermissionKeys } from '../access/permissions';
+import { RequirePermission } from '../access/RequirePermission';
 import { RequireTenant } from '../access/RequireTenant';
+import { ListTable, type ListColumn, type StatusOption } from '../list/ListTable';
+import { useListView, usePageBack } from '../list/useListView';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { formatDateTime } from '../common/dates';
 import { useSession } from '../session/sessionQuery';
@@ -30,18 +27,27 @@ import { ShowLinkDialog } from './ShowLinkDialog';
 export function JoinLinksPage() {
   return (
     <RequireTenant purpose="manage its join links">
-      <JoinLinksTable />
+      <RequirePermission permission={PermissionKeys.JoinLinksManage}>
+        <JoinLinksTable />
+      </RequirePermission>
     </RequireTenant>
   );
 }
 
 type Confirming = { kind: 'regenerate' | 'revoke'; link: JoinLinkDto } | null;
 
+/** Every status the list shows; Expired and Used up are worked out from the expiry and the uses. */
+const joinLinkStatusOptions: StatusOption[] = Object.values(JoinLinkStatus).map((value) => ({
+  value,
+  label: joinLinkStatusLabel(value),
+}));
+
 function JoinLinksTable() {
   const { me, currentTenant } = useSession();
   const tenantId = me!.tenantId!;
   const organizationName = currentTenant?.name ?? 'this organization';
-  const [page, setPage] = useState(1);
+  const navigate = useNavigate({ from: '/join-links' });
+  const view = useListView(useSearch({ from: '/join-links' }), (search, replace) => void navigate({ search, replace }));
   const [creating, setCreating] = useState(false);
   const [dialogKey, setDialogKey] = useState(0);
   const [shownUrl, setShownUrl] = useState<string | null>(null);
@@ -49,9 +55,59 @@ function JoinLinksTable() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ title: string; error: unknown } | null>(null);
 
-  const links = useQuery(joinLinksQueryOptions(tenantId, { page }));
+  const links = useQuery(joinLinksQueryOptions(tenantId, view.state));
+  usePageBack(links.data, links.isPlaceholderData, view);
   const actions = useJoinLinkActions();
   const busy = actions.regenerate.isPending || actions.revoke.isPending;
+
+  const columns: ListColumn<JoinLinkDto>[] = [
+    { label: 'Role', sortField: 'roleName', render: (link) => link.roleName ?? '—' },
+    {
+      label: 'Status',
+      sortField: 'status',
+      render: (link) => (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={joinLinkStatusLabel(link.status)}
+          color={isActive(link) ? 'success' : 'default'}
+        />
+      ),
+    },
+    { label: 'Uses', sortField: 'useCount', render: (link) => usesText(link.useCount, link.maxUses) },
+    {
+      label: 'Expires',
+      sortField: 'expiresAt',
+      render: (link) => (link.expiresAt ? formatDateTime(link.expiresAt) : 'Never'),
+    },
+    { label: 'Created', sortField: 'createdAt', render: (link) => formatDateTime(link.createdAt) },
+    {
+      label: 'Actions',
+      align: 'right',
+      render: (link) =>
+        isActive(link) && (
+          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+            <PermissionButton
+              permission={PermissionKeys.JoinLinksManage}
+              size="small"
+              disabled={busy}
+              onClick={() => setConfirming({ kind: 'regenerate', link })}
+            >
+              Regenerate
+            </PermissionButton>
+            <PermissionButton
+              permission={PermissionKeys.JoinLinksManage}
+              size="small"
+              color="error"
+              disabled={busy}
+              onClick={() => setConfirming({ kind: 'revoke', link })}
+            >
+              Revoke
+            </PermissionButton>
+          </Stack>
+        ),
+    },
+  ];
 
   const confirm = () => {
     if (!confirming) {
@@ -110,83 +166,18 @@ function JoinLinksTable() {
       {links.isError ? (
         <ErrorPanel error={links.error} title="Could not load the join links" />
       ) : (
-        <>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Role</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Uses</TableCell>
-                <TableCell>Expires</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {links.isPending && (
-                <TableRow>
-                  <TableCell colSpan={6}>Loading…</TableCell>
-                </TableRow>
-              )}
-              {links.data?.items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6}>No join links yet.</TableCell>
-                </TableRow>
-              )}
-              {links.data?.items.map((link) => (
-                <TableRow key={link.id}>
-                  <TableCell>{link.roleName ?? '—'}</TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={joinLinkStatusLabel(link.status)}
-                      color={isActive(link) ? 'success' : 'default'}
-                    />
-                  </TableCell>
-                  <TableCell>{usesText(link.useCount, link.maxUses)}</TableCell>
-                  <TableCell>{link.expiresAt ? formatDateTime(link.expiresAt) : 'Never'}</TableCell>
-                  <TableCell>{formatDateTime(link.createdAt)}</TableCell>
-                  <TableCell align="right">
-                    {isActive(link) && (
-                      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                        <PermissionButton
-                          permission={PermissionKeys.JoinLinksManage}
-                          size="small"
-                          disabled={busy}
-                          onClick={() => setConfirming({ kind: 'regenerate', link })}
-                        >
-                          Regenerate
-                        </PermissionButton>
-                        <PermissionButton
-                          permission={PermissionKeys.JoinLinksManage}
-                          size="small"
-                          color="error"
-                          disabled={busy}
-                          onClick={() => setConfirming({ kind: 'revoke', link })}
-                        >
-                          Revoke
-                        </PermissionButton>
-                      </Stack>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {links.data && (
-            <TablePagination
-              component="div"
-              count={links.data.totalRecords}
-              page={page - 1}
-              rowsPerPage={PAGE_SIZE}
-              rowsPerPageOptions={[PAGE_SIZE]}
-              onPageChange={(_, next) => setPage(next + 1)}
-            />
-          )}
-        </>
+        <ListTable
+          columns={columns}
+          rows={links.data?.items}
+          rowKey={(link) => link.id}
+          totalRecords={links.data?.totalRecords ?? 0}
+          state={view.state}
+          onChange={view.change}
+          searchLabel="Search role"
+          statusOptions={joinLinkStatusOptions}
+          emptyText="No join links yet."
+        />
       )}
-
       <CreateJoinLinkDialog
         key={dialogKey}
         open={creating}
