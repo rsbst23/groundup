@@ -105,6 +105,8 @@ public static class AuthServiceCollectionExtensions
 
         // Permission service
         services.AddScoped<IPermissionService, PermissionService>();
+        // Per-tenant versions of cached permission sets; policy changes bump them (GU-96)
+        services.AddSingleton<PermissionCacheVersions>();
 
         // Token and session services
         services.AddScoped<ITokenService, TokenService>();
@@ -162,6 +164,8 @@ public static class AuthServiceCollectionExtensions
         // Role assignment (GU-68): one class behind the public, rule-checked IUserRoleService and the
         // internal system path IRoleGrantWriter. Applications add rules as IRoleAssignmentRule.
         services.AddScoped<RoleGrantPolicy>();
+        // The escalation guard (GU-96): callers only grant permissions they hold
+        services.AddScoped<PermissionHoldGuard>();
         services.AddScoped<UserRoleService>();
         services.AddScoped<IUserRoleService>(sp => sp.GetRequiredService<UserRoleService>());
         services.AddScoped<IRoleGrantWriter>(sp => sp.GetRequiredService<UserRoleService>());

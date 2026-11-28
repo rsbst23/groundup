@@ -14,22 +14,31 @@ namespace GroundUp.Auth.Services.Roles;
 /// <see cref="IPermissionService"/>: a TenantAdmin passes every permission check in their tenant, so
 /// a permission-based rule could not keep SuperAdmin away from TenantAdmins.
 /// </para>
+/// <para>
+/// A holder of <c>auth.roles.assign</c> can only grant a role whose permissions they all hold
+/// (GU-96, <see cref="PermissionHoldGuard"/>); otherwise 403 <c>PERMISSION_NOT_HELD</c>.
+/// </para>
 /// </summary>
 internal sealed class RoleGrantPolicy
 {
     private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IRoleRepository _roleRepository;
     private readonly IPermissionService _permissionService;
+    private readonly PermissionHoldGuard _holdGuard;
     private readonly ITenantContext _tenantContext;
     private readonly IEnumerable<IRoleAssignmentRule> _rules;
 
     public RoleGrantPolicy(
         IUserRoleRepository userRoleRepository,
+        IRoleRepository roleRepository,
         IPermissionService permissionService,
         ITenantContext tenantContext,
         IEnumerable<IRoleAssignmentRule> rules)
     {
         _userRoleRepository = userRoleRepository;
+        _roleRepository = roleRepository;
         _permissionService = permissionService;
+        _holdGuard = new PermissionHoldGuard(permissionService);
         _tenantContext = tenantContext;
         _rules = rules;
     }
@@ -60,14 +69,28 @@ internal sealed class RoleGrantPolicy
         var kind = RoleKinds.Classify(role);
         var isSuperAdmin = await IsSuperAdminAsync(callerUserId, cancellationToken);
 
-        var allowed = kind switch
+        bool allowed;
+        var throughAssignPermission = false;
+        switch (kind)
         {
-            RoleKind.SuperAdmin => isSuperAdmin,
-            RoleKind.TenantAdmin => isSuperAdmin || await IsTenantAdminAsync(callerUserId, role.TenantId, cancellationToken),
-            _ => isSuperAdmin
-                 || await IsTenantAdminAsync(callerUserId, role.TenantId, cancellationToken)
-                 || await HasAssignPermissionAsync(callerUserId, role.TenantId, cancellationToken)
-        };
+            case RoleKind.SuperAdmin:
+                allowed = isSuperAdmin;
+                break;
+            case RoleKind.TenantAdmin:
+                allowed = isSuperAdmin || await IsTenantAdminAsync(callerUserId, role.TenantId, cancellationToken);
+                break;
+            default:
+                if (isSuperAdmin || await IsTenantAdminAsync(callerUserId, role.TenantId, cancellationToken))
+                {
+                    allowed = true;
+                }
+                else
+                {
+                    allowed = throughAssignPermission = await HasAssignPermissionAsync(callerUserId, role.TenantId, cancellationToken);
+                }
+
+                break;
+        }
 
         if (!allowed)
         {
@@ -77,6 +100,17 @@ internal sealed class RoleGrantPolicy
                 RoleKind.TenantAdmin => "Only a TenantAdmin of this organization or a SuperAdmin can grant or remove the TenantAdmin role.",
                 _ => "You do not have permission to grant or remove this role."
             });
+        }
+
+        // GU-96: a holder of auth.roles.assign can only grant a role whose permissions they all hold.
+        // Admins hold everything; removing a role grants nothing.
+        if (throughAssignPermission && change == RoleChange.Assign)
+        {
+            var held = await CheckCallerHoldsRolePermissionsAsync(callerUserId, role, cancellationToken);
+            if (!held.Success)
+            {
+                return held;
+            }
         }
 
         var context = new RoleAssignmentContext(callerUserId, targetUserId, role, role.TenantId, change, source);
@@ -90,6 +124,27 @@ internal sealed class RoleGrantPolicy
         }
 
         return OperationResult.Ok();
+    }
+
+    /// <summary>
+    /// The current tenant is the role's tenant here (<see cref="HasAssignPermissionAsync"/> requires it),
+    /// so the caller's permissions are measured where the role applies. If the role's permissions
+    /// cannot be read the grant is refused.
+    /// </summary>
+    private async Task<OperationResult> CheckCallerHoldsRolePermissionsAsync(Guid callerUserId, RoleDto role, CancellationToken cancellationToken)
+    {
+        var grants = await _roleRepository.GetPermissionGrantsAsync(role.Id, cancellationToken);
+        if (grants is not { Success: true, Data: not null })
+        {
+            return OperationResult.Forbidden($"The permissions of the role '{role.Name}' could not be checked.");
+        }
+
+        var held = await _holdGuard.CheckHoldsAsync(callerUserId, grants.Data.Select(g => g.PermissionKey), cancellationToken);
+        return held.Success
+            ? held
+            : OperationResult.Fail(
+                $"You cannot grant the role '{role.Name}' because it has permissions you do not hold.",
+                held.StatusCode, held.ErrorCode, held.Errors);
     }
 
     private async Task<bool> IsSuperAdminAsync(Guid userId, CancellationToken cancellationToken)

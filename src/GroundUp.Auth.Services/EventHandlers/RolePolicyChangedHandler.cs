@@ -7,12 +7,11 @@ namespace GroundUp.Auth.Services.EventHandlers;
 /// <summary>
 /// Handles events when role-policy assignments are created or deleted.
 /// <para>
-/// Cache invalidation trade-off: Since <c>IMemoryCache</c> does not support pattern-based eviction
-/// and <c>IUserRoleRepository</c> does not expose a "get users by role" method, this handler
-/// relies on TTL-based cache expiry for permission updates. Role-policy changes are admin operations
-/// that happen rarely, and the default 15-minute TTL ensures eventual consistency.
-/// The <see cref="UserRoleChangedHandler"/> handles the most common case (user gains/loses a role)
-/// with immediate cache eviction since the userId is directly available.
+/// Logs only. Cached permissions are not evicted here: the service that changed the role's policies
+/// bumps the tenant's <see cref="PermissionCacheVersions"/> version after saving (GU-96), so every user
+/// of the tenant reloads on their next request on this instance, with or without an event bus. Other
+/// instances refresh when their cached sets expire. The <see cref="UserRoleChangedHandler"/> evicts a
+/// single user when they gain or lose a role.
 /// </para>
 /// </summary>
 public sealed class RolePolicyChangedHandler :
@@ -32,8 +31,7 @@ public sealed class RolePolicyChangedHandler :
 
     /// <summary>
     /// Handles a role-policy creation event. Logs the change for observability.
-    /// Cache invalidation is handled by TTL expiry since we cannot efficiently
-    /// determine all affected users without a "get users by role" query.
+    /// The tenant's permission cache version was bumped by the service that made the change.
     /// </summary>
     /// <param name="event">The entity created event containing the new role-policy assignment.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -41,7 +39,7 @@ public sealed class RolePolicyChangedHandler :
     {
         var dto = @event.Entity;
         _logger.LogInformation(
-            "RolePolicy created: RoleId={RoleId}, PolicyId={PolicyId}. Permission cache will refresh at TTL expiry",
+            "RolePolicy created: RoleId={RoleId}, PolicyId={PolicyId}. Cached permissions are refreshed through the tenant's permission cache version",
             dto.RoleId,
             dto.PolicyId);
 
@@ -50,15 +48,14 @@ public sealed class RolePolicyChangedHandler :
 
     /// <summary>
     /// Handles a role-policy deletion event. Logs the change for observability.
-    /// Cache invalidation is handled by TTL expiry since we cannot efficiently
-    /// determine all affected users without a "get users by role" query.
+    /// The tenant's permission cache version was bumped by the service that made the change.
     /// </summary>
     /// <param name="event">The entity deleted event for the removed role-policy assignment.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public Task HandleAsync(EntityDeletedEvent<RolePolicyDto> @event, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "RolePolicy deleted: EntityId={EntityId}. Permission cache will refresh at TTL expiry",
+            "RolePolicy deleted: EntityId={EntityId}. Cached permissions are refreshed through the tenant's permission cache version",
             @event.EntityId);
 
         return Task.CompletedTask;

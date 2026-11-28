@@ -63,7 +63,7 @@ public sealed class MemberManagementServiceTests
 
         _sut = new MemberManagementService(
             _currentUser, _tenantContext, _userTenants, _userRoles, _roles, _invitations,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, []),
             new LastAdminGuard(_userRoles),
             new TenantAccessRevoker(_store, new MemoryCache(new MemoryCacheOptions()), NullLogger<TenantAccessRevoker>.Instance),
             NullLogger<MemberManagementService>.Instance);

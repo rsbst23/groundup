@@ -17,6 +17,9 @@ internal sealed class SettingsTestGrantAllPermissions : IPermissionService
     public Task<HashSet<string>> GetUserPermissionsAsync(Guid userId, CancellationToken cancellationToken = default)
         => Task.FromResult(new HashSet<string>());
 
+    public Task<GroundUp.Auth.Core.Dtos.PermissionSummaryDto> GetPermissionSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new GroundUp.Auth.Core.Dtos.PermissionSummaryDto(true, []));
+
     public Task<bool> HasSystemRoleAsync(Guid userId, string roleName, CancellationToken cancellationToken = default)
         => Task.FromResult(true);
 

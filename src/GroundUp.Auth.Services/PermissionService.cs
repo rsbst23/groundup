@@ -1,4 +1,5 @@
 using GroundUp.Auth.Core;
+using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Services.Configuration;
 using GroundUp.Core.Abstractions;
@@ -20,6 +21,7 @@ public sealed class PermissionService : IPermissionService
     private readonly ITenantContext _tenantContext;
     private readonly IMemoryCache _cache;
     private readonly AuthOptions _options;
+    private readonly PermissionCacheVersions _versions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PermissionService"/> class.
@@ -30,14 +32,20 @@ public sealed class PermissionService : IPermissionService
     /// <param name="tenantContext">The current tenant context.</param>
     /// <param name="cache">In-memory cache for resolved permission sets.</param>
     /// <param name="options">Auth configuration options.</param>
+    /// <param name="versions">
+    /// The per-tenant cache versions (a singleton registered by <c>AddGroundUpAuth</c>). When not
+    /// given, a private instance is used, so nothing ever makes the cached sets stale before the TTL.
+    /// </param>
     public PermissionService(
         IUserRoleRepository userRoleRepository,
         IRoleRepository roleRepository,
         IPolicyRepository policyRepository,
         ITenantContext tenantContext,
         IMemoryCache cache,
-        IOptions<AuthOptions> options)
+        IOptions<AuthOptions> options,
+        PermissionCacheVersions? versions = null)
     {
+        _versions = versions ?? new PermissionCacheVersions();
         _userRoleRepository = userRoleRepository;
         _roleRepository = roleRepository;
         _policyRepository = policyRepository;
@@ -82,9 +90,12 @@ public sealed class PermissionService : IPermissionService
         var tenantId = _tenantContext.TenantId;
         var cacheKey = PermissionCacheKeys.For(userId, tenantId);
 
-        if (_cache.TryGetValue(cacheKey, out HashSet<string>? cachedPermissions) && cachedPermissions is not null)
+        // Read the version before loading: a change saved while this load runs bumps it, so the set
+        // stored below is already stale and the next request reloads (GU-96)
+        var version = _versions.Current(tenantId);
+        if (_cache.TryGetValue(cacheKey, out CachedPermissions? cached) && cached is not null && cached.Version == version)
         {
-            return cachedPermissions;
+            return cached.Keys;
         }
 
         var permissions = new HashSet<string>(StringComparer.Ordinal);
@@ -108,9 +119,37 @@ public sealed class PermissionService : IPermissionService
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(_options.PermissionCacheTtlMinutes)
         };
-        _cache.Set(cacheKey, permissions, cacheOptions);
+        _cache.Set(cacheKey, new CachedPermissions(version, permissions), cacheOptions);
 
         return permissions;
+    }
+
+    /// <inheritdoc />
+    public async Task<PermissionSummaryDto> GetPermissionSummaryAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return new PermissionSummaryDto(false, []);
+        }
+
+        if (await IsSuperAdminAsync(userId, cancellationToken))
+        {
+            return new PermissionSummaryDto(true, []);
+        }
+
+        // Without a tenant only system roles could grant anything, and only SuperAdmin has one
+        if (_tenantContext.TenantId == Guid.Empty)
+        {
+            return new PermissionSummaryDto(false, []);
+        }
+
+        if (await IsTenantAdminInCurrentTenantAsync(userId, cancellationToken))
+        {
+            return new PermissionSummaryDto(true, []);
+        }
+
+        var permissions = await GetUserPermissionsAsync(userId, cancellationToken);
+        return new PermissionSummaryDto(false, permissions.Order(StringComparer.Ordinal).ToList());
     }
 
     /// <inheritdoc />

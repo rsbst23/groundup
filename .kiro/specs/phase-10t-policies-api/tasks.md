@@ -23,12 +23,12 @@ Requirements: `requirements.md`. Design: `design.md`. Two PRs on branch `phase-1
   - [x] 1.3 `IPermissionRepository.ListAllAsync` / `GetByKeysAsync`; `IPolicyRepository.ListAsync` / `GetDetailAsync` / `ReplacePermissionsAsync` and the `DeleteAsync` override; `IRoleRepository.AssignPolicyAsync` / `RemovePolicyAsync` return the link, `GetPermissionGrantsAsync`
   - [x] 1.4 Tests: `PolicyIndexMigrationTests`; repository tests (list with keys and role counts, detail lists only same-tenant roles, replace adds and removes and reports both, another tenant's policy 404, FK refusal → 409, permission grants for a role, attach returns 201 then 200 with the same link); validator unit tests
   - [x] 1.5 Check: build, unit 2085 / 0, integration 600 / 0, sample 22/22. Found: with the link tracked in the same context, EF refuses a restricted delete itself (InvalidOperationException) before the database does; a request's context does not track it, so the repository catches only the database's refusal and the test clears the tracker
-- [ ] 2. Cache versioning and the escalation guard (design 4, 5, 8 summary)
-  - [ ] 2.1 `PermissionCacheVersions` (singleton), `CachedPermissions`; `PermissionService` stores and checks the version (read before loading); `GetPermissionSummaryAsync` on `IPermissionService`
-  - [ ] 2.2 `PermissionHoldGuard`; `RoleGrantPolicy` checks the role's keys on Assign for roles of kind Other
-  - [ ] 2.3 Handlers' log text; registration (singleton, scoped guard)
-  - [ ] 2.4 Unit tests: stale version reloads, a bump during a load leaves the entry stale, summary cases, guard cases, `RoleGrantPolicy` cases; existing cache tests moved to `CachedPermissions`
-  - [ ] 2.5 Check: build, all three suites
+- [x] 2. Cache versioning and the escalation guard (design 4, 5, 8 summary)
+  - [x] 2.1 `PermissionCacheVersions` (singleton), `CachedPermissions`; `PermissionService` stores and checks the version (read before loading); `GetPermissionSummaryAsync` on `IPermissionService`
+  - [x] 2.2 `PermissionHoldGuard`; `RoleGrantPolicy` checks the role's keys on Assign for roles of kind Other, only on the `auth.roles.assign` path (admins skip it); a role whose permissions cannot be read is refused. `RoleGrantPolicy` builds the guard from the permission service and now takes `IRoleRepository`; `PermissionService` takes the versions as an optional last parameter (a private instance when built directly)
+  - [x] 2.3 Handlers' log text; registration (singleton, scoped guard)
+  - [x] 2.4 Unit tests: stale version reloads, a bump during a load leaves the entry stale, summary cases, guard cases, `RoleGrantPolicy` cases; existing cache tests moved to `CachedPermissions`
+  - [x] 2.5 Check: build, unit 2108 / 0, integration 600 / 0, sample 22/22
 - [ ] 3. Services (design 6)
   - [ ] 3.1 `IPolicyService` / `PolicyService` (catalogue, list, get, create, update, set permissions, delete; transactions, bumps, events)
   - [ ] 3.2 `IRoleService` / `RoleService`: get policies, attach, detach, permissions

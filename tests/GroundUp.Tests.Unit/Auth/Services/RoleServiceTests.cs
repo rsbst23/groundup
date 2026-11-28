@@ -63,7 +63,7 @@ public sealed class RoleServiceTests
 
         _sut = new RoleService(
             _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, []),
             _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
             NullLogger<RoleService>.Instance, _eventBus);
     }
@@ -421,7 +421,7 @@ public sealed class RoleServiceTests
             .Returns(OperationResult.Fail("No defaults on Sundays", 403, "CUSTOM"));
         var sut = new RoleService(
             _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, [rule]),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, [rule]),
             _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
             NullLogger<RoleService>.Instance, _eventBus);
 
@@ -469,7 +469,7 @@ public sealed class RoleServiceTests
     {
         var sut = new RoleService(
             _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, []),
             _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
             NullLogger<RoleService>.Instance);
 

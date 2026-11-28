@@ -37,6 +37,15 @@ public interface IPermissionService
     Task<HashSet<string>> GetUserPermissionsAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// What the user may do in the current tenant (GU-96): <c>AllPermissions</c> for a SuperAdmin and
+    /// for a TenantAdmin of the current tenant (they pass every check), otherwise their permission keys,
+    /// sorted. Without a current tenant only a SuperAdmin has anything.
+    /// </summary>
+    /// <param name="userId">The user identifier (<see cref="Guid.Empty"/> gives nothing).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<GroundUp.Auth.Core.Dtos.PermissionSummaryDto> GetPermissionSummaryAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Checks whether the user holds a specific system-level role (case-insensitive).
     /// Only system roles (RoleType.System) are considered — tenant-scoped roles are not checked.
     /// </summary>

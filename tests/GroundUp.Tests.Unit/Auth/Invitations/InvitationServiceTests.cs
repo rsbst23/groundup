@@ -81,7 +81,7 @@ public sealed class InvitationServiceTests
 
         _sut = new InvitationService(
             _currentUser, _tenantContext, _tenants, _roles, _users, _userTenants, _invitations, _writer,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, []),
             new TenantAccessRevoker(Substitute.For<ITokenRevocationStore>(), new MemoryCache(new MemoryCacheOptions()), NullLogger<TenantAccessRevoker>.Instance),
             _unitOfWork, _settings, _emailSender, new CreateInvitationDtoValidator(), NullLogger<InvitationService>.Instance);
     }
