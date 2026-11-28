@@ -14,7 +14,8 @@ import {
   setDefaultRole,
   updateRole,
 } from '../../api/roles';
-import type { CreateRoleRequest, PolicyDto, TenantPolicyDto, UpdateRoleRequest } from '../../api/types';
+import type { PaginatedData } from '../../api/paging';
+import type { CreateRoleRequest, PolicyDto, TenantPolicyDto, TenantRoleDto, UpdateRoleRequest } from '../../api/types';
 import type { ListState } from '../list/listSearch';
 import { rolesKey } from '../members/membersQuery';
 import { onSessionRefreshed } from '../session/sessionQuery';
@@ -80,6 +81,44 @@ export function isRoleQuery(queryKey: readonly unknown[], roleId: string): boole
   return queryKey[0] === rolesKey[0] && queryKey[2] === 'role' && queryKey[3] === roleId;
 }
 
+/**
+ * Cached role data without the deleted role: a page of the table (with its counts lowered) or a
+ * picker's list. Anything else (a role, its policies or permissions) is returned unchanged.
+ */
+export function withoutRole(cached: unknown, roleId: string): unknown {
+  if (Array.isArray(cached)) {
+    return isRoleList(cached) ? cached.filter((role) => role.id !== roleId) : cached;
+  }
+  if (isRolePage(cached)) {
+    const items = cached.items.filter((role) => role.id !== roleId);
+    if (items.length === cached.items.length) {
+      return cached;
+    }
+    const totalRecords = Math.max(0, cached.totalRecords - 1);
+    return {
+      ...cached,
+      items,
+      totalRecords,
+      totalPages: cached.pageSize > 0 ? Math.ceil(totalRecords / cached.pageSize) : cached.totalPages,
+    };
+  }
+  return cached;
+}
+
+function isRoleList(value: unknown[]): value is TenantRoleDto[] {
+  return value.every((v) => typeof v === 'object' && v !== null && 'id' in v && 'isSystem' in v);
+}
+
+function isRolePage(value: unknown): value is PaginatedData<TenantRoleDto> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'items' in value &&
+    Array.isArray((value as { items: unknown }).items) &&
+    isRoleList((value as { items: unknown[] }).items)
+  );
+}
+
 /** The policies not attached yet, by name. */
 export function attachablePolicies(all: TenantPolicyDto[], attached: PolicyDto[]): TenantPolicyDto[] {
   const held = new Set(attached.map((p) => p.id));
@@ -110,6 +149,8 @@ export function useRoleActions() {
     remove: useMutation({
       mutationFn: ({ roleId }: { roleId: string; leave?: () => Promise<unknown> }) => deleteRole(roleId),
       onSuccess: async (_, { roleId, leave }) => {
+        // Take the row out of every cached list and picker at once, so it is gone before the reload
+        queryClient.setQueriesData({ queryKey: rolesKey }, (cached: unknown) => withoutRole(cached, roleId));
         await leave?.();
         queryClient.removeQueries({ predicate: (query) => isRoleQuery(query.queryKey, roleId) });
         await reload();

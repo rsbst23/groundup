@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachablePolicies, isRoleQuery } from '../features/roles/rolesQuery';
+import { attachablePolicies, isRoleQuery, withoutRole } from '../features/roles/rolesQuery';
 import { defaultRoleChoices, defaultRoleText, policiesText } from '../features/roles/roleText';
 import { clearCsrfToken } from './csrf';
 import { clearInspector } from './inspector';
@@ -118,6 +118,33 @@ describe('roles API', () => {
     mockFetch({ '/api/policies?pageNumber=1&pageSize=100': [ok(page([policy]))] });
 
     await expect(listAllPolicies()).resolves.toEqual([policy]);
+  });
+});
+
+describe('withoutRole', () => {
+  const a = role({ id: 'a', name: 'A' });
+  const b = role({ id: 'b', name: 'B' });
+
+  it('takes the role out of a table page and lowers the counts', () => {
+    const cached = { items: [a, b], pageNumber: 1, pageSize: 1, totalRecords: 2, totalPages: 2 };
+
+    expect(withoutRole(cached, 'a')).toEqual({ items: [b], pageNumber: 1, pageSize: 1, totalRecords: 1, totalPages: 1 });
+  });
+
+  it('takes the role out of a picker list', () => {
+    expect(withoutRole([a, b], 'b')).toEqual([a]);
+  });
+
+  it('leaves other cached data alone', () => {
+    const page = { items: [b], pageNumber: 1, pageSize: 25, totalRecords: 1, totalPages: 1 };
+    const policies = [{ id: 'a', name: 'Policy', description: null, tenantId: 't1' }];
+    const permissions = { roleId: 'a', allPermissions: false, permissions: [] };
+
+    expect(withoutRole(page, 'a')).toBe(page);
+    expect(withoutRole(a, 'a')).toBe(a);
+    expect(withoutRole(policies, 'a')).toBe(policies);
+    expect(withoutRole(permissions, 'a')).toBe(permissions);
+    expect(withoutRole(undefined, 'a')).toBeUndefined();
   });
 });
 
