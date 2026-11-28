@@ -35,10 +35,10 @@
   - [x] 2.6 Build, lint, test, commit, stop for review
   - _Requirements: 2, 5_
 
-- [ ] 3. Role detail page
-  - [ ] 3.1 `RoleDetailPage`: header, `EditRoleDialog`, delete, policies (`AttachPolicyDialog`, detach), effective permissions, TenantAdmin view, not found
-  - [ ] 3.2 `attachablePolicies` helper and its tests
-  - [ ] 3.3 Build, lint, test, commit, stop for review; PR 97b info
+- [x] 3. Role detail page
+  - [x] 3.1 `RoleDetailPage`: header, `EditRoleDialog`, delete, policies (`AttachPolicyDialog`, detach), effective permissions, TenantAdmin view, not found
+  - [x] 3.2 `attachablePolicies` helper and its tests
+  - [x] 3.3 Build, lint, test, commit, stop for review; PR 97b info
   - _Requirements: 3, 5_
 
 ## 97c: Policies page (new branch after 97b merges)

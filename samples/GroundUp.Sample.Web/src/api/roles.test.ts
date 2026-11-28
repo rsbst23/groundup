@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { attachablePolicies } from '../features/roles/rolesQuery';
 import { defaultRoleChoices, defaultRoleText, policiesText } from '../features/roles/roleText';
 import { clearCsrfToken } from './csrf';
 import { clearInspector } from './inspector';
@@ -117,6 +118,21 @@ describe('roles API', () => {
     mockFetch({ '/api/policies?pageNumber=1&pageSize=100': [ok(page([policy]))] });
 
     await expect(listAllPolicies()).resolves.toEqual([policy]);
+  });
+});
+
+describe('attachablePolicies', () => {
+  const policy = (id: string, name: string) => ({ id, name, description: null, permissionKeys: [], roleCount: 0 });
+
+  it('leaves out the attached policies and sorts by name', () => {
+    const all = [policy('p1', 'Writers'), policy('p2', 'Basics'), policy('p3', 'Admins')];
+    const attached = [{ id: 'p2', name: 'Basics', description: null, tenantId: 't1' }];
+
+    expect(attachablePolicies(all, attached).map((p) => p.name)).toEqual(['Admins', 'Writers']);
+  });
+
+  it('is empty when everything is attached', () => {
+    expect(attachablePolicies([policy('p1', 'A')], [{ id: 'p1', name: 'A', description: null, tenantId: 't1' }])).toEqual([]);
   });
 });
 
