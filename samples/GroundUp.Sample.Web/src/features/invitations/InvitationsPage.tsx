@@ -49,7 +49,7 @@ function InvitationsTable() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ title: string; error: unknown } | null>(null);
 
-  const invitations = useQuery(invitationsQueryOptions(tenantId, page));
+  const invitations = useQuery(invitationsQueryOptions(tenantId, { page }));
   const actions = useInvitationActions();
   const busy = actions.resend.isPending || actions.revoke.isPending;
 

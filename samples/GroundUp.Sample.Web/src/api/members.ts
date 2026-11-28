@@ -1,11 +1,15 @@
 import { apiFetch } from './client';
-import { pagedPath, type PaginatedData } from './paging';
+import type { ListState } from '../features/list/listSearch';
+import { listPath, type PaginatedData } from './paging';
 import { segment } from './query';
 import type { TenantMemberDto, UserRoleDto } from './types';
 
-/** GET /api/members: the current tenant's Active and Pending members, by email. Needs auth.members.read. */
-export async function listMembers(page: number, signal?: AbortSignal): Promise<PaginatedData<TenantMemberDto>> {
-  return (await apiFetch<PaginatedData<TenantMemberDto>>(pagedPath('/api/members', page), { signal })).data;
+/**
+ * GET /api/members: the current tenant's Active and Pending members (by email unless sorted). Sort:
+ * email, displayName, status; filter: status; search: email and display name. Needs auth.members.read.
+ */
+export async function listMembers(state: ListState, signal?: AbortSignal): Promise<PaginatedData<TenantMemberDto>> {
+  return (await apiFetch<PaginatedData<TenantMemberDto>>(listPath('/api/members', state), { signal })).data;
 }
 
 /**

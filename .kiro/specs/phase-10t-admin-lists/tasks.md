@@ -45,12 +45,12 @@ Findings, and how the tasks handle them:
 
 ## 98b: Web (new branch from main after 98a merges)
 
-- [ ] 4. List building blocks
-  - [ ] 4.1 `features/list/listSearch.ts` (zod schema, `parseSort`, `nextSort`), `debounce` + `useDebouncedValue`, `lastPageWithRows`
-  - [ ] 4.2 `api/paging.ts` `listPath`; `listMembers`, `listInvitations`, `listJoinLinks` take a `ListState`; query keys carry the state
-  - [ ] 4.3 `features/list/ListTable.tsx` (sortable headers, search, status select, paging)
-  - [ ] 4.4 Node tests for 4.1 and 4.2; update the existing API tests
-  - [ ] 4.5 Build, lint, test, commit, stop for review
+- [x] 4. List building blocks
+  - [x] 4.1 `features/list/listSearch.ts` (zod schema, `parseSort`, `nextSort`), `debounce` + `useDebouncedValue`, `lastPageWithRows`
+  - [x] 4.2 `api/paging.ts` `listPath`; `listMembers`, `listInvitations`, `listJoinLinks` take a `ListState`; query keys carry the state
+  - [x] 4.3 `features/list/ListTable.tsx` (sortable headers, search, status select, paging)
+  - [x] 4.4 Node tests for 4.1 and 4.2; update the existing API tests
+  - [x] 4.5 Build, lint, test, commit, stop for review
   - _Requirements: 5_
 
 - [ ] 5. Pages, RequirePermission and docs

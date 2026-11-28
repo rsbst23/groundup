@@ -45,7 +45,7 @@ function MembersTable() {
   const [removing, setRemoving] = useState<TenantMemberDto | null>(null);
   const [actionError, setActionError] = useState<ActionError | null>(null);
 
-  const members = useQuery(membersQueryOptions(tenantId, page));
+  const members = useQuery(membersQueryOptions(tenantId, { page }));
   const canAssign = can(me, PermissionKeys.RolesAssign);
   const roles = useQuery(rolesQueryOptions(tenantId, canAssign && can(me, PermissionKeys.RolesRead)));
   const rolesUnavailable = !can(me, PermissionKeys.RolesRead)

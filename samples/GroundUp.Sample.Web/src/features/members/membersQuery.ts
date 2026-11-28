@@ -1,3 +1,4 @@
+import type { ListState } from '../list/listSearch';
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RoleAssignmentSource, roleSourceLabel } from '../../api/labels';
 import { addMemberRole, listMembers, removeMember, removeMemberRole } from '../../api/members';
@@ -9,11 +10,11 @@ import { onSessionChanged, onSessionRefreshed } from '../session/sessionQuery';
 export const membersKey = ['members'] as const;
 export const rolesKey = ['roles'] as const;
 
-/** One page of the current tenant's members. `page` starts at 1. */
-export function membersQueryOptions(tenantId: string, page: number) {
+/** One view (page, sort, search, status) of the current tenant's members; each view is cached separately. */
+export function membersQueryOptions(tenantId: string, state: ListState) {
   return queryOptions({
-    queryKey: [...membersKey, tenantId, page] as const,
-    queryFn: ({ signal }) => listMembers(page, signal),
+    queryKey: [...membersKey, tenantId, state] as const,
+    queryFn: ({ signal }) => listMembers(state, signal),
     // Keep the current rows on screen while the next page loads
     placeholderData: keepPreviousData,
   });

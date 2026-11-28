@@ -49,7 +49,7 @@ function JoinLinksTable() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ title: string; error: unknown } | null>(null);
 
-  const links = useQuery(joinLinksQueryOptions(tenantId, page));
+  const links = useQuery(joinLinksQueryOptions(tenantId, { page }));
   const actions = useJoinLinkActions();
   const busy = actions.regenerate.isPending || actions.revoke.isPending;
 

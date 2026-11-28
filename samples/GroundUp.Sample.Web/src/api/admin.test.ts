@@ -6,7 +6,7 @@ import { clearInspector } from './inspector';
 import { createInvitation, listInvitations, resendInvitation, revokeInvitation } from './invitations';
 import { createJoinLink, listJoinLinks, regenerateJoinLink, revokeJoinLink } from './joinLinks';
 import { addMemberRole, listMembers, removeMember, removeMemberRole } from './members';
-import { pagedPath } from './paging';
+import { listPath, pagedPath } from './paging';
 import { listRoles } from './roles';
 import { emptyResponse, headersOf, jsonResponse, mockFetch } from './testing';
 
@@ -34,6 +34,18 @@ describe('paging', () => {
     expect(pagedPath('/api/members', 0)).toBe('/api/members?pageNumber=1&pageSize=25');
     expect(pagedPath('/api/roles', 1, 100)).toBe('/api/roles?pageNumber=1&pageSize=100');
   });
+
+  it('builds the FilterParams query for a list view', () => {
+    expect(listPath('/api/members', { page: 1 })).toBe('/api/members?pageNumber=1&pageSize=25');
+    const url = new URL(listPath('/api/invitations', { page: 2, sort: 'email desc', q: ' a&b ', status: 3 }), 'http://x');
+    expect(url.searchParams.get('pageNumber')).toBe('2');
+    expect(url.searchParams.get('sortBy')).toBe('email desc');
+    expect(url.searchParams.get('searchTerm')).toBe('a&b');
+    expect(url.searchParams.get('filters[status]')).toBe('3');
+    expect(listPath('/api/join-links', { page: 0, sort: '', q: '  ', status: 0 })).toBe(
+      '/api/join-links?pageNumber=1&pageSize=25&filters%5Bstatus%5D=0',
+    );
+  });
 });
 
 describe('members', () => {
@@ -41,10 +53,20 @@ describe('members', () => {
     const member = { userId: 'u1', email: 'a@example.com', displayName: 'A', status: 0, roles: [] };
     mockFetch({ '/api/members?pageNumber=2&pageSize=25': [ok(page([member], 2))] });
 
-    const result = await listMembers(2);
+    const result = await listMembers({ page: 2 });
 
     expect(result.items).toEqual([member]);
     expect(result.pageNumber).toBe(2);
+  });
+
+  it('sends the sort, search and status of the view', async () => {
+    const mock = mockFetch({
+      '/api/members?pageNumber=1&pageSize=25&sortBy=email+desc&searchTerm=ali&filters%5Bstatus%5D=2': [ok(page([]))],
+    });
+
+    await listMembers({ page: 1, sort: 'email desc', q: 'ali', status: 2 });
+
+    expect(mock).toHaveBeenCalledOnce();
   });
 
   it('removes a member with DELETE and the CSRF token', async () => {
@@ -110,7 +132,7 @@ describe('invitations', () => {
       '/api/invitations/i1/revoke': [() => jsonResponse(200, { success: true, statusCode: 200, message: 'Success' })],
     });
 
-    expect((await listInvitations(1)).items).toEqual([invitation]);
+    expect((await listInvitations({ page: 1 })).items).toEqual([invitation]);
     await expect(createInvitation({ email: 'c@example.com', roleId: 'r1', expiresAt: '2026-11-30T22:59:59.999Z' })).resolves.toEqual(invitation);
     await resendInvitation('i1');
     await revokeInvitation('i1');
@@ -136,7 +158,7 @@ describe('join links', () => {
       '/api/join-links/j1/revoke': [() => jsonResponse(200, { success: true, statusCode: 200, message: 'Success' })],
     });
 
-    expect((await listJoinLinks(1)).items).toEqual([link]);
+    expect((await listJoinLinks({ page: 1 })).items).toEqual([link]);
     expect((await createJoinLink({ roleId: 'r1', maxUses: 10 })).token).toBe('tok-1');
     expect((await regenerateJoinLink('j1')).token).toBe('tok-2');
     await revokeJoinLink('j1');
