@@ -21,6 +21,8 @@ const areas = [
   { to: '/settings', label: 'Settings' },
   { to: '/data', label: 'Data' },
   { to: '/diagnostics', label: 'Diagnostics' },
+  // The sample API's Development mailbox (GU-90); only while running the Vite dev server
+  ...(import.meta.env.DEV ? ([{ to: '/mailbox', label: 'Mailbox' }] as const) : []),
 ] as const;
 
 export function NavMenu() {

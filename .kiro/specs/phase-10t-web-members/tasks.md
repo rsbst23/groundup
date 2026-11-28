@@ -30,12 +30,12 @@ Requirements: `requirements.md`. Design: `design.md`. Three PRs: 90a = task 1 an
   - [x] 3.2 `joinLinksQuery.ts`, `JoinLinksPage.tsx`, `CreateJoinLinkDialog.tsx`, `ShowLinkDialog.tsx`, `joinUrl.ts`; `routes/join-links.tsx`
   - [x] 3.3 Tests: `joinUrl`, uses and max-uses parsing, date-to-UTC conversion for expiry, invitation helpers. Shared `features/common`: `dates.ts`, `ConfirmDialog`, `RoleSelect`. In 90b the invite notice points to the API's log; 90c changes it to the Mailbox
   - [x] 3.4 Check: web build, lint, tests 162 / 0; push; PR 90b info
-- [ ] 4. Acceptance pages, mailbox, sample host (design 3, 5) — PR 90c
-  - [ ] 4.1 `outcomeSearch.ts`, `AcceptancePage.tsx`; `routes/invite.$token.tsx`, `routes/join.$token.tsx`
-  - [ ] 4.2 `MailboxPage.tsx`, `routes/mailbox.tsx`, NavMenu entry (dev only)
-  - [ ] 4.3 Sample host: `DevMailbox`, `DevMailboxInvitationEmailSender`, `DevSettingsSeeder`, `AddSampleDevTools`, `DevController`; `Program.cs`
-  - [ ] 4.4 Tests: `outcomeSearch`; .NET: mailbox ring, dev tools not registered outside Development, endpoint 401 / 200 / 404, seeder (no value, empty value, existing value)
-  - [ ] 4.5 Check: web build, lint, tests; .NET build and all three suites
+- [x] 4. Acceptance pages, mailbox, sample host (design 3, 5) — PR 90c
+  - [x] 4.1 `outcomeSearch.ts`, `AcceptancePage.tsx`; `routes/invite.$token.tsx`, `routes/join.$token.tsx`
+  - [x] 4.2 `MailboxPage.tsx`, `routes/mailbox.tsx`, NavMenu entry (dev only)
+  - [x] 4.3 Sample host: `DevMailbox`, `DevMailboxInvitationEmailSender`, `DevSettingsSeeder`, `AddSampleDevTools`, `DevController`; `Program.cs`
+  - [x] 4.4 Tests: `outcomeSearch`; .NET: mailbox ring, sender, dev tools not registered outside Development, endpoint 200 over HTTP and 401 / 404 on the controller (the shared test host signs every request in), seeder (no value, empty value, existing value). Also: callback messages for the invitation and join-link errors; new routes need `npx vite build` once to regenerate the route tree before `npm run build`
+  - [x] 4.5 Check: web 170 / 0; unit 2177 / 0, integration 622 / 0, sample 30/30
 - [ ] 5. Docs, full check, PR 90c
   - [ ] 5.1 TESTING.md Part 5; "Parts to Come"; the API guide's Parts 15 and 16 point to Part 5
   - [ ] 5.2 Full check; push; PR 90c info

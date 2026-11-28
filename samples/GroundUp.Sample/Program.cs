@@ -8,6 +8,7 @@ using GroundUp.Data.Abstractions;
 using GroundUp.Data.Postgres;
 using GroundUp.Events;
 using GroundUp.Sample.Data;
+using GroundUp.Sample.Dev;
 using GroundUp.Sample.Dtos;
 using GroundUp.Sample.Repositories;
 using GroundUp.Sample.Services;
@@ -42,6 +43,9 @@ builder.Services.AddAuthorized<ISettingsAdminService, SettingsAdminService>();
 
 // Settings seeder
 builder.Services.AddScoped<IDataSeeder, DefaultSettingsSeeder>();
+
+// Development only: the dev mailbox for invitation emails and the accept-URL seed (GU-90)
+builder.Services.AddSampleDevTools(builder.Environment);
 
 // TodoItem — simple pattern: register repository interface + concrete service
 builder.Services.AddScoped<IBaseRepository<TodoItemDto>, TodoItemRepository>();
