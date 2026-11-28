@@ -25,11 +25,11 @@ Requirements: `requirements.md`. Design: `design.md`. Three PRs: 90a = task 1 an
   - [x] 2.1 `membersQuery.ts`, `MembersPage.tsx`, `AddRoleMenu.tsx`, `RemoveMemberDialog.tsx`; `routes/members.tsx`
   - [x] 2.2 Self-changes refresh or reset the session
   - [x] 2.3 Check: web build, lint, tests 150 / 0; push; PR 90a info. The manual run is Rob's, in review (no browser here)
-- [ ] 3. Invitations and Join links pages (design 3) — PR 90b
-  - [ ] 3.1 `invitationsQuery.ts`, `InvitationsPage.tsx`, `InviteDialog.tsx`; `routes/invitations.tsx`
-  - [ ] 3.2 `joinLinksQuery.ts`, `JoinLinksPage.tsx`, `CreateJoinLinkDialog.tsx`, `ShowLinkDialog.tsx`, `joinUrl.ts`; `routes/join-links.tsx`
-  - [ ] 3.3 Tests: `joinUrl`; date-to-UTC conversion for expiry
-  - [ ] 3.4 Check: web build, lint, tests; push; PR 90b info
+- [x] 3. Invitations and Join links pages (design 3) — PR 90b
+  - [x] 3.1 `invitationsQuery.ts`, `InvitationsPage.tsx`, `InviteDialog.tsx`; `routes/invitations.tsx`
+  - [x] 3.2 `joinLinksQuery.ts`, `JoinLinksPage.tsx`, `CreateJoinLinkDialog.tsx`, `ShowLinkDialog.tsx`, `joinUrl.ts`; `routes/join-links.tsx`
+  - [x] 3.3 Tests: `joinUrl`, uses and max-uses parsing, date-to-UTC conversion for expiry, invitation helpers. Shared `features/common`: `dates.ts`, `ConfirmDialog`, `RoleSelect`. In 90b the invite notice points to the API's log; 90c changes it to the Mailbox
+  - [x] 3.4 Check: web build, lint, tests 162 / 0; push; PR 90b info
 - [ ] 4. Acceptance pages, mailbox, sample host (design 3, 5) — PR 90c
   - [ ] 4.1 `outcomeSearch.ts`, `AcceptancePage.tsx`; `routes/invite.$token.tsx`, `routes/join.$token.tsx`
   - [ ] 4.2 `MailboxPage.tsx`, `routes/mailbox.tsx`, NavMenu entry (dev only)
