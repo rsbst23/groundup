@@ -29,12 +29,12 @@ Requirements: `requirements.md`. Design: `design.md`. Two PRs on branch `phase-1
   - [x] 2.3 Handlers' log text; registration (singleton, scoped guard)
   - [x] 2.4 Unit tests: stale version reloads, a bump during a load leaves the entry stale, summary cases, guard cases, `RoleGrantPolicy` cases; existing cache tests moved to `CachedPermissions`
   - [x] 2.5 Check: build, unit 2108 / 0, integration 600 / 0, sample 22/22
-- [ ] 3. Services (design 6)
-  - [ ] 3.1 `IPolicyService` / `PolicyService` (catalogue, list, get, create, update, set permissions, delete; transactions, bumps, events)
-  - [ ] 3.2 `IRoleService` / `RoleService`: get policies, attach, detach, permissions
-  - [ ] 3.3 Registration (`AddAuthorized<IPolicyService, PolicyService>()`, validators); the startup check includes `IPolicyService`
-  - [ ] 3.4 Unit tests (`PolicyServiceTests`, `RoleServiceTests` additions, attributes)
-  - [ ] 3.5 Check: build, all three suites; push; PR 1 info
+- [x] 3. Services (design 6)
+  - [x] 3.1 `IPolicyService` / `PolicyService` (catalogue, list, get, create, update, set permissions, delete; transactions, bumps, events)
+  - [x] 3.2 `IRoleService` / `RoleService`: get policies, attach, detach, permissions
+  - [x] 3.3 Registration (`AddAuthorized<IPolicyService, PolicyService>()`, validators); the startup check includes `IPolicyService`
+  - [x] 3.4 Unit tests (`PolicyServiceTests`, `RoleServiceTests` additions, attributes)
+  - [x] 3.5 Check: build, unit 2173 / 0, integration 600 / 0, sample 22/22; push; PR 1 info. Found: `BaseRepository`/`BaseTenantRepository.UpdateAsync` copy every mapped DTO field onto the entity, so an update resets `CreatedAt`/`CreatedBy` (seen on a role rename through the sample app); outside GU-96, raised with Rob
 - [ ] 4. Controllers, `/auth/me`, integration tests (design 7, 8, 9)
   - [ ] 4.1 `PermissionsController`, `PoliciesController`, `RolesController` additions
   - [ ] 4.2 `AuthController.Me` async with `permissions` and `allPermissions`; `AuthControllerTests`

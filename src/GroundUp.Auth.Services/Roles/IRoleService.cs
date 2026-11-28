@@ -90,4 +90,40 @@ public interface IRoleService
     /// </summary>
     [RequiresPermission(PermissionKeysAuth.RolesWrite)]
     Task<OperationResult> ClearDefaultAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The policies attached to a role of the current tenant, by name (GU-96). The built-in
+    /// TenantAdmin role has none: it passes every check without them.
+    /// </summary>
+    /// <returns>The policies; 404 when the role is not in the current tenant.</returns>
+    [RequiresPermission(PermissionKeysAuth.RolesRead)]
+    Task<OperationResult<List<PolicyDto>>> GetPoliciesAsync(Guid roleId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attaches a policy of the current tenant to a role (GU-96). Already attached is success (200).
+    /// The caller must hold every permission of the policy unless they are TenantAdmin or SuperAdmin.
+    /// Members holding the role get the policy's permissions on their next request.
+    /// </summary>
+    /// <returns>
+    /// 201 with the link (200 when already attached); 403 <c>PERMISSION_NOT_HELD</c>; 404 for a role
+    /// or policy not in the current tenant; 409 <c>ROLE_IS_BUILT_IN</c> for TenantAdmin.
+    /// </returns>
+    [RequiresPermission(PermissionKeysAuth.RolesWrite)]
+    Task<OperationResult<RolePolicyDto>> AttachPolicyAsync(Guid roleId, Guid policyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Detaches a policy from a role (GU-96). Members holding the role lose its permissions on their
+    /// next request.
+    /// </summary>
+    /// <returns>Success; 404 when not attached; 409 <c>ROLE_IS_BUILT_IN</c> for TenantAdmin.</returns>
+    [RequiresPermission(PermissionKeysAuth.RolesWrite)]
+    Task<OperationResult> DetachPolicyAsync(Guid roleId, Guid policyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What a role allows (GU-96): each permission with the role's policies that grant it, or
+    /// <c>AllPermissions</c> for the built-in TenantAdmin role.
+    /// </summary>
+    /// <returns>The permissions; 404 when the role is not in the current tenant.</returns>
+    [RequiresPermission(PermissionKeysAuth.RolesRead)]
+    Task<OperationResult<RolePermissionsDto>> GetPermissionsAsync(Guid roleId, CancellationToken cancellationToken = default);
 }

@@ -3,6 +3,7 @@ using GroundUp.Auth.Core;
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
+using GroundUp.Auth.Services.Events;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Models;
@@ -28,6 +29,10 @@ internal sealed class RoleService : IRoleService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateRoleDto> _createValidator;
     private readonly IValidator<UpdateRoleDto> _updateValidator;
+    private readonly IPolicyRepository _policyRepository;
+    private readonly IPermissionRepository _permissionRepository;
+    private readonly PermissionHoldGuard _holdGuard;
+    private readonly PermissionCacheVersions _cacheVersions;
     private readonly IEventBus? _eventBus;
     private readonly ILogger<RoleService> _logger;
 
@@ -44,9 +49,17 @@ internal sealed class RoleService : IRoleService
         IUnitOfWork unitOfWork,
         IValidator<CreateRoleDto> createValidator,
         IValidator<UpdateRoleDto> updateValidator,
+        IPolicyRepository policyRepository,
+        IPermissionRepository permissionRepository,
+        PermissionHoldGuard holdGuard,
+        PermissionCacheVersions cacheVersions,
         ILogger<RoleService> logger,
         IEventBus? eventBus = null)
     {
+        _policyRepository = policyRepository;
+        _permissionRepository = permissionRepository;
+        _holdGuard = holdGuard;
+        _cacheVersions = cacheVersions;
         _currentUser = currentUser;
         _tenantContext = tenantContext;
         _roleRepository = roleRepository;
@@ -375,6 +388,150 @@ internal sealed class RoleService : IRoleService
         return OperationResult.Ok();
     }
 
+    // ── Policies (GU-96) ──────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<OperationResult<List<PolicyDto>>> GetPoliciesAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        var role = await FindAsync(roleId, "view roles", cancellationToken);
+        if (!role.Success)
+        {
+            return Fail<List<PolicyDto>>(role);
+        }
+
+        if (role.Data!.IsSystem)
+        {
+            return OperationResult<List<PolicyDto>>.Ok([]);
+        }
+
+        var policies = await _roleRepository.GetPoliciesForRoleAsync(roleId, cancellationToken);
+        return policies.Success && policies.Data is not null
+            ? OperationResult<List<PolicyDto>>.Ok(policies.Data.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList())
+            : policies;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<RolePolicyDto>> AttachPolicyAsync(Guid roleId, Guid policyId, CancellationToken cancellationToken = default)
+    {
+        var role = await FindAsync(roleId, "change roles", cancellationToken);
+        if (!role.Success)
+        {
+            return Fail<RolePolicyDto>(role);
+        }
+
+        if (role.Data!.IsSystem)
+        {
+            return BuiltInPolicies<RolePolicyDto>(role.Data);
+        }
+
+        // The tenant-filtered read: another tenant's policy is 404
+        var policy = await _policyRepository.GetDetailAsync(policyId, cancellationToken);
+        if (!policy.Success || policy.Data is null)
+        {
+            return OperationResult<RolePolicyDto>.NotFound("Policy not found.");
+        }
+
+        var held = await _holdGuard.CheckHoldsAsync(_currentUser.UserId, policy.Data.Permissions.Select(p => p.Key), cancellationToken);
+        if (!held.Success)
+        {
+            return OperationResult<RolePolicyDto>.Fail(held.Message, held.StatusCode, held.ErrorCode, held.Errors);
+        }
+
+        var attached = await _roleRepository.AssignPolicyAsync(roleId, policyId, cancellationToken);
+        if (!attached.Success || attached.Data is null)
+        {
+            return attached;
+        }
+
+        if (attached.StatusCode == 201)
+        {
+            var tenantId = role.Data.TenantId;
+            _cacheVersions.Bump(tenantId);
+            await PublishSafelyAsync(new EntityCreatedEvent<RolePolicyDto> { Entity = attached.Data, TenantId = tenantId, UserId = _currentUser.UserId }, cancellationToken);
+            _logger.LogInformation(
+                "Policy {PolicyId} attached to role {RoleId} in tenant {TenantId} by {CallerId}", policyId, roleId, tenantId, _currentUser.UserId);
+        }
+
+        return attached;
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult> DetachPolicyAsync(Guid roleId, Guid policyId, CancellationToken cancellationToken = default)
+    {
+        var role = await FindAsync(roleId, "change roles", cancellationToken);
+        if (!role.Success)
+        {
+            return OperationResult.Fail(role.Message, role.StatusCode, role.ErrorCode);
+        }
+
+        if (role.Data!.IsSystem)
+        {
+            var refused = BuiltInPolicies<RolePolicyDto>(role.Data);
+            return OperationResult.Fail(refused.Message, refused.StatusCode, refused.ErrorCode);
+        }
+
+        var removed = await _roleRepository.RemovePolicyAsync(roleId, policyId, cancellationToken);
+        if (!removed.Success || removed.Data is null)
+        {
+            return OperationResult.Fail(removed.Message, removed.StatusCode, removed.ErrorCode);
+        }
+
+        var tenantId = role.Data.TenantId;
+        _cacheVersions.Bump(tenantId);
+        await PublishSafelyAsync(new EntityDeletedEvent<RolePolicyDto> { EntityId = removed.Data.Id, TenantId = tenantId, UserId = _currentUser.UserId }, cancellationToken);
+        _logger.LogInformation(
+            "Policy {PolicyId} detached from role {RoleId} in tenant {TenantId} by {CallerId}", policyId, roleId, tenantId, _currentUser.UserId);
+        return OperationResult.Ok();
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<RolePermissionsDto>> GetPermissionsAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        var role = await FindAsync(roleId, "view roles", cancellationToken);
+        if (!role.Success)
+        {
+            return Fail<RolePermissionsDto>(role);
+        }
+
+        if (role.Data!.IsSystem)
+        {
+            return OperationResult<RolePermissionsDto>.Ok(new RolePermissionsDto(roleId, AllPermissions: true, []));
+        }
+
+        var grants = await _roleRepository.GetPermissionGrantsAsync(roleId, cancellationToken);
+        if (!grants.Success || grants.Data is null)
+        {
+            return OperationResult<RolePermissionsDto>.Fail(grants.Message, grants.StatusCode, grants.ErrorCode);
+        }
+
+        var keys = grants.Data.Select(g => g.PermissionKey).Distinct(StringComparer.Ordinal).ToList();
+        var catalogue = await _permissionRepository.GetByKeysAsync(keys, cancellationToken);
+        var byKey = (catalogue.Data ?? []).ToDictionary(p => p.Key, StringComparer.Ordinal);
+
+        var permissions = grants.Data
+            .GroupBy(g => g.PermissionKey, StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                var known = byKey.GetValueOrDefault(g.Key);
+                return new RolePermissionDto(
+                    g.Key,
+                    known?.Name ?? g.Key,
+                    known?.Module ?? string.Empty,
+                    g.OrderBy(x => x.PolicyName, StringComparer.OrdinalIgnoreCase)
+                        .Select(x => new EntityRefDto(x.PolicyId, x.PolicyName))
+                        .ToList());
+            })
+            .ToList();
+
+        return OperationResult<RolePermissionsDto>.Ok(new RolePermissionsDto(roleId, AllPermissions: false, permissions));
+    }
+
+    private static OperationResult<T> BuiltInPolicies<T>(RoleDto role)
+        => OperationResult<T>.Fail(
+            $"The built-in role '{role.Name}' passes every permission check; its policies cannot be changed.",
+            409, AuthErrorCodes.RoleIsBuiltIn);
+
     // ── Helpers ───────────────────────────────────────────────────
 
     /// <summary>
@@ -464,27 +621,9 @@ internal sealed class RoleService : IRoleService
     private static OperationResult<T> Fail<T>(OperationResult<Guid> source)
         => OperationResult<T>.Fail(source.Message, source.StatusCode, source.ErrorCode, source.Errors);
 
-    /// <summary>
-    /// Publishes an event after a saved change; a handler failure is logged and does not change the
-    /// outcome (as in <c>TenantAccessRevoker</c>).
-    /// </summary>
-    private async Task PublishSafelyAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
+    private Task PublishSafelyAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
         where TEvent : IEvent
-    {
-        if (_eventBus is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await _eventBus.PublishAsync(@event, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "Publishing {EventType} failed; the change is saved", typeof(TEvent).Name);
-        }
-    }
+        => SafeEventPublisher.PublishAsync(_eventBus, _logger, @event, cancellationToken);
 
     /// <summary>Stops the transaction with a business result; it rolls back.</summary>
     private sealed class AbortException(OperationResult result) : Exception(result.Message)

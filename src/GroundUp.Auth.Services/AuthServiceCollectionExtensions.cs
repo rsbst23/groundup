@@ -11,6 +11,7 @@ using GroundUp.Auth.Services.Identity;
 using GroundUp.Auth.Services.Invitations;
 using GroundUp.Auth.Services.JoinLinks;
 using GroundUp.Auth.Services.Membership;
+using GroundUp.Auth.Services.Policies;
 using GroundUp.Auth.Services.Revocation;
 using GroundUp.Auth.Services.Roles;
 using GroundUp.Auth.Services.Session;
@@ -178,6 +179,11 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<IValidator<CreateRoleDto>, CreateRoleDtoValidator>();
         services.AddScoped<IValidator<UpdateRoleDto>, UpdateRoleDtoValidator>();
         services.AddAuthorized<IRoleService, RoleService>();
+        // Policies and the permission catalogue (GU-96), behind the authorization proxy
+        services.AddScoped<IValidator<CreatePolicyDto>, CreatePolicyDtoValidator>();
+        services.AddScoped<IValidator<UpdatePolicyDto>, UpdatePolicyDtoValidator>();
+        services.AddScoped<IValidator<SetPolicyPermissionsDto>, SetPolicyPermissionsDtoValidator>();
+        services.AddAuthorized<IPolicyService, PolicyService>();
         // Invitations (GU-68). The logging email sender is a placeholder until Notifications (GU-64);
         // an application replaces it by registering its own IInvitationEmailSender.
         services.AddScoped<IValidator<CreateInvitationDto>, CreateInvitationDtoValidator>();
