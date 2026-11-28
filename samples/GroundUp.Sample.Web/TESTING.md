@@ -324,40 +324,53 @@ After 5.9 there are three members, two invitations and three join links.
 
 ## Part 6: Roles and Policies (GU-97)
 
-The roles and policies pages replace the API guide's 15.1 steps 1 and 2. Start as Alice, TenantAdmin of My Test Org. The 403 → 200 check (6.5) also needs Carol, a member with the Member role (Part 5.4).
+The roles and policies pages replace the API guide's 15.1 steps 1 and 2. Start as Alice, TenantAdmin of My Test Org. 6.4 and 6.6 also need Carol, a member (Part 5.4).
 
 ### 6.1 Roles and the default role (Alice)
-1. Open **Roles**. **Expected:** TenantAdmin with **built-in**, type **Built-in**, policies **All**, no **Delete**. The box above the table says "No default role. New members who join by signing in get no role." (unless one was set earlier).
-2. **New role**: name `Member`, description `Regular member`, type Application. **Expected:** the Member role's page opens; it has no policies and "None." under Effective permissions. If Member exists already, the dialog shows **409 ROLE_NAME_TAKEN** (try `member` too: names ignore case).
+1. Open **Roles**. **Expected:** TenantAdmin with **built-in**, type **Built-in**, policies **All**, **Active** 1 (Alice) and **Pending** 0, no **Delete**. The box above the table says "No default role. New members who join by signing in get no role." (unless one was set earlier).
+2. **New role**: name `Member`, description `Regular member`, type Application. **Expected:** the Member role's page opens with no policies, "None." under Effective permissions and "Nobody holds this role." under Members. If Member exists already, the dialog shows **409 ROLE_NAME_TAKEN** (try `member` too: names ignore case).
 3. **‹ Roles**, then **Set** (or **Change**) in the default role box and pick Member. **Expected:** "Default role: Member…", and Member has the **default** chip.
-4. Open **TenantAdmin**. **Expected:** "TenantAdmin has all permissions in this organization", no policy section, the button reads **Edit description**, and in the dialog the name cannot be changed.
+4. Open **TenantAdmin**. **Expected:** "TenantAdmin has all permissions in this organization", no policy section, the button reads **Edit description** and the name cannot be changed; **Members** lists Alice.
 
 ### 6.2 A policy for Members (Alice)
-1. Open **Policies**, **New policy**: name `Member basics`, tick **auth** › the members read permission (`auth.members.read`). **Expected:** the module heading's box shows a dash (some selected); **Create** adds the row with Permissions 1 and Roles 0.
-2. Open **Roles** › **Member** › **Attach policy**, pick Member basics (the dialog shows what it grants), **Attach**. **Expected:** the policy is listed, and Effective permissions shows the members read permission "Granted by Member basics". **Roles** shows Policies 1 for Member; **Policies** shows Roles 1 for Member basics.
-3. Click **Member basics** on the Policies page. **Expected:** the dialog lists "Used by: Member" (a link to the role).
+1. Open **Policies**, **New policy**: name `Member basics`, **Create and choose permissions**. **Expected:** the policy's page opens: "0 permissions", **Available** on the left, **In this policy (0)** on the right.
+2. **Available**: type `members` in the search. **Expected:** after a moment only the members permissions; pick **Module** `auth` too. Click **Add ›** on **Read Members** (`auth.members.read`). **Expected:** it shows "In policy" on the left, and on the right with a **new** chip; the bar says "1 permission · unsaved changes: +1, −0".
+3. Click **‹ Policies**. **Expected:** the browser asks to discard the unsaved changes; **Cancel** keeps you on the page.
+4. **Save**. **Expected:** the **new** chip goes, the bar says "1 permission", and the Policies list shows Permissions 1.
+5. **Remove** it on the right, then **Undo**; then **Remove** and **Discard**. **Expected:** struck through with **Undo** after Remove; back to the saved state after Undo and after Discard.
+6. Open **Roles** › **Member** › **Attach policy**, pick Member basics (the dialog shows what it grants), **Attach**. **Expected:** the policy is listed, and Effective permissions shows the members read permission "Granted by Member basics". **Roles** shows Policies 1 for Member; **Policies** shows Roles 1, and the policy's page lists "Used by: Member".
 
-### 6.3 Refusals (Alice)
-1. **Roles**: **Delete** on Member. **Expected:** **409 ROLE_IN_USE** with the reasons (it is the default role; members hold it if Part 5 ran). Clear the default role first to see that reason go.
+### 6.3 The catalogue at scale (Alice)
+1. On **Member basics**, sort **Available** by **Key** (twice) and **Module**, page through it, and search a key (`settings.read`) and a word of a description. **Expected:** the order and the rows change, the address bar has `available=…`, and the browser **Back** button returns to the previous view without the discard prompt.
+2. Pick **Module** `settings` and **Add all N shown**, then **Discard**. **Expected:** every settings permission shown is marked **new**, then gone again.
+
+### 6.4 Members of a role (Alice and Carol)
+1. **Roles** › **Member**. **Expected:** Carol is listed if she joined through an invitation with Member (Part 5); otherwise "Nobody holds this role."
+2. **Add member**, type `car`. **Expected:** after a moment Carol is offered (a member who already holds the role shows "has the role" and cannot be picked); **Add**. **Expected:** Carol is listed, and the roles list shows Active 1 for Member.
+3. **Remove from role** on Carol and confirm. **Expected:** she leaves the table at once and Active goes back to 0. **Members** still lists her (she stays a member). Add her back for 6.6.
+4. Status filter **Pending**: open invitations to Member show here (and in the roles list's **Pending** column).
+
+### 6.5 Refusals (Alice)
+1. **Roles**: **Delete** on Member. **Expected:** **409 ROLE_IN_USE** with the reasons (it is the default role; members hold it). Clear the default role first to see that reason go.
 2. **Policies**: **Delete** on Member basics. **Expected:** **409 POLICY_IN_USE** naming Member.
 3. **New role** named `TenantAdmin`. **Expected:** **409 ROLE_NAME_TAKEN**.
 4. A throwaway role: **New role** `Temp`, then **Delete** it from its page. **Expected:** the roles list opens and Temp is gone at once.
+5. **Roles** › **TenantAdmin** › **Remove from role** on Alice. **Expected:** **409 LAST_ADMIN** (the last TenantAdmin cannot lose the role).
 
-### 6.4 Sorting and search
-1. **Roles**: click **Policies** twice (most policies first), **Type**, **Name**. **Expected:** the order changes and the address bar has `sort=…`. Search `regular`: only Member (its description).
-2. **Policies**: sort by **Permissions** and **Roles**; search `basics`.
-3. On a role's page, **‹ Roles** returns to the same sort and search.
-
-### 6.5 A permission change applies without signing in again (Alice and Carol)
-Use two browsers: Alice in your normal one, Carol in a private window (sign in as Carol there).
+### 6.6 A permission change applies without signing in again (Alice and Carol)
+Use two browsers: Alice in your normal one, Carol in a private window (sign in as Carol there). Carol holds Member (6.4).
 1. As Carol, open **Members**. **Expected:** the list (Member basics grants `auth.members.read`).
-2. As Alice, **Policies** › **Member basics**: untick the members read permission, **Save**.
+2. As Alice, **Policies** › **Member basics**: **Remove** the members read permission, **Save**.
 3. As Carol, reload **Members** (no sign-in). **Expected:** "Permission needed. You need the permission auth.members.read to see this page." (the session reloaded her permissions), and the Requests panel shows no call to `/api/members`.
-4. As Alice, tick it again and **Save**. As Carol, reload **Members**. **Expected:** the list again.
+4. As Alice, add it again and **Save**. As Carol, reload **Members**. **Expected:** the list again.
 5. As Carol, open **Roles**. **Expected:** "You need the permission auth.roles.read…" (Member basics does not grant it).
 
-**Record the result** in `.kiro/specs/phase-10t-web-roles/tasks.md`, task 5.
+### 6.7 Sorting and search on the lists
+1. **Roles**: click **Policies**, **Active** and **Pending** twice (most first), **Type**, **Name**. **Expected:** the order changes and the address bar has `sort=…`. Search `regular`: only Member (its description).
+2. **Policies**: sort by **Permissions** and **Roles**; search `basics`.
+3. On a role's page, **‹ Roles** returns to the same sort and search; on a policy's page, **‹ Policies** does the same.
 
+**Record the result** in `.kiro/specs/phase-10t-roles-followup/tasks.md`, task 5.
 ---
 
 ## Parts to Come

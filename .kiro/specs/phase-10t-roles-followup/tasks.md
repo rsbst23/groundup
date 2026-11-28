@@ -43,7 +43,7 @@
   - [x] 4.4 Node tests; build, lint, test, commit, stop for review
   - _Requirements: 5_
 
-- [ ] 5. TESTING.md
-  - [ ] 5.1 Part 6 updated (counts, the members section, the editor page)
-  - [ ] 5.2 Commit, stop for review; PR 97d-2 info
+- [x] 5. TESTING.md
+  - [x] 5.1 Part 6 updated (counts, the members section, the editor page)
+  - [x] 5.2 Commit, stop for review; PR 97d-2 info
   - _Requirements: 6.3_
