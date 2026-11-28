@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using GroundUp.Core;
 using GroundUp.Core.Abstractions;
 using GroundUp.Core.Entities;
@@ -78,6 +79,24 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
 
         var tenantShaper = ComposeTenantShaper(queryShaper);
         return await base.GetAllAsync(filterParams, tenantShaper, cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves a projected page scoped to the current tenant. The tenant filter runs before any
+    /// derived class queryShaper, as in the mapped overload.
+    /// </summary>
+    protected override async Task<OperationResult<PaginatedData<TResult>>> GetAllAsync<TResult>(
+        FilterParams filterParams,
+        Func<IQueryable<TEntity>, IQueryable<TEntity>>? queryShaper,
+        Expression<Func<TEntity, TResult>> projection,
+        ListQueryOptions<TEntity>? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!HasTenant)
+            return TenantRequired<PaginatedData<TResult>>();
+
+        var tenantShaper = ComposeTenantShaper(queryShaper);
+        return await base.GetAllAsync(filterParams, tenantShaper, projection, options, cancellationToken);
     }
 
     #endregion

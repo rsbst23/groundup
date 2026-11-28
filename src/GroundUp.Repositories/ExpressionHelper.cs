@@ -61,7 +61,26 @@ public static class ExpressionHelper
             return AlwaysTrue<T>();
 
         var (member, property) = memberInfo.Value;
-        var underlyingType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        return BuildEqualityCore<T>(parameter, member, property.PropertyType, value);
+    }
+
+    /// <summary>
+    /// Builds an exact-match predicate on the value the selector returns (a navigation, a subquery, a
+    /// computed value). Same rules as <see cref="BuildPredicate{T}(string, string)"/>: case-insensitive for
+    /// strings, parsed for other types, always-true when the value cannot be parsed.
+    /// </summary>
+    /// <param name="selector">A lambda over <typeparamref name="T"/>, for example <c>x =&gt; x.User.Email</c>.</param>
+    /// <param name="value">The value to match.</param>
+    public static Expression<Func<T, bool>> BuildPredicate<T>(LambdaExpression selector, string value)
+    {
+        var parameter = SelectorParameter<T>(selector);
+        return BuildEqualityCore<T>(parameter, selector.Body, selector.ReturnType, value);
+    }
+
+    private static Expression<Func<T, bool>> BuildEqualityCore<T>(
+        ParameterExpression parameter, Expression member, Type valueType, string value)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(valueType) ?? valueType;
 
         Expression body;
         if (underlyingType == typeof(string))
@@ -74,7 +93,7 @@ public static class ExpressionHelper
             if (typedValue is null)
                 return AlwaysTrue<T>();
 
-            body = BuildNullableEqualityCheck(member, property.PropertyType, underlyingType, typedValue);
+            body = BuildNullableEqualityCheck(member, valueType, underlyingType, typedValue);
         }
 
         return Expression.Lambda<Func<T, bool>>(body, parameter);
@@ -117,6 +136,18 @@ public static class ExpressionHelper
         return BuildStringOperationPredicate<T>(propertyName, value, StringOperation.EndsWith);
     }
 
+    /// <summary>Substring match on the selector's string value (case-insensitive, null never matches).</summary>
+    public static Expression<Func<T, bool>> BuildContainsPredicate<T>(LambdaExpression selector, string value)
+        => BuildStringOperationPredicate<T>(selector, value, StringOperation.Contains);
+
+    /// <summary>Prefix match on the selector's string value (case-insensitive, null never matches).</summary>
+    public static Expression<Func<T, bool>> BuildStartsWithPredicate<T>(LambdaExpression selector, string value)
+        => BuildStringOperationPredicate<T>(selector, value, StringOperation.StartsWith);
+
+    /// <summary>Suffix match on the selector's string value (case-insensitive, null never matches).</summary>
+    public static Expression<Func<T, bool>> BuildEndsWithPredicate<T>(LambdaExpression selector, string value)
+        => BuildStringOperationPredicate<T>(selector, value, StringOperation.EndsWith);
+
     #endregion
 
     #region Multi-Value (IN Clause)
@@ -136,14 +167,33 @@ public static class ExpressionHelper
             return AlwaysTrue<T>();
 
         var (member, property) = memberInfo.Value;
-        var underlyingType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        return BuildMultiValueCore<T>(parameter, member, property.PropertyType, values);
+    }
+
+    /// <summary>
+    /// IN-clause predicate on the selector's value. Same rules as
+    /// <see cref="BuildMultiValuePredicate{T}(string, List{string})"/>.
+    /// </summary>
+    public static Expression<Func<T, bool>> BuildMultiValuePredicate<T>(LambdaExpression selector, List<string> values)
+    {
+        var parameter = SelectorParameter<T>(selector);
+        if (values.Count == 0)
+            return AlwaysTrue<T>();
+
+        return BuildMultiValueCore<T>(parameter, selector.Body, selector.ReturnType, values);
+    }
+
+    private static Expression<Func<T, bool>> BuildMultiValueCore<T>(
+        ParameterExpression parameter, Expression member, Type valueType, List<string> values)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(valueType) ?? valueType;
 
         if (underlyingType == typeof(string))
         {
             return BuildStringMultiValuePredicate<T>(parameter, member, values);
         }
 
-        return BuildTypedMultiValuePredicate<T>(parameter, member, property.PropertyType, underlyingType, values);
+        return BuildTypedMultiValuePredicate<T>(parameter, member, valueType, underlyingType, values);
     }
 
     #endregion
@@ -167,12 +217,29 @@ public static class ExpressionHelper
             return AlwaysTrue<T>();
 
         var (member, property) = memberInfo.Value;
-        var underlyingType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        return BuildRangeCore<T>(parameter, member, property.PropertyType, minValue, maxValue);
+    }
+
+    /// <summary>
+    /// Range predicate on the selector's value. Same rules as
+    /// <see cref="BuildRangePredicate{T}(string, string?, string?)"/>.
+    /// </summary>
+    public static Expression<Func<T, bool>> BuildRangePredicate<T>(
+        LambdaExpression selector, string? minValue, string? maxValue)
+    {
+        var parameter = SelectorParameter<T>(selector);
+        return BuildRangeCore<T>(parameter, selector.Body, selector.ReturnType, minValue, maxValue);
+    }
+
+    private static Expression<Func<T, bool>> BuildRangeCore<T>(
+        ParameterExpression parameter, Expression member, Type valueType, string? minValue, string? maxValue)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(valueType) ?? valueType;
 
         if (!ComparableTypes.Contains(underlyingType))
             return AlwaysTrue<T>();
 
-        var isNullable = property.PropertyType != underlyingType;
+        var isNullable = valueType != underlyingType;
 
         Expression compareTarget = isNullable
             ? Expression.Property(member, "Value")
@@ -326,28 +393,42 @@ public static class ExpressionHelper
             if (memberInfo is null)
                 continue;
 
-            var (member, property) = memberInfo.Value;
-            var lambda = Expression.Lambda(member, parameter);
-
-            string methodName;
-            if (isFirst)
-            {
-                methodName = descending ? "OrderByDescending" : "OrderBy";
-                isFirst = false;
-            }
-            else
-            {
-                methodName = descending ? "ThenByDescending" : "ThenBy";
-            }
-
-            var method = typeof(Queryable).GetMethods()
-                .First(m => m.Name == methodName && m.GetParameters().Length == 2);
-
-            var generic = method.MakeGenericMethod(typeof(T), property.PropertyType);
-            query = (IQueryable<T>)generic.Invoke(null, new object[] { query, lambda })!;
+            var (member, _) = memberInfo.Value;
+            query = ApplyOrder(query, Expression.Lambda(member, parameter), descending, thenBy: !isFirst);
+            isFirst = false;
         }
 
         return query;
+    }
+
+    /// <summary>
+    /// Adds one sort key: <c>OrderBy</c>/<c>OrderByDescending</c>, or <c>ThenBy</c>/<c>ThenByDescending</c>
+    /// when <paramref name="thenBy"/> is true (the query must already be ordered).
+    /// </summary>
+    /// <param name="query">The query to order.</param>
+    /// <param name="selector">A lambda over <typeparamref name="T"/> returning the sort key.</param>
+    /// <param name="descending">Whether to sort descending.</param>
+    /// <param name="thenBy">Whether this key follows an earlier one.</param>
+    public static IQueryable<T> ApplyOrder<T>(IQueryable<T> query, LambdaExpression selector, bool descending, bool thenBy)
+    {
+        SelectorParameter<T>(selector);
+
+        var methodName = (thenBy, descending) switch
+        {
+            (false, false) => nameof(Queryable.OrderBy),
+            (false, true) => nameof(Queryable.OrderByDescending),
+            (true, false) => nameof(Queryable.ThenBy),
+            (true, true) => nameof(Queryable.ThenByDescending)
+        };
+
+        var call = Expression.Call(
+            typeof(Queryable),
+            methodName,
+            new[] { typeof(T), selector.ReturnType },
+            query.Expression,
+            Expression.Quote(selector));
+
+        return query.Provider.CreateQuery<T>(call);
     }
 
     #endregion
@@ -452,6 +533,36 @@ public static class ExpressionHelper
 
         var body = BuildNullSafeStringOperation(member, value, operation);
         return Expression.Lambda<Func<T, bool>>(body, parameter);
+    }
+
+    /// <summary>
+    /// Builds a string operation predicate on a selector; always-true when the selector is not a string.
+    /// </summary>
+    private static Expression<Func<T, bool>> BuildStringOperationPredicate<T>(
+        LambdaExpression selector, string value, StringOperation operation)
+    {
+        var parameter = SelectorParameter<T>(selector);
+        if (selector.ReturnType != typeof(string))
+            return AlwaysTrue<T>();
+
+        var body = BuildNullSafeStringOperation(selector.Body, value, operation);
+        return Expression.Lambda<Func<T, bool>>(body, parameter);
+    }
+
+    /// <summary>
+    /// The selector's parameter, after checking it is a one-parameter lambda over <typeparamref name="T"/>.
+    /// A wrong selector is a programming error, so it throws.
+    /// </summary>
+    private static ParameterExpression SelectorParameter<T>(LambdaExpression selector)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        if (selector.Parameters.Count != 1 || selector.Parameters[0].Type != typeof(T))
+        {
+            throw new ArgumentException(
+                $"The selector must be a lambda with one parameter of type {typeof(T).Name}.", nameof(selector));
+        }
+
+        return selector.Parameters[0];
     }
 
     /// <summary>

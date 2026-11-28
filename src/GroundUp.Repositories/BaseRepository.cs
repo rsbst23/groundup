@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using GroundUp.Core;
 using GroundUp.Core.Entities;
 using GroundUp.Core.Models;
@@ -137,8 +138,7 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         query = ApplyFilters(query, filterParams);
 
         // 3. Apply sorting
-        if (!string.IsNullOrWhiteSpace(filterParams.SortBy))
-            query = ExpressionHelper.ApplySorting(query, filterParams.SortBy);
+        query = query.ApplyListOrder(filterParams.SortBy);
 
         // 4. Count after filtering, before paging
         var totalRecords = await query.CountAsync(cancellationToken);
@@ -161,6 +161,36 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
         };
 
         return OperationResult<PaginatedData<TDto>>.Ok(paginatedData);
+    }
+
+    /// <summary>
+    /// Retrieves a page shaped by <paramref name="projection"/> instead of the mapper. Filters, search,
+    /// sorting, count and paging run on the entity; the projection only shapes the page's rows and is
+    /// translated by EF (see <see cref="QueryableListExtensions"/>).
+    /// Pipeline: AsNoTracking → QueryShaper → Filters → Search → Sorting → Count → Paging → Projection.
+    /// </summary>
+    /// <typeparam name="TResult">The row type.</typeparam>
+    /// <param name="filterParams">Filtering, sorting, and pagination parameters.</param>
+    /// <param name="queryShaper">Optional delegate to customize the query before filtering.</param>
+    /// <param name="projection">The row shape.</param>
+    /// <param name="options">
+    /// The allowed fields by caller name, the default order and the tie-breaker. Null: names are entity
+    /// property paths and the search covers every string property.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    protected virtual async Task<OperationResult<PaginatedData<TResult>>> GetAllAsync<TResult>(
+        FilterParams filterParams,
+        Func<IQueryable<TEntity>, IQueryable<TEntity>>? queryShaper,
+        Expression<Func<TEntity, TResult>> projection,
+        ListQueryOptions<TEntity>? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<TEntity> query = DbSet.AsNoTracking();
+        if (queryShaper is not null)
+            query = queryShaper(query);
+
+        var page = await query.ToPagedListAsync(filterParams, projection, options, cancellationToken);
+        return OperationResult<PaginatedData<TResult>>.Ok(page);
     }
 
     #endregion
@@ -305,41 +335,7 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
     /// <returns>The filtered queryable.</returns>
     protected virtual IQueryable<TEntity> ApplyFilters(IQueryable<TEntity> query, FilterParams filterParams)
     {
-        // Exact-match filters
-        foreach (var (key, value) in filterParams.Filters)
-            query = query.Where(ExpressionHelper.BuildPredicate<TEntity>(key, value));
-
-        // Contains (substring) filters
-        foreach (var (key, value) in filterParams.ContainsFilters)
-            query = query.Where(ExpressionHelper.BuildContainsPredicate<TEntity>(key, value));
-
-        // StartsWith filters
-        foreach (var (key, value) in filterParams.StartsWithFilters)
-            query = query.Where(ExpressionHelper.BuildStartsWithPredicate<TEntity>(key, value));
-
-        // EndsWith filters
-        foreach (var (key, value) in filterParams.EndsWithFilters)
-            query = query.Where(ExpressionHelper.BuildEndsWithPredicate<TEntity>(key, value));
-
-        // Range filters (combine min and max for same property)
-        var rangeProperties = filterParams.MinFilters.Keys
-            .Union(filterParams.MaxFilters.Keys);
-        foreach (var prop in rangeProperties)
-        {
-            filterParams.MinFilters.TryGetValue(prop, out var min);
-            filterParams.MaxFilters.TryGetValue(prop, out var max);
-            query = query.Where(ExpressionHelper.BuildRangePredicate<TEntity>(prop, min, max));
-        }
-
-        // Multi-value (IN clause) filters
-        foreach (var (key, values) in filterParams.MultiValueFilters)
-            query = query.Where(ExpressionHelper.BuildMultiValuePredicate<TEntity>(key, values));
-
-        // Free-text search across all string properties
-        if (!string.IsNullOrWhiteSpace(filterParams.SearchTerm))
-            query = query.Where(ExpressionHelper.BuildSearchPredicate<TEntity>(filterParams.SearchTerm));
-
-        return query;
+        return query.ApplyListFilters(filterParams);
     }
 
     #endregion
@@ -355,10 +351,7 @@ public abstract class BaseRepository<TEntity, TDto> : IBaseRepository<TDto>
     /// <returns>The filtered and sorted queryable.</returns>
     protected IQueryable<TEntity> ApplyFilterParams(IQueryable<TEntity> query, FilterParams filterParams)
     {
-        query = ApplyFilters(query, filterParams);
-        if (!string.IsNullOrWhiteSpace(filterParams.SortBy))
-            query = ExpressionHelper.ApplySorting(query, filterParams.SortBy);
-        return query;
+        return ApplyFilters(query, filterParams).ApplyListOrder(filterParams.SortBy);
     }
 
     /// <summary>
