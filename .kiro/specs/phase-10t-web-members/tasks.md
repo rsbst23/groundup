@@ -15,12 +15,12 @@ Requirements: `requirements.md`. Design: `design.md`. Three PRs: 90a = task 1 an
 - **The accept and join start calls** are POSTs: a signed-out browser has no CSRF token; `getCsrfToken` returns null on 401 and the public endpoints accept the request without one (as the API guide does from Swagger signed out). Verified in task 4 by hand; the Node test covers that no header is sent when the token is null.
 
 ## Tasks
-- [ ] 1. Shared API pieces and access helpers (design 1, 2) — PR 90a
-  - [ ] 1.1 `paging.ts`, `labels.ts`; types for members, roles, invitations, join links, lookups, dev emails; `MeDto` permissions
-  - [ ] 1.2 `members.ts`, `roles.ts`, `invitations.ts`, `joinLinks.ts`, `acceptance.ts`, `devMailbox.ts`
-  - [ ] 1.3 `features/access`: `PermissionKeys`, `can`, `useCan`, `PermissionButton` / `PermissionIconButton`, `RequireTenant`
-  - [ ] 1.4 Tests: every API function (method, path, body, query, mapping), labels, `can`
-  - [ ] 1.5 Check: web build, lint, tests
+- [x] 1. Shared API pieces and access helpers (design 1, 2) — PR 90a
+  - [x] 1.1 `paging.ts`, `labels.ts`; types for members, roles, invitations, join links, lookups, dev emails; `MeDto` permissions
+  - [x] 1.2 `members.ts`, `roles.ts`, `invitations.ts`, `joinLinks.ts`, `acceptance.ts`, `devMailbox.ts`
+  - [x] 1.3 `features/access`: `PermissionKeys`, `can`, `useCan`, `PermissionButton` / `PermissionIconButton`, `RequireTenant`
+  - [x] 1.4 Tests: every API function (method, path, body, query, mapping), labels, `can`
+  - [x] 1.5 Check: web build, lint, tests 146 / 0. `withQuery` moved from `auth.ts` to `api/query.ts` (shared); `paging.ts` builds `pagedPath`
 - [ ] 2. Members page (design 3) — PR 90a
   - [ ] 2.1 `membersQuery.ts`, `MembersPage.tsx`, `AddRoleMenu.tsx`, `RemoveMemberDialog.tsx`; `routes/members.tsx`
   - [ ] 2.2 Self-changes refresh or reset the session
