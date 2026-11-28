@@ -75,6 +75,11 @@ export function allPoliciesQueryOptions(tenantId: string, enabled: boolean) {
   });
 }
 
+/** Whether a query key is one of a role's own queries (`['roles', tenantId, 'role', roleId, …]`). */
+export function isRoleQuery(queryKey: readonly unknown[], roleId: string): boolean {
+  return queryKey[0] === rolesKey[0] && queryKey[2] === 'role' && queryKey[3] === roleId;
+}
+
 /** The policies not attached yet, by name. */
 export function attachablePolicies(all: TenantPolicyDto[], attached: PolicyDto[]): TenantPolicyDto[] {
   const held = new Set(attached.map((p) => p.id));
@@ -98,7 +103,18 @@ export function useRoleActions() {
       mutationFn: ({ roleId, request }: { roleId: string; request: UpdateRoleRequest }) => updateRole(roleId, request),
       onSuccess: reload,
     }),
-    remove: useMutation({ mutationFn: (roleId: string) => deleteRole(roleId), onSuccess: reload }),
+    /**
+     * `leave` runs after the delete and before the reload: the role's own page navigates away first,
+     * so its queries are no longer shown when the reload would fetch them (a 404).
+     */
+    remove: useMutation({
+      mutationFn: ({ roleId }: { roleId: string; leave?: () => Promise<unknown> }) => deleteRole(roleId),
+      onSuccess: async (_, { roleId, leave }) => {
+        await leave?.();
+        queryClient.removeQueries({ predicate: (query) => isRoleQuery(query.queryKey, roleId) });
+        await reload();
+      },
+    }),
     setDefault: useMutation({ mutationFn: (roleId: string) => setDefaultRole(roleId), onSuccess: reload }),
     clearDefault: useMutation({ mutationFn: () => clearDefaultRole(), onSuccess: reload }),
     attach: useMutation({

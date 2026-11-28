@@ -309,11 +309,13 @@ function RoleContent({ role, tenantId, back, listSearch }: RoleContentProps) {
         busy={actions.remove.isPending}
         onClose={() => setDeleting(false)}
         onConfirm={() =>
-          actions.remove.mutate(role.id, {
-            onSuccess: () => void navigate({ to: '/roles', search: listSearch }),
-            onError: (error) => setActionError({ title: `Could not delete the role ${role.name}`, error }),
-            onSettled: () => setDeleting(false),
-          })
+          actions.remove.mutate(
+            { roleId: role.id, leave: () => navigate({ to: '/roles', search: listSearch }) },
+            {
+              onError: (error) => setActionError({ title: `Could not delete the role ${role.name}`, error }),
+              onSettled: () => setDeleting(false),
+            },
+          )
         }
       >
         Delete the role <strong>{role.name}</strong>? Only a role nobody holds, that no invitation or join link grants and

@@ -163,7 +163,7 @@ function RolesTable() {
         onClose={() => setDeleting(null)}
         onConfirm={() =>
           deleting &&
-          actions.remove.mutate(deleting.id, {
+          actions.remove.mutate({ roleId: deleting.id }, {
             onError: (error) => setActionError({ title: `Could not delete the role ${deleting.name}`, error }),
             onSettled: () => setDeleting(null),
           })

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachablePolicies } from '../features/roles/rolesQuery';
+import { attachablePolicies, isRoleQuery } from '../features/roles/rolesQuery';
 import { defaultRoleChoices, defaultRoleText, policiesText } from '../features/roles/roleText';
 import { clearCsrfToken } from './csrf';
 import { clearInspector } from './inspector';
@@ -118,6 +118,16 @@ describe('roles API', () => {
     mockFetch({ '/api/policies?pageNumber=1&pageSize=100': [ok(page([policy]))] });
 
     await expect(listAllPolicies()).resolves.toEqual([policy]);
+  });
+});
+
+describe('isRoleQuery', () => {
+  it('matches only the deleted role\'s own queries', () => {
+    expect(isRoleQuery(['roles', 't1', 'role', 'r1'], 'r1')).toBe(true);
+    expect(isRoleQuery(['roles', 't1', 'role', 'r1', 'policies'], 'r1')).toBe(true);
+    expect(isRoleQuery(['roles', 't1', 'role', 'r2'], 'r1')).toBe(false);
+    expect(isRoleQuery(['roles', 't1', 'page', { page: 1 }], 'r1')).toBe(false);
+    expect(isRoleQuery(['members', 't1', 'role', 'r1'], 'r1')).toBe(false);
   });
 });
 
