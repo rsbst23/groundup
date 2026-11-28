@@ -321,6 +321,14 @@ Simple signup registers a new person **without** creating an organization. They 
 ### 6.1 Set the default tenant
 Recipe 3 with `'my-test-org'`. Restart the app.
 
+**Optional: a default role.** New members of a tenant get its default role, if it has one (GU-95). This script leaves it unset, so Bob gets no role in 6.4. To try it, as Alice in My Test Org: `POST /api/roles` with `{ "name": "Member", "description": "Regular member" }`, then `PUT /api/roles/<id>/default`. After 6.3, `GET /api/members` as Alice shows Bob with role Member, source DefaultRole (`sources` contains 3). The default can't be TenantAdmin (`409 ROLE_IS_BUILT_IN`); `DELETE /api/roles/default` clears it.
+
+**Upgrading from before GU-95:** the default role used to be the `auth.application.default-role` setting (a role name). It is no longer read or seeded. Set the default through the API instead, and delete the old rows:
+```sql
+DELETE FROM "SettingValues" WHERE "SettingDefinitionId" IN (SELECT "Id" FROM "SettingDefinitions" WHERE "Key" = 'auth.application.default-role');
+DELETE FROM "SettingDefinitions" WHERE "Key" = 'auth.application.default-role';
+```
+
 ### 6.2 Switch to a new person
 Log out fully (Recipe 2). Alice's session must be gone, or Keycloak refuses to register someone else.
 
@@ -725,16 +733,7 @@ Alice invites Carol, who has no account, to My Test Org. Carol registers from th
 The sample app has no email sender and no accept page. In Development the default sender writes the accept link to the app console instead of emailing it, and you call the accept endpoints from Swagger.
 
 ### 15.1 Set up (once)
-1. **Add a Member role to My Test Org.** New organizations only get TenantAdmin, and there is no roles API yet, so use the database:
-   ```sql
-   INSERT INTO "AuthRoles" ("Id", "Name", "Description", "RoleType", "TenantId", "IsSystem", "CreatedAt")
-   SELECT gen_random_uuid(), 'Member', 'Regular member', 1, t."Id", false, now()
-   FROM "AuthTenants" t WHERE t."Slug" = 'my-test-org';
-
-   SELECT r."Id" FROM "AuthRoles" r JOIN "AuthTenants" t ON t."Id" = r."TenantId"
-   WHERE t."Slug" = 'my-test-org' AND r."Name" = 'Member';
-   ```
-   Note the Member role id.
+1. **Add a Member role to My Test Org.** New organizations only get TenantAdmin. As Alice in My Test Org: `POST /api/roles` with `{ "name": "Member", "description": "Regular member" }`. **Expected:** 201 with the role (`roleType` 1, Application). Note its `id`. If you created it in Part 6.1, `GET /api/roles` lists it; a second create returns `409 ROLE_NAME_TAKEN` (names ignore case).
 2. **Set the accept page URL** (System level, so as Sam; Part 11 shows how to get the System level id): `PUT /api/settings/auth.invitations.accept-url` with `{ "value": "http://localhost:5000/invite/{token}", "levelId": "<System id>" }` (use your port). Until it is set, `POST /api/invitations` returns `INVITATION_URL_NOT_CONFIGURED`.
 
 ### 15.2 Alice sends the invitation
@@ -897,7 +896,9 @@ DELETE FROM "AuthUserRoles"
 DELETE FROM "AuthUserTenants"
  WHERE "UserId" IN (SELECT "Id" FROM reset_user) OR "TenantId" IN (SELECT "Id" FROM reset_tenants);
 
--- Tenant-owned rows (role-policy and policy-permission links cascade)
+-- Tenant-owned rows (role-policy and policy-permission links cascade).
+-- A tenant's default role must be cleared before its roles can be deleted.
+UPDATE "AuthTenants" SET "DefaultRoleId" = NULL WHERE "Id" IN (SELECT "Id" FROM reset_tenants);
 DELETE FROM "AuthInvitations" WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants) OR "UserId" IN (SELECT "Id" FROM reset_user);
 DELETE FROM "AuthJoinLinks"   WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);
 DELETE FROM "AuthRoles"    WHERE "TenantId" IN (SELECT "Id" FROM reset_tenants);

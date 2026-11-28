@@ -43,5 +43,14 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.ParentTenantId);
+
+        // The tenant's default role (GU-95). Restrict: deleting the default role is refused by the
+        // roles service, and the database backs that up.
+        builder.HasOne(t => t.DefaultRole)
+            .WithMany()
+            .HasForeignKey(t => t.DefaultRoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.DefaultRoleId);
     }
 }

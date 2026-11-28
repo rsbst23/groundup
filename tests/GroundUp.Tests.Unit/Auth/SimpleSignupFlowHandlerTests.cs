@@ -69,7 +69,7 @@ public sealed class SimpleSignupFlowHandlerTests
             _authCookieWriter,
             _authFlowStateService,
             _settingsService,
-            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(_settingsService),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(),
             _httpContextAccessor,
             _tenantContext,
             _logger);
@@ -99,7 +99,6 @@ public sealed class SimpleSignupFlowHandlerTests
         SetupDefaultTenantLookup("community");
         SetupZeroActiveMemberships();
         SetupSuccessfulMembershipCreation();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         // Act
@@ -123,7 +122,6 @@ public sealed class SimpleSignupFlowHandlerTests
         SetupDefaultTenantLookup("community");
         SetupZeroActiveMemberships();
         SetupSuccessfulMembershipCreation();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         // Act
@@ -150,7 +148,6 @@ public sealed class SimpleSignupFlowHandlerTests
         SetupDefaultTenantSlugSetting("community");
         SetupDefaultTenantLookup("community");
         SetupZeroActiveMemberships();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         Guid? tenantContextAtInsert = null;
@@ -561,12 +558,6 @@ public sealed class SimpleSignupFlowHandlerTests
     {
         _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0)));
-    }
-
-    private void SetupDefaultRoleNotConfigured()
-    {
-        _settingsService.GetAsync<string>("auth.application.default-role", Arg.Any<CancellationToken>())
-            .Returns(OperationResult<string>.Fail("Setting not found", 404));
     }
 
     private void SetupSuccessfulTokenGeneration()

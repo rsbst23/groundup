@@ -80,7 +80,7 @@ public sealed class LoginFlowHandlerTests
             _authCookieWriter,
             _authFlowStateService,
             _settingsService,
-            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(_settingsService),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(),
             _httpContextAccessor,
             _tenantContext,
             _logger);
@@ -109,7 +109,6 @@ public sealed class LoginFlowHandlerTests
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
         SetupSuccessfulMembershipCreation();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         // Act
@@ -133,7 +132,6 @@ public sealed class LoginFlowHandlerTests
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
         SetupSuccessfulMembershipCreation();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         // Act
@@ -160,7 +158,6 @@ public sealed class LoginFlowHandlerTests
         SetupZeroActiveMemberships();
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         Guid? tenantContextAtInsert = null;
@@ -190,7 +187,6 @@ public sealed class LoginFlowHandlerTests
         SetupInactiveMembershipInDefaultTenant();
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
         _userTenantRepository.ReactivateMembershipAsync(TestUserId, TestTenantId1, Arg.Any<CancellationToken>())
             .Returns(OperationResult.Ok());
@@ -248,7 +244,6 @@ public sealed class LoginFlowHandlerTests
         SetupDefaultTenantSlugSetting("default-org");
         SetupDefaultTenantLookup("default-org");
         SetupSuccessfulMembershipCreation();
-        SetupDefaultRoleNotConfigured();
         SetupSuccessfulTokenGeneration();
 
         // Act
@@ -1007,12 +1002,6 @@ public sealed class LoginFlowHandlerTests
     {
         _userTenantRepository.AddAsync(Arg.Any<UserTenantDto>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => OperationResult<UserTenantDto>.Ok(callInfo.ArgAt<UserTenantDto>(0)));
-    }
-
-    private void SetupDefaultRoleNotConfigured()
-    {
-        _settingsService.GetAsync<string>("auth.application.default-role", Arg.Any<CancellationToken>())
-            .Returns(OperationResult<string>.Fail("Setting not found", 404));
     }
 
     private void SetupSuccessfulTokenGeneration()

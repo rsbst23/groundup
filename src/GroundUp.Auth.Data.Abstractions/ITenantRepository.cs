@@ -66,4 +66,28 @@ public interface ITenantRepository : IBaseRepository<TenantDto>
     Task<OperationResult<List<TenantDto>>> GetByIdsBypassFilterAsync(
         IEnumerable<Guid> tenantIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The tenant's default role id (GU-95), or null for none. System-level read: the caller names the
+    /// tenant (the default-role grant runs before a tenant is selected).
+    /// </summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The role id or null; NotFound when the tenant does not exist.</returns>
+    Task<OperationResult<Guid?>> GetDefaultRoleIdAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets or clears the tenant's default role (GU-95). The caller has already checked that the role
+    /// belongs to the tenant and may be the default.
+    /// </summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="roleId">The role, or null for none.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Success; NotFound when the tenant does not exist.</returns>
+    Task<OperationResult> SetDefaultRoleIdAsync(
+        Guid tenantId,
+        Guid? roleId,
+        CancellationToken cancellationToken = default);
 }

@@ -30,7 +30,9 @@ public class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
         builder.HasOne(ur => ur.Role)
             .WithMany(r => r.UserRoles)
             .HasForeignKey(ur => ur.RoleId)
-            .OnDelete(DeleteBehavior.Cascade);
+            // Restrict (GU-95): a role cannot be deleted while anyone holds it, so a grant made while
+            // a delete runs makes the delete fail instead of being deleted with the role
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(ur => ur.Tenant)
             .WithMany()

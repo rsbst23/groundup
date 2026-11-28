@@ -1,5 +1,6 @@
 using GroundUp.Auth.Core.Dtos;
 using GroundUp.Auth.Core.Entities;
+using GroundUp.Auth.Core.Enums;
 using GroundUp.Auth.Data.Abstractions;
 using GroundUp.Auth.Repositories.Mappers;
 using GroundUp.Core;
@@ -166,5 +167,60 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         return role is null
             ? OperationResult<RoleDto>.NotFound("Role not found.")
             : OperationResult<RoleDto>.Ok(AuthRoleMapper.ToDto(role));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A role still referenced by a member's grant, an invitation, a join link or a tenant's default
+    /// role cannot be deleted (the foreign keys restrict it). That rejection is returned as 409
+    /// <c>CONFLICT</c> instead of an exception, so the role service can report it (GU-95).
+    /// </remarks>
+    public override async Task<OperationResult> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.DeleteAsync(id, cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            foreach (var entry in Context.ChangeTracker.Entries<Role>().Where(e => e.Entity.Id == id).ToList())
+            {
+                DiscardRejectedChanges(entry.Entity);
+            }
+
+            return OperationResult.Fail(
+                "The role is still in use and cannot be deleted.",
+                409,
+                ErrorCodes.Conflict);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<RoleUsageDto>> GetUsageAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        // The tenant-filtered read: a role of another tenant is NotFound
+        var role = await GetByIdAsync(roleId, cancellationToken);
+        if (!role.Success || role.Data is null)
+        {
+            return OperationResult<RoleUsageDto>.NotFound("Role not found.");
+        }
+
+        var tenantId = role.Data.TenantId;
+        var holders = await Context.Set<UserRole>()
+            .CountAsync(ur => ur.RoleId == roleId && ur.TenantId == tenantId, cancellationToken);
+        var pendingInvitations = await Context.Set<Invitation>()
+            .CountAsync(i => i.RoleId == roleId
+                && (i.Status == InvitationStatus.Pending || i.Status == InvitationStatus.Expired), cancellationToken);
+        var activeJoinLinks = await Context.Set<JoinLink>()
+            .CountAsync(l => l.RoleId == roleId && l.Status == JoinLinkStatus.Active, cancellationToken);
+        var isDefault = await Context.Set<Tenant>()
+            .IgnoreQueryFilters()
+            .AnyAsync(t => t.Id == tenantId && t.DefaultRoleId == roleId, cancellationToken);
+
+        return OperationResult<RoleUsageDto>.Ok(new RoleUsageDto(holders, pendingInvitations, activeJoinLinks, isDefault));
     }
 }

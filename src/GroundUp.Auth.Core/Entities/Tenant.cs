@@ -64,6 +64,18 @@ public sealed class Tenant : BaseEntity, IAuditable, ISoftDeletable
     /// </summary>
     public ICollection<Role> Roles { get; set; } = new List<Role>();
 
+    /// <summary>
+    /// The role given to people who join this tenant through the default-tenant sign-in or
+    /// sign-up (GU-95). Stored by id, so renaming the role does not affect it. Null for none.
+    /// Never a built-in role.
+    /// </summary>
+    public Guid? DefaultRoleId { get; set; }
+
+    /// <summary>
+    /// The default role (see <see cref="DefaultRoleId"/>).
+    /// </summary>
+    public Role? DefaultRole { get; set; }
+
     /// <inheritdoc />
     public DateTime CreatedAt { get; set; }
 

@@ -208,11 +208,14 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
             return OperationResult<TenantDto>.NotFound();
 
         var originalParentTenantId = entity.ParentTenantId;
+        var originalDefaultRoleId = entity.DefaultRoleId;
         var updated = MapToEntity(dto);
         Context.Entry(entity).CurrentValues.SetValues(updated);
 
         // Preserve ParentTenantId — cannot be changed via update
         entity.ParentTenantId = originalParentTenantId;
+        // TenantDto has no DefaultRoleId; it changes only through SetDefaultRoleIdAsync (GU-95)
+        entity.DefaultRoleId = originalDefaultRoleId;
 
         try
         {
@@ -252,5 +255,37 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
 
         await Context.SaveChangesAsync(cancellationToken);
         return OperationResult.Ok();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult<Guid?>> GetDefaultRoleIdAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        var tenant = await DbSet.AsNoTracking()
+            .Where(t => t.Id == tenantId)
+            .Select(t => new { t.DefaultRoleId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return tenant is null
+            ? OperationResult<Guid?>.NotFound("Organization not found.")
+            : OperationResult<Guid?>.Ok(tenant.DefaultRoleId);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>SYSTEM BYPASS: targets <paramref name="tenantId"/> explicitly.</remarks>
+    public async Task<OperationResult> SetDefaultRoleIdAsync(
+        Guid tenantId,
+        Guid? roleId,
+        CancellationToken cancellationToken = default)
+    {
+        var updated = await DbSet
+            .Where(t => t.Id == tenantId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.DefaultRoleId, roleId)
+                .SetProperty(t => t.UpdatedAt, DateTime.UtcNow), cancellationToken);
+
+        return updated == 0 ? OperationResult.NotFound("Organization not found.") : OperationResult.Ok();
     }
 }

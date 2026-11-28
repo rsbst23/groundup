@@ -2,6 +2,7 @@ using System.Reflection;
 using GroundUp.Auth.Services.Invitations;
 using GroundUp.Auth.Services.JoinLinks;
 using GroundUp.Auth.Services.Membership;
+using GroundUp.Auth.Services.Roles;
 using GroundUp.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,7 +17,7 @@ namespace GroundUp.Auth.Services.Settings;
 /// <item><see cref="ISettingsService"/> and <see cref="ISettingsAdminService"/>: the application
 /// registers them after <c>AddGroundUpSettings()</c>.</item>
 /// <item>The auth module's admin services (<see cref="IMemberManagementService"/>,
-/// <see cref="IInvitationService"/>, <see cref="IJoinLinkService"/>): registered by
+/// <see cref="IInvitationService"/>, <see cref="IJoinLinkService"/>, <see cref="IRoleService"/>): registered by
 /// <c>AddGroundUpAuth</c>; checked in case an application replaces the registration.</item>
 /// </list>
 /// <para>
@@ -50,6 +51,7 @@ public sealed class SettingsAuthorizationStartupValidator : IHostedService
         Check<IMemberManagementService>(provider, "or remove the replacement registration (AddGroundUpAuth registers it)");
         Check<IInvitationService>(provider, "or remove the replacement registration (AddGroundUpAuth registers it)");
         Check<IJoinLinkService>(provider, "or remove the replacement registration (AddGroundUpAuth registers it)");
+        Check<IRoleService>(provider, "or remove the replacement registration (AddGroundUpAuth registers it)");
 
         return Task.CompletedTask;
     }

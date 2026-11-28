@@ -171,10 +171,6 @@ public sealed class SimpleSignupFlowHandlerPropertyTests
                 .Returns(OperationResult<string>.Fail("Not found", 404));
         }
 
-        // Default role — not configured (simplifies property test)
-        settingsService.GetAsync<string>("auth.application.default-role", Arg.Any<CancellationToken>())
-            .Returns(OperationResult<string>.Fail("Not found", 404));
-
         // Tenant lookup
         if (tenantExists)
         {
@@ -226,7 +222,7 @@ public sealed class SimpleSignupFlowHandlerPropertyTests
             authCookieWriter,
             authFlowStateService,
             settingsService,
-            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(settingsService),
+            GroundUp.Tests.Unit.Auth.TestHelpers.FlowHandlerTestDoubles.DefaultRoleAssigner(),
             httpContextAccessor,
             new GroundUp.Core.TenantContext(),
             logger);
