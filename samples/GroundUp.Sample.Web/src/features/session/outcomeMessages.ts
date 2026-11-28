@@ -15,6 +15,13 @@ const messages: Record<string, string> = {
   EMAIL_NOT_VERIFIED: 'Verify your email address first (see the email from Keycloak), then sign in.',
   INVITATION_EMAIL_MISMATCH:
     'The invitation was sent to a different email address than the one you signed in with.',
+  INVITATION_NO_LONGER_VALID:
+    'The invitation can no longer be used: it was withdrawn or expired, or whoever sent it can no longer give its role.',
+  INVITATION_ALREADY_USED: 'This invitation was already used.',
+  INVITATION_WRONG_ORGANIZATION: 'This link belongs to a different organization than the address you opened it on.',
+  JOIN_LINK_NO_LONGER_VALID:
+    'The join link can no longer be used: it was withdrawn, expired or used up, or whoever made it can no longer give its role.',
+  ENTERPRISE_NOT_SUPPORTED: 'Invitations and join links are not available for this kind of organization yet.',
 };
 
 export const GENERIC_OUTCOME_MESSAGE = 'The sign-in did not complete.';

@@ -184,7 +184,7 @@ function InvitationsTable() {
               setActionError(null);
               setNotice(
                 `Invitation sent to ${request.email}.` +
-                  (import.meta.env.DEV ? ' In Development no email goes out: the link is in the API\'s log.' : ''),
+                  (import.meta.env.DEV ? ' In Development no email goes out: open the Mailbox page to see it and its link.' : ''),
               );
             },
           })

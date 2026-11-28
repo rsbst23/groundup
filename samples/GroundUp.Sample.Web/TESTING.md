@@ -19,7 +19,7 @@ The same people as the API guide.
 | **Bob** | `member@example.com` | `Test123!` | A regular member. |
 | **Carol** | `invitee@example.com` | `Test123!` | Has no account until Alice invites her. |
 
-Parts 1 and 2 need a user who already exists (any user from the API guide); Part 3 creates Alice and Bob from scratch.
+Parts 1 and 2 need a user who already exists (any user from the API guide); Part 3 creates Alice and Bob from scratch; Part 5 creates Carol through an invitation.
 
 ### What state you are in after each part
 
@@ -28,6 +28,7 @@ Parts 1 and 2 need a user who already exists (any user from the API guide); Part
 | 1 | The scaffold: layout, session banner, errors, the Requests panel, CSRF | signed in, as you started |
 | 2 | Returning to the app after sign-in (`returnUrl`) | signed in |
 | 3 | Sign-in, session and organizations (the API guide's Parts 2 to 10 and 14.1 to 14.3) | Alice, in My Test Org |
+| 5 | Members, invitations and join links (the API guide's Parts 15 and 16) | Bob, in My Test Org |
 
 ### Words used
 
@@ -216,12 +217,105 @@ The API guide's Parts 2 to 10 and 14.1 to 14.3, from the browser. Same people, s
 
 ---
 
+## Part 4: Setup Wizard (GU-88)
+
+Not written yet. The setup wizard's pages come with GU-88, which runs from a reset database; until then use the API guide's Part 1. Parts are numbered by story, so Part 5 comes before Part 4 exists.
+
+---
+
+## Part 5: Members, Invitations and Join Links (GU-90)
+
+The API guide's Parts 15 and 16, from the browser. Start after Part 3: Alice is TenantAdmin of My Test Org, and Bob is no longer a member of it.
+
+**Where things are:**
+- **Members:** the organization's members, their roles (a chip per role, with why it is held when that is more than a manual grant), **Add role**, the chip's delete button, **Remove**.
+- **Invitations:** **Invite**, and **Resend** and **Revoke** for pending and expired invitations.
+- **Join links:** **Create link**, and **Regenerate** and **Revoke** for active links. A link is shown once, with **Copy**.
+- **Mailbox** (Development only): the invitation emails the API kept instead of sending them, with their links. It needs a signed-in user, so copy a link before signing out.
+- **Accept and join pages** (`/invite/…`, `/join/…`): what a link is for, **Accept** or **Join**, **Sign in as someone else**, and the outcome after the sign-in.
+
+Buttons you do not have the permission for are disabled; hover to see which permission. The API checks every request anyway, and its refusals appear in an error panel above the table.
+
+| Part | What it tests | You end as |
+|---|---|---|
+| 5.1 | Set up (once): the accept URL, a Member role | Alice, in My Test Org |
+| 5.2 | The members list and the last-admin guard | unchanged |
+| 5.3 | Alice invites Carol | Alice |
+| 5.4 | Carol accepts and registers | Carol, in My Test Org |
+| 5.5 | An invitation works once | Carol |
+| 5.6 | Resend and revoke | Alice |
+| 5.7 | The wrong account accepts an invitation | Alice |
+| 5.8 | A join link for Bob, and its maximum uses | Bob, in My Test Org |
+| 5.9 | Regenerate, revoke, and an existing member | Alice |
+| 5.10 | What a member without admin permissions sees | Bob |
+
+### 5.1 Set up (once)
+1. **Restart the app** (Shift+F5, F5) so the sample API seeds the accept URL: in Development it sets `auth.invitations.accept-url` to `http://localhost:5173/invite/{token}` when it is empty. If the web app runs on another port, change the setting through Swagger (the API guide's 15.1, step 3).
+2. **A Member role.** The roles pages come with GU-97; until then use Swagger as Alice in My Test Org: `POST /api/roles` with `{ "name": "Member" }`. Skip it if Part 6.1 or 15.1 of the API guide already created it.
+3. **Optional: let Members see the member list** (for 5.10): `POST /api/policies` with `{ "name": "Member basics", "permissionKeys": ["auth.members.read"] }`, then `POST /api/roles/<Member id>/policies/<policy id>`.
+
+### 5.2 The members list and the last-admin guard (Alice)
+1. Open **Members**. **Expected:** Alice, Active, with the chip **TenantAdmin · Provisioning** (she got it by creating the organization).
+2. Click the delete button on Alice's **TenantAdmin** chip. **Expected:** an error panel: **HTTP 409**, **LAST_ADMIN**. The chip stays.
+3. Click **Remove** on Alice and confirm. **Expected:** the same **LAST_ADMIN** refusal.
+
+### 5.3 Alice invites Carol
+1. Open **Invitations** and click **Invite**. Email `invitee@example.com`, role **Member**, no expiry. **Send invitation**.
+2. **Expected:** "Invitation sent to invitee@example.com. In Development no email goes out: open the Mailbox page…". The list shows the invitation, **Pending**, expiring in 7 days.
+3. Open **Members**. **Expected:** Carol (`invitee@example.com`), **Pending**, chip **Member · Invitation**.
+4. Open **Mailbox**. **Expected:** the email to `invitee@example.com` for My Test Org, role Member. Right-click **Open the invitation** and copy the link.
+5. Refusals: **Invite** `invitee@example.com` again. **Expected:** in the dialog, **409 INVITATION_PENDING**. An address that is not an email cannot be submitted.
+
+### 5.4 Carol accepts and registers
+1. Top bar **Sign out** (Alice's Keycloak session must end, or Keycloak refuses to register someone else).
+2. Paste the link into the address bar. **Expected:** the **Invitation** page: "Join **My Test Org** as **Member**", with **Accept invitation** and **Sign in as someone else**. No sign-in was needed to see it.
+3. Click **Accept invitation**. **Expected:** Keycloak's **registration** form with `invitee@example.com` filled in (Carol has no account). Register with `Test123!`, first name `Carol`, last name `Invitee`.
+4. **Expected:** back on the Invitation page: "You joined My Test Org", with **Session** and **Members** buttons. The banner shows Carol in My Test Org with the Member role. The address no longer has `?result=…`.
+
+### 5.5 An invitation works once
+1. Reload the same link. **Expected:** "This invitation was already used." and no buttons.
+
+### 5.6 Resend and revoke (Alice)
+1. Top bar **Sign out**, **Sign in** as Alice (choose My Test Org if asked).
+2. **Invitations** → **Invite** `nobody@example.com`, Member. In **Mailbox**, copy its link (link A).
+3. Back on **Invitations**, **Resend** it. **Expected:** "A new invitation was sent… The old link no longer works." **Mailbox** now has a second email (link B).
+4. Open link A. **Expected:** "This link is not valid." Open link B. **Expected:** "Join My Test Org as Member".
+5. **Revoke** the invitation and confirm. **Expected:** status **Revoked**; **Members** no longer lists `nobody@example.com`; link B now says "This was withdrawn by the organization."
+
+### 5.7 The wrong account accepts an invitation (Alice)
+1. **Invite** `someone@example.com`, Member, and copy its link from **Mailbox**.
+2. Still signed in as Alice, open the link and click **Accept invitation**. Keycloak asks for credentials (you are signed in with a different email); sign in as **Alice**.
+3. **Expected:** the Invitation page shows **INVITATION_EMAIL_MISMATCH** ("The invitation was sent to a different email address…") with **Sign in as someone else**. Alice's session is unchanged.
+4. Revoke the invitation afterwards (**Invitations** → **Revoke**).
+
+### 5.8 A join link for Bob, and its maximum uses
+1. As Alice, **Join links** → **Create link**: role **Member**, maximum uses `1`. **Expected:** the link dialog: `http://localhost:5173/join/…`, "This link is shown only now". **Copy** it, then **Done**. The list shows it **Active**, uses `0 / 1`.
+2. Top bar **Sign out**. Open the link. **Expected:** the **Join link** page: "Join **My Test Org** as **Member**".
+3. **Join**, sign in as **Bob**. **Expected:** "You joined My Test Org"; the banner shows Bob in My Test Org with Member.
+4. Open the same link again. **Expected:** "This link has reached its maximum number of uses."
+
+### 5.9 Regenerate, revoke, and an existing member (Alice)
+1. Top bar **Sign out**, **Sign in** as Alice. **Join links**: the first link shows **Used up**, `1 / 1`, with no actions.
+2. **Create link**: Member, no maximum. Copy it (link C).
+3. Open link C (still Alice) and **Join**. **Expected:** "You are already a member of My Test Org. Nothing changed." **Join links** still shows `0 / unlimited` (a member's visit is not counted).
+4. **Regenerate** link C and confirm. **Expected:** a new link is shown once. Open link C: "This link is not valid."
+5. **Revoke** the new link and confirm. **Expected:** status **Revoked**; opening it says "This was withdrawn by the organization."
+6. **Members** lists Alice, Carol and Bob; Carol's chip is **Member · Invitation**, Bob's **Member · Join link**.
+
+### 5.10 What a member without admin permissions sees (Bob)
+1. Top bar **Sign out**, **Sign in** as Bob.
+2. Open **Members**. **Expected:** with the optional policy from 5.1, the list loads; **Add role**, **Remove** and the chips' delete buttons are disabled, and hovering names the permission (for example "Needs the permission auth.members.manage"). Without it, an error panel: **HTTP 403**.
+3. Open **Invitations** and **Join links**. **Expected:** an error panel, **HTTP 403** (Bob holds neither `auth.invitations.send` nor `auth.joinlinks.manage`), and the **Invite** / **Create link** buttons disabled.
+
+**Record the result** in `.kiro/specs/phase-10t-web-members/tasks.md`, task 5.2.
+
+---
+
 ## Parts to Come
 
 | Part | Story | Page |
 |---|---|---|
-| 4 | GU-88 | Setup wizard |
-| 5 | GU-90 | Members, invitations and join links |
+| 4 | GU-88 | Setup wizard (placeholder above) |
 | 6 | GU-97 | Roles, policies and permissions |
 | 7 | GU-91 | Settings (then the API guide's 14.4 moves here) |
 | 8 | GU-92 | Sample data |
@@ -233,6 +327,7 @@ The API guide's Parts 2 to 10 and 14.1 to 14.3, from the browser. Same people, s
 
 | Problem | Solution |
 |---|---|
+| Keycloak's verification email bounces ("Address not found") for an address like `name+alice@yahoo.com` | Yahoo does not accept plus addresses. Use Gmail plus addresses (`name+alice@gmail.com`), or turn off **Verify email** in the realm (the API guide's 13.7) and use the `@example.com` test users; invitations go to the Mailbox either way. Delete the half-registered user in Keycloak before retrying |
 | Keycloak says "Invalid parameter: redirect_uri" | Add the three port 5173 URIs (Before You Start, step 4) |
 | The browser opened before the API was ready, and the page says the API is not reachable | Reload once the API's console shows "Now listening on" |
 | `npm run dev` fails with "Port 5173 is in use" | Another dev server is running. Stop it; the port is fixed because Keycloak only accepts that address |

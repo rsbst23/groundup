@@ -78,7 +78,7 @@ A sample ASP.NET Core web application that wires up all framework modules. Used 
 
 ### GroundUp.Sample.Web
 
-A React app (`samples/GroundUp.Sample.Web`: Vite, TypeScript, MUI, TanStack Query and Router) for calling and testing the sample API from a browser. Its dev server proxies the API paths with the Host kept, so cookies, CSRF and the Keycloak redirects behave as for a deployed client. Development only; not in the solution and never packed. See its README for the conventions and TESTING.md for the manual tests.
+A React app (`samples/GroundUp.Sample.Web`: Vite, TypeScript, MUI, TanStack Query and Router) for calling and testing the sample API from a browser. Its dev server proxies the API paths with the Host kept, so cookies, CSRF and the Keycloak redirects behave as for a deployed client. Development only; not in the solution and never packed. See its README for the conventions and TESTING.md for the manual tests. Every API call goes through `apiFetch` (`src/api/client.ts`: CSRF, correlation ID, errors, the Requests panel). Data from the API lives in TanStack Query (one cache; changes invalidate the affected queries, and a tenant switch clears all tenant data); client-only state shared across pages, when needed, goes in Zustand. In Development the sample API keeps invitation emails in a dev mailbox (`GET /api/dev/invitation-emails`, the Mailbox page) and seeds `auth.invitations.accept-url` with the web app's accept page.
 
 ### GroundUp.Tests.Unit
 
