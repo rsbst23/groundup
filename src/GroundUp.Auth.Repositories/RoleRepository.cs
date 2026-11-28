@@ -49,7 +49,7 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult> AssignPolicyAsync(
+    public async Task<OperationResult<RolePolicyDto>> AssignPolicyAsync(
         Guid roleId,
         Guid policyId,
         CancellationToken cancellationToken = default)
@@ -57,7 +57,7 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         // Verify role exists and belongs to current tenant (via tenant-scoped GetByIdAsync)
         var roleResult = await GetByIdAsync(roleId, cancellationToken);
         if (!roleResult.Success)
-            return OperationResult.NotFound();
+            return OperationResult<RolePolicyDto>.NotFound();
 
         // Verify policy exists and belongs to the same tenant as the role
         var roleTenantId = roleResult.Data!.TenantId;
@@ -66,15 +66,15 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
             .FirstOrDefaultAsync(p => p.Id == policyId && p.TenantId == roleTenantId, cancellationToken);
 
         if (policy is null)
-            return OperationResult.NotFound();
+            return OperationResult<RolePolicyDto>.NotFound();
 
-        // Check if already assigned (idempotent)
+        // Check if already assigned (idempotent: 200 with the existing link)
         var existingAssignment = await Context.Set<RolePolicy>()
             .AsNoTracking()
             .FirstOrDefaultAsync(rp => rp.RoleId == roleId && rp.PolicyId == policyId, cancellationToken);
 
         if (existingAssignment is not null)
-            return OperationResult.Ok();
+            return OperationResult<RolePolicyDto>.Ok(ToLinkDto(existingAssignment));
 
         // Create new junction record
         var rolePolicy = new RolePolicy
@@ -88,12 +88,12 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         try
         {
             await Context.SaveChangesAsync(cancellationToken);
-            return OperationResult.Ok();
+            return OperationResult<RolePolicyDto>.Ok(ToLinkDto(rolePolicy), "Created", 201);
         }
         catch (DbUpdateException)
         {
             DiscardRejectedChanges(rolePolicy);
-            return OperationResult.Fail(
+            return OperationResult<RolePolicyDto>.Fail(
                 "A conflict occurred while assigning the policy.",
                 409,
                 ErrorCodes.Conflict);
@@ -101,7 +101,7 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
     }
 
     /// <inheritdoc />
-    public async Task<OperationResult> RemovePolicyAsync(
+    public async Task<OperationResult<RolePolicyDto>> RemovePolicyAsync(
         Guid roleId,
         Guid policyId,
         CancellationToken cancellationToken = default)
@@ -109,25 +109,25 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
         // Verify role exists and belongs to current tenant
         var roleResult = await GetByIdAsync(roleId, cancellationToken);
         if (!roleResult.Success)
-            return OperationResult.NotFound();
+            return OperationResult<RolePolicyDto>.NotFound();
 
         var rolePolicy = await Context.Set<RolePolicy>()
             .FirstOrDefaultAsync(rp => rp.RoleId == roleId && rp.PolicyId == policyId, cancellationToken);
 
         if (rolePolicy is null)
-            return OperationResult.NotFound();
+            return OperationResult<RolePolicyDto>.NotFound("The policy is not attached to this role.");
 
         Context.Set<RolePolicy>().Remove(rolePolicy);
 
         try
         {
             await Context.SaveChangesAsync(cancellationToken);
-            return OperationResult.Ok();
+            return OperationResult<RolePolicyDto>.Ok(ToLinkDto(rolePolicy));
         }
         catch (DbUpdateException)
         {
             DiscardRejectedChanges(rolePolicy);
-            return OperationResult.Fail(
+            return OperationResult<RolePolicyDto>.Fail(
                 "A conflict occurred while removing the policy assignment.",
                 409,
                 ErrorCodes.Conflict);
@@ -223,4 +223,31 @@ public sealed class RoleRepository : BaseTenantRepository<Role, RoleDto>, IRoleR
 
         return OperationResult<RoleUsageDto>.Ok(new RoleUsageDto(holders, pendingInvitations, activeJoinLinks, isDefault));
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// SYSTEM BYPASS: reads by role id without the current tenant filter, because role grants are
+    /// checked in sign-in callbacks too. The caller has already checked the role's tenant.
+    /// </remarks>
+    public async Task<OperationResult<List<RoleGrantDto>>> GetPermissionGrantsAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        var grants = await Context.Set<RolePolicy>().AsNoTracking()
+            .Where(rp => rp.RoleId == roleId)
+            .SelectMany(rp => rp.Policy.PolicyPermissions.Select(pp => new
+            {
+                pp.Permission.Key,
+                rp.PolicyId,
+                PolicyName = rp.Policy.Name
+            }))
+            .OrderBy(g => g.Key)
+            .ThenBy(g => g.PolicyName)
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<RoleGrantDto>>.Ok(
+            grants.Select(g => new RoleGrantDto(g.Key, g.PolicyId, g.PolicyName)).ToList());
+    }
+
+    private static RolePolicyDto ToLinkDto(RolePolicy link) => new(link.Id, link.RoleId, link.PolicyId);
 }

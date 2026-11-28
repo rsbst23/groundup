@@ -101,7 +101,7 @@ public sealed class PermissionServiceTests
 
         // Assert — verify the cache key format by checking the cache directly
         var cacheKey = $"permissions:{_userId}:{_tenantId}";
-        Assert.True(_cache.TryGetValue(cacheKey, out HashSet<string>? cached));
+        Assert.True(_cache.TryGetValue(cacheKey, out CachedPermissions? cached));
         Assert.NotNull(cached);
     }
 

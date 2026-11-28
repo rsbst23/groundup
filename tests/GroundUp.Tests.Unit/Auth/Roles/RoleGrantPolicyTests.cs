@@ -29,6 +29,7 @@ public sealed class RoleGrantPolicyTests
         new(Guid.NewGuid(), "Editor", null, RoleType.Application, TenantA, false);
 
     private readonly IUserRoleRepository _userRoles = Substitute.For<IUserRoleRepository>();
+    private readonly IRoleRepository _roles = GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly ITenantContext _tenantContext = Substitute.For<ITenantContext>();
     private readonly List<IRoleAssignmentRule> _rules = [];
@@ -156,7 +157,93 @@ public sealed class RoleGrantPolicyTests
         await rule.DidNotReceiveWithAnyArgs().EvaluateAsync(default!, default);
     }
 
-    private RoleGrantPolicy CreateSut() => new(_userRoles, _permissions, _tenantContext, _rules);
+    private RoleGrantPolicy CreateSut() => new(_userRoles, _roles, _permissions, _tenantContext, _rules);
+
+    // ── Escalation guard (GU-96) ──────────────────────────────────
+
+    [Fact]
+    public async Task CheckAsync_AssignHolderHoldsEveryPermissionOfTheRole_Allowed()
+    {
+        GivenCaller(Caller.AssignPermission);
+        GivenRoleGrants(EditorRole, "docs.read", "docs.write");
+        GivenCallerHolds("docs.read", "docs.write", "other.read");
+
+        (await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Assign, RoleAssignmentSource.Manual))
+            .Success.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CheckAsync_AssignHolderLacksAPermissionOfTheRole_PermissionNotHeld()
+    {
+        GivenCaller(Caller.AssignPermission);
+        GivenRoleGrants(EditorRole, "docs.write", "docs.read", "docs.delete");
+        GivenCallerHolds("docs.read");
+
+        var result = await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Assign, RoleAssignmentSource.Invitation);
+
+        result.StatusCode.Should().Be(403);
+        result.ErrorCode.Should().Be(AuthErrorCodes.PermissionNotHeld);
+        result.Errors.Should().Equal("docs.delete", "docs.write");
+        result.Message.Should().Contain("Editor");
+    }
+
+    [Fact]
+    public async Task CheckAsync_AssignHolderRemovesARoleWithPermissionsTheyLack_Allowed()
+    {
+        GivenCaller(Caller.AssignPermission);
+        GivenRoleGrants(EditorRole, "docs.delete");
+        GivenCallerHolds();
+
+        (await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Remove, RoleAssignmentSource.Manual))
+            .Success.Should().BeTrue();
+        await _roles.DidNotReceiveWithAnyArgs().GetPermissionGrantsAsync(default, default);
+    }
+
+    [Theory]
+    [InlineData(Caller.SuperAdmin)]
+    [InlineData(Caller.TenantAdmin)]
+    public async Task CheckAsync_Admin_NotChecked(Caller caller)
+    {
+        GivenCaller(caller);
+        GivenRoleGrants(EditorRole, "docs.delete");
+
+        (await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Assign, RoleAssignmentSource.Manual))
+            .Success.Should().BeTrue();
+        await _roles.DidNotReceiveWithAnyArgs().GetPermissionGrantsAsync(default, default);
+    }
+
+    [Fact]
+    public async Task CheckAsync_RolePermissionsCannotBeRead_Refused()
+    {
+        GivenCaller(Caller.AssignPermission);
+        _roles.GetPermissionGrantsAsync(EditorRole.Id, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<RoleGrantDto>>.Fail("db down", 500));
+
+        (await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Assign, RoleAssignmentSource.Manual))
+            .StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task CheckAsync_GuardRefuses_AppRulesDoNotRun()
+    {
+        GivenCaller(Caller.AssignPermission);
+        GivenRoleGrants(EditorRole, "docs.delete");
+        GivenCallerHolds();
+        var rule = Substitute.For<IRoleAssignmentRule>();
+        _rules.Add(rule);
+
+        await CreateSut().CheckAsync(CallerId, TargetId, EditorRole, RoleChange.Assign, RoleAssignmentSource.Manual);
+
+        await rule.DidNotReceiveWithAnyArgs().EvaluateAsync(default!, default);
+    }
+
+    private void GivenRoleGrants(RoleDto role, params string[] keys)
+        => _roles.GetPermissionGrantsAsync(role.Id, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<RoleGrantDto>>.Ok(keys.Select(k => new RoleGrantDto(k, Guid.NewGuid(), "Policy")).ToList()));
+
+    private void GivenCallerHolds(params string[] keys)
+        => _permissions.GetPermissionSummaryAsync(CallerId, Arg.Any<CancellationToken>())
+            .Returns(new PermissionSummaryDto(false, keys.ToList()));
 
     private static RoleDto RoleFor(Kind kind) => kind switch
     {

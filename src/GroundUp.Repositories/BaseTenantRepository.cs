@@ -160,6 +160,7 @@ public abstract class BaseTenantRepository<TEntity, TDto> : BaseRepository<TEnti
         {
             var updated = MapToEntity(dto);
             Context.Entry(entity).CurrentValues.SetValues(updated);
+            KeepManagedValues(entity);
 
             // Preserve original TenantId — cannot be changed via DTO
             entity.TenantId = _tenantContext.TenantId;

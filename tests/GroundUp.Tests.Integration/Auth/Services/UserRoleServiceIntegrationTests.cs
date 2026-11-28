@@ -149,7 +149,7 @@ public sealed class UserRoleServiceIntegrationTests : AuthIntegrationTestBase
             new UserTenantRepository(context, tenantContext),
             new RoleRepository(context, tenantContext),
             new UserRepository(context),
-            new RoleGrantPolicy(userRoles, Substitute.For<IPermissionService>(), tenantContext, []),
+            new RoleGrantPolicy(userRoles, new RoleRepository(context, tenantContext), Substitute.For<IPermissionService>(), tenantContext, []),
             new LastAdminGuard(userRoles),
             new TenantAccessRevoker(
                 store ?? new InMemoryTokenRevocationStore(TimeProvider.System),

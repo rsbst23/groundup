@@ -62,7 +62,7 @@ public sealed class InvitationFlowHandlerTests
             _roles,
             _userTenants,
             FlowHandlerTestDoubles.UserResolver(_users),
-            new RoleGrantPolicy(Substitute.For<IUserRoleRepository>(), Substitute.For<IPermissionService>(), tenantContext, []),
+            new RoleGrantPolicy(Substitute.For<IUserRoleRepository>(), GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), Substitute.For<IPermissionService>(), tenantContext, []),
             Substitute.For<IUnitOfWork>(),
             _settings,
             Substitute.For<ITokenService>(),

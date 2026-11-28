@@ -70,4 +70,34 @@ public sealed class PermissionRepository : BaseRepository<Permission, Permission
 
         return OperationResult<PaginatedData<PermissionDto>>.Ok(paginatedData);
     }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<List<PermissionDto>>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        var entities = await DbSet.AsNoTracking()
+            .OrderBy(p => p.Module)
+            .ThenBy(p => p.Key)
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<PermissionDto>>.Ok(entities.Select(MapToDto).ToList());
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult<List<PermissionDto>>> GetByKeysAsync(
+        IReadOnlyCollection<string> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0)
+        {
+            return OperationResult<List<PermissionDto>>.Ok([]);
+        }
+
+        var entities = await DbSet.AsNoTracking()
+            .Where(p => keys.Contains(p.Key))
+            .OrderBy(p => p.Key)
+            .ToListAsync(cancellationToken);
+
+        return OperationResult<List<PermissionDto>>.Ok(entities.Select(MapToDto).ToList());
+    }
 }

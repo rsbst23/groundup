@@ -38,6 +38,9 @@ public sealed class RoleServiceTests
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IEventBus _eventBus = Substitute.For<IEventBus>();
+    private readonly IPolicyRepository _policies = Substitute.For<IPolicyRepository>();
+    private readonly IPermissionRepository _permissionCatalogue = Substitute.For<IPermissionRepository>();
+    private readonly PermissionCacheVersions _cacheVersions = new();
     private readonly RoleService _sut;
 
     public RoleServiceTests()
@@ -61,11 +64,7 @@ public sealed class RoleServiceTests
         _userRoles.GetByUserIdForTenantAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(OperationResult<List<UserRoleDto>>.Ok([]));
         _permissions.HasPermissionAsync(CallerId, PermissionKeysAuth.RolesAssign, Arg.Any<CancellationToken>()).Returns(true);
 
-        _sut = new RoleService(
-            _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
-            _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
-            NullLogger<RoleService>.Instance, _eventBus);
+        _sut = CreateSut(withEventBus: true);
     }
 
     // ── Current tenant ────────────────────────────────────────────
@@ -419,11 +418,7 @@ public sealed class RoleServiceTests
         var rule = Substitute.For<IRoleAssignmentRule>();
         rule.EvaluateAsync(Arg.Any<RoleAssignmentContext>(), Arg.Any<CancellationToken>())
             .Returns(OperationResult.Fail("No defaults on Sundays", 403, "CUSTOM"));
-        var sut = new RoleService(
-            _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, [rule]),
-            _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
-            NullLogger<RoleService>.Instance, _eventBus);
+        var sut = CreateSut([rule], withEventBus: true);
 
         var result = await sut.SetDefaultAsync(Editor.Id);
 
@@ -467,15 +462,204 @@ public sealed class RoleServiceTests
     [Fact]
     public async Task NoEventBus_ChangesStillSucceed()
     {
-        var sut = new RoleService(
-            _currentUser, _tenantContext, _roles, _tenants,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
-            _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
-            NullLogger<RoleService>.Instance);
+        var sut = CreateSut(withEventBus: false);
 
         (await sut.DeleteAsync(Editor.Id)).Success.Should().BeTrue();
         (await sut.SetDefaultAsync(Editor.Id)).Success.Should().BeTrue();
     }
+
+    // ── Policies (GU-96) ──────────────────────────────────────────
+
+    private static readonly PolicyDetailDto EditorsPolicy = new(
+        Guid.NewGuid(), "Editors", null,
+        [new PermissionDto(Guid.NewGuid(), "docs.read", "Read docs", null, "docs"), new PermissionDto(Guid.NewGuid(), "docs.write", "Write docs", null, "docs")],
+        []);
+
+    [Theory]
+    [InlineData("GetPolicies")]
+    [InlineData("Attach")]
+    [InlineData("Detach")]
+    [InlineData("GetPermissions")]
+    public async Task PolicyMethods_NoTenant_TenantRequired_SystemTenant_NotFound(string method)
+    {
+        _tenantContext.TenantId.Returns(Guid.Empty);
+        (await CallPolicyMethodAsync(method)).Code.Should().Be(CoreErrorCodes.TenantRequired);
+
+        _tenantContext.TenantId.Returns(AuthRoleNames.SystemTenantId);
+        (await CallPolicyMethodAsync(method)).Status.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task GetPoliciesAsync_TenantAdmin_EmptyWithoutReading()
+    {
+        (await _sut.GetPoliciesAsync(TenantAdmin.Id)).Data.Should().BeEmpty();
+
+        await _roles.DidNotReceiveWithAnyArgs().GetPoliciesForRoleAsync(default, default);
+    }
+
+    [Fact]
+    public async Task GetPoliciesAsync_SortedByName()
+    {
+        _roles.GetPoliciesForRoleAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<List<PolicyDto>>.Ok(
+            [new PolicyDto(Guid.NewGuid(), "writers", null, TenantId), new PolicyDto(Guid.NewGuid(), "Readers", null, TenantId)]));
+
+        (await _sut.GetPoliciesAsync(Editor.Id)).Data!.Select(p => p.Name).Should().Equal("Readers", "writers");
+    }
+
+    [Theory]
+    [InlineData("Attach")]
+    [InlineData("Detach")]
+    public async Task AttachOrDetach_TenantAdmin_RoleIsBuiltIn(string method)
+    {
+        var (status, code) = method == "Attach"
+            ? Result(await _sut.AttachPolicyAsync(TenantAdmin.Id, EditorsPolicy.Id))
+            : Result(await _sut.DetachPolicyAsync(TenantAdmin.Id, EditorsPolicy.Id));
+
+        status.Should().Be(409);
+        code.Should().Be(AuthErrorCodes.RoleIsBuiltIn);
+        await _roles.DidNotReceiveWithAnyArgs().AssignPolicyAsync(default, default, default);
+        await _roles.DidNotReceiveWithAnyArgs().RemovePolicyAsync(default, default, default);
+    }
+
+    [Fact]
+    public async Task AttachPolicyAsync_PolicyNotInTheTenant_NotFound()
+    {
+        _policies.GetDetailAsync(EditorsPolicy.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<PolicyDetailDto>.NotFound());
+
+        (await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id)).StatusCode.Should().Be(404);
+        await _roles.DidNotReceiveWithAnyArgs().AssignPolicyAsync(default, default, default);
+    }
+
+    [Fact]
+    public async Task AttachPolicyAsync_CallerLacksAPermissionOfThePolicy_PermissionNotHeld()
+    {
+        GivenPolicy(EditorsPolicy);
+        GivenCallerHolds("docs.read");
+
+        var result = await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id);
+
+        result.ErrorCode.Should().Be(AuthErrorCodes.PermissionNotHeld);
+        result.Errors.Should().Equal("docs.write");
+        await _roles.DidNotReceiveWithAnyArgs().AssignPolicyAsync(default, default, default);
+        _cacheVersions.Current(TenantId).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AttachPolicyAsync_NewLink_BumpsAndPublishes()
+    {
+        GivenPolicy(EditorsPolicy);
+        GivenCallerHolds("docs.read", "docs.write");
+        var link = new RolePolicyDto(Guid.NewGuid(), Editor.Id, EditorsPolicy.Id);
+        _roles.AssignPolicyAsync(Editor.Id, EditorsPolicy.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RolePolicyDto>.Ok(link, "Created", 201));
+
+        var result = await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id);
+
+        result.StatusCode.Should().Be(201);
+        result.Data.Should().Be(link);
+        _cacheVersions.Current(TenantId).Should().Be(1);
+        await _eventBus.Received(1).PublishAsync(
+            Arg.Is<EntityCreatedEvent<RolePolicyDto>>(e => e.Entity == link && e.TenantId == TenantId && e.UserId == CallerId),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AttachPolicyAsync_AlreadyAttached_NoBumpOrEvent()
+    {
+        GivenPolicy(EditorsPolicy);
+        GivenCallerHolds("docs.read", "docs.write");
+        _roles.AssignPolicyAsync(Editor.Id, EditorsPolicy.Id, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<RolePolicyDto>.Ok(new RolePolicyDto(Guid.NewGuid(), Editor.Id, EditorsPolicy.Id)));
+
+        (await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id)).StatusCode.Should().Be(200);
+
+        _cacheVersions.Current(TenantId).Should().Be(0);
+        await _eventBus.DidNotReceiveWithAnyArgs().PublishAsync<EntityCreatedEvent<RolePolicyDto>>(default!, default);
+    }
+
+    [Fact]
+    public async Task AttachPolicyAsync_TenantAdminCaller_PassesTheGuard()
+    {
+        GivenPolicy(EditorsPolicy);
+        _permissions.GetPermissionSummaryAsync(CallerId, Arg.Any<CancellationToken>()).Returns(new PermissionSummaryDto(true, []));
+        _roles.AssignPolicyAsync(Editor.Id, EditorsPolicy.Id, Arg.Any<CancellationToken>())
+            .Returns(OperationResult<RolePolicyDto>.Ok(new RolePolicyDto(Guid.NewGuid(), Editor.Id, EditorsPolicy.Id), "Created", 201));
+
+        (await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id)).Success.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DetachPolicyAsync_NotAttached_NotFoundWithoutBump()
+    {
+        _roles.RemovePolicyAsync(Editor.Id, EditorsPolicy.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RolePolicyDto>.NotFound());
+
+        (await _sut.DetachPolicyAsync(Editor.Id, EditorsPolicy.Id)).StatusCode.Should().Be(404);
+        _cacheVersions.Current(TenantId).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DetachPolicyAsync_Attached_BumpsAndPublishes_WithoutTheGuard()
+    {
+        var link = new RolePolicyDto(Guid.NewGuid(), Editor.Id, EditorsPolicy.Id);
+        _roles.RemovePolicyAsync(Editor.Id, EditorsPolicy.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RolePolicyDto>.Ok(link));
+
+        (await _sut.DetachPolicyAsync(Editor.Id, EditorsPolicy.Id)).Success.Should().BeTrue();
+
+        _cacheVersions.Current(TenantId).Should().Be(1);
+        await _permissions.DidNotReceiveWithAnyArgs().GetPermissionSummaryAsync(default, default);
+        await _eventBus.Received(1).PublishAsync(
+            Arg.Is<EntityDeletedEvent<RolePolicyDto>>(e => e.EntityId == link.Id), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetPermissionsAsync_TenantAdmin_AllPermissions()
+    {
+        var result = await _sut.GetPermissionsAsync(TenantAdmin.Id);
+
+        result.Data.Should().BeEquivalentTo(new RolePermissionsDto(TenantAdmin.Id, true, []));
+    }
+
+    [Fact]
+    public async Task GetPermissionsAsync_GroupsByKeyWithTheGrantingPolicies()
+    {
+        var readers = Guid.NewGuid();
+        var writers = Guid.NewGuid();
+        _roles.GetPermissionGrantsAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<List<RoleGrantDto>>.Ok(
+        [
+            new RoleGrantDto("docs.write", writers, "Writers"),
+            new RoleGrantDto("docs.read", writers, "Writers"),
+            new RoleGrantDto("docs.read", readers, "Readers")
+        ]));
+        _permissionCatalogue.GetByKeysAsync(Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(OperationResult<List<PermissionDto>>.Ok(
+                [new PermissionDto(Guid.NewGuid(), "docs.read", "Read docs", null, "docs"), new PermissionDto(Guid.NewGuid(), "docs.write", "Write docs", null, "docs")]));
+
+        var result = (await _sut.GetPermissionsAsync(Editor.Id)).Data!;
+
+        result.AllPermissions.Should().BeFalse();
+        result.Permissions.Select(p => p.Key).Should().Equal("docs.read", "docs.write");
+        result.Permissions[0].Name.Should().Be("Read docs");
+        result.Permissions[0].GrantedBy.Should().Equal(new EntityRefDto(readers, "Readers"), new EntityRefDto(writers, "Writers"));
+        result.Permissions[1].GrantedBy.Should().Equal(new EntityRefDto(writers, "Writers"));
+    }
+
+    private void GivenPolicy(PolicyDetailDto policy)
+        => _policies.GetDetailAsync(policy.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<PolicyDetailDto>.Ok(policy));
+
+    private void GivenCallerHolds(params string[] keys)
+        => _permissions.GetPermissionSummaryAsync(CallerId, Arg.Any<CancellationToken>()).Returns(new PermissionSummaryDto(false, keys.ToList()));
+
+    private static (int Status, string? Code) Result<T>(OperationResult<T> r) => (r.StatusCode, r.ErrorCode);
+
+    private static (int Status, string? Code) Result(OperationResult r) => (r.StatusCode, r.ErrorCode);
+
+    private async Task<(int Status, string? Code)> CallPolicyMethodAsync(string method) => method switch
+    {
+        "GetPolicies" => Result(await _sut.GetPoliciesAsync(Editor.Id)),
+        "Attach" => Result(await _sut.AttachPolicyAsync(Editor.Id, EditorsPolicy.Id)),
+        "Detach" => Result(await _sut.DetachPolicyAsync(Editor.Id, EditorsPolicy.Id)),
+        "GetPermissions" => Result(await _sut.GetPermissionsAsync(Editor.Id)),
+        _ => throw new ArgumentOutOfRangeException(nameof(method), method, null)
+    };
 
     // ── Permissions on the interface ──────────────────────────────
 
@@ -488,6 +672,10 @@ public sealed class RoleServiceTests
     [InlineData(nameof(IRoleService.SetDefaultAsync), PermissionKeysAuth.RolesWrite)]
     [InlineData(nameof(IRoleService.ClearDefaultAsync), PermissionKeysAuth.RolesWrite)]
     [InlineData(nameof(IRoleService.DeleteAsync), PermissionKeysAuth.RolesDelete)]
+    [InlineData(nameof(IRoleService.GetPoliciesAsync), PermissionKeysAuth.RolesRead)]
+    [InlineData(nameof(IRoleService.GetPermissionsAsync), PermissionKeysAuth.RolesRead)]
+    [InlineData(nameof(IRoleService.AttachPolicyAsync), PermissionKeysAuth.RolesWrite)]
+    [InlineData(nameof(IRoleService.DetachPolicyAsync), PermissionKeysAuth.RolesWrite)]
     public void Interface_MethodRequiresPermission(string method, string permission)
     {
         var attribute = typeof(IRoleService).GetMethod(method)!.GetCustomAttribute<RequiresPermissionAttribute>();
@@ -533,4 +721,12 @@ public sealed class RoleServiceTests
 
     private void GivenUsage(RoleUsageDto usage)
         => _roles.GetUsageAsync(Editor.Id, Arg.Any<CancellationToken>()).Returns(OperationResult<RoleUsageDto>.Ok(usage));
+
+    private RoleService CreateSut(IReadOnlyList<IRoleAssignmentRule>? rules = null, bool withEventBus = true)
+        => new(
+            _currentUser, _tenantContext, _roles, _tenants,
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, rules ?? []),
+            _unitOfWork, new CreateRoleDtoValidator(), new UpdateRoleDtoValidator(),
+            _policies, _permissionCatalogue, new PermissionHoldGuard(_permissions), _cacheVersions,
+            NullLogger<RoleService>.Instance, withEventBus ? _eventBus : null);
 }

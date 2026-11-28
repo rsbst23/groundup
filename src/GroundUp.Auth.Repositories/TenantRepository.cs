@@ -211,6 +211,7 @@ public sealed class TenantRepository : BaseRepository<Tenant, TenantDto>, ITenan
         var originalDefaultRoleId = entity.DefaultRoleId;
         var updated = MapToEntity(dto);
         Context.Entry(entity).CurrentValues.SetValues(updated);
+        KeepManagedValues(entity);
 
         // Preserve ParentTenantId — cannot be changed via update
         entity.ParentTenantId = originalParentTenantId;

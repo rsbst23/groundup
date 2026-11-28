@@ -7,12 +7,11 @@ namespace GroundUp.Auth.Services.EventHandlers;
 /// <summary>
 /// Handles events when policy-permission assignments are created or deleted.
 /// <para>
-/// Cache invalidation trade-off: Since <c>IMemoryCache</c> does not support pattern-based eviction
-/// and determining all affected users requires cascading through roles and user-role assignments,
-/// this handler relies on TTL-based cache expiry for permission updates. Policy-permission changes
-/// are admin operations that happen rarely, and the default 15-minute TTL ensures eventual consistency.
-/// The <see cref="UserRoleChangedHandler"/> handles the most common case (user gains/loses a role)
-/// with immediate cache eviction since the userId is directly available.
+/// Logs only. Cached permissions are not evicted here: the service that changed the policy bumps the
+/// tenant's <see cref="PermissionCacheVersions"/> version after saving (GU-96), so every user of the
+/// tenant reloads on their next request on this instance, with or without an event bus. Other
+/// instances refresh when their cached sets expire. The <see cref="UserRoleChangedHandler"/> evicts a
+/// single user when they gain or lose a role.
 /// </para>
 /// </summary>
 public sealed class PolicyPermissionChangedHandler :
@@ -32,8 +31,7 @@ public sealed class PolicyPermissionChangedHandler :
 
     /// <summary>
     /// Handles a policy-permission creation event. Logs the change for observability.
-    /// Cache invalidation is handled by TTL expiry since determining all affected users
-    /// requires cascading through roles and user-role assignments.
+    /// The tenant's permission cache version was bumped by the service that made the change.
     /// </summary>
     /// <param name="event">The entity created event containing the new policy-permission assignment.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -41,7 +39,7 @@ public sealed class PolicyPermissionChangedHandler :
     {
         var dto = @event.Entity;
         _logger.LogInformation(
-            "PolicyPermission created: PolicyId={PolicyId}, PermissionId={PermissionId}. Permission cache will refresh at TTL expiry",
+            "PolicyPermission created: PolicyId={PolicyId}, PermissionId={PermissionId}. Cached permissions are refreshed through the tenant's permission cache version",
             dto.PolicyId,
             dto.PermissionId);
 
@@ -50,15 +48,14 @@ public sealed class PolicyPermissionChangedHandler :
 
     /// <summary>
     /// Handles a policy-permission deletion event. Logs the change for observability.
-    /// Cache invalidation is handled by TTL expiry since determining all affected users
-    /// requires cascading through roles and user-role assignments.
+    /// The tenant's permission cache version was bumped by the service that made the change.
     /// </summary>
     /// <param name="event">The entity deleted event for the removed policy-permission assignment.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public Task HandleAsync(EntityDeletedEvent<PolicyPermissionDto> @event, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "PolicyPermission deleted: EntityId={EntityId}. Permission cache will refresh at TTL expiry",
+            "PolicyPermission deleted: EntityId={EntityId}. Cached permissions are refreshed through the tenant's permission cache version",
             @event.EntityId);
 
         return Task.CompletedTask;

@@ -62,4 +62,19 @@ public static class AuthErrorCodes
     /// The role is built in (TenantAdmin): it cannot be renamed, deleted or made the default role (GU-95).
     /// </summary>
     public const string RoleIsBuiltIn = "ROLE_IS_BUILT_IN";
+
+    /// <summary>Another policy of the tenant has the same name, ignoring case (GU-96).</summary>
+    public const string PolicyNameTaken = "POLICY_NAME_TAKEN";
+
+    /// <summary>
+    /// The policy cannot be deleted because roles use it. The response's <c>errors</c> name them (GU-96).
+    /// </summary>
+    public const string PolicyInUse = "POLICY_IN_USE";
+
+    /// <summary>
+    /// The caller tried to grant permissions they do not hold themselves (a policy's permissions, a
+    /// policy attached to a role, or a role granted to someone). The response's <c>errors</c> list the
+    /// missing keys (GU-96).
+    /// </summary>
+    public const string PermissionNotHeld = "PERMISSION_NOT_HELD";
 }

@@ -57,6 +57,17 @@ public static class PermissionKeysAuth
     public const string SettingsManageTenant = "settings.manage.tenant";
 
     /// <summary>
+    /// Keys that only the system (SuperAdmin) may hold (GU-96). They are not listed in a tenant's
+    /// permission catalogue and cannot be added to a tenant policy.
+    /// </summary>
+    public static readonly IReadOnlySet<string> SystemOnly = new HashSet<string>(StringComparer.Ordinal)
+    {
+        RolesAssignSystem,
+        TenantsWrite,
+        TenantsDelete
+    };
+
+    /// <summary>
     /// All built-in permission definitions with metadata for seeding.
     /// Each tuple is (Key, Name, Description, Module).
     /// </summary>
@@ -81,7 +92,7 @@ public static class PermissionKeysAuth
         (JoinLinksManage, "Manage Join Links", "Create, list, regenerate and revoke join links", "auth"),
 
         (PermissionsRead, "Read Permissions", "View permission definitions", "auth"),
-        (PermissionsWrite, "Write Permissions", "Assign and revoke permissions from policies", "auth"),
+        (PermissionsWrite, "Write Permissions", "Create, change and delete policies and the permissions they grant", "auth"),
 
         (SettingsRead, "Read Settings", "View settings, their definitions and effective values (secret values stay masked)", "settings"),
         (SettingsManageTenant, "Manage Tenant Settings", "Create, change and delete setting values for the current tenant", "settings"),

@@ -70,7 +70,7 @@ public sealed class UserRoleServiceTests
 
         _sut = new UserRoleService(
             _currentUser, _tenantContext, _userRoles, _userTenants, _roles, _users,
-            new RoleGrantPolicy(_userRoles, _permissions, _tenantContext, []),
+            new RoleGrantPolicy(_userRoles, GroundUp.Tests.Unit.Auth.TestHelpers.RoleRepositoryStubs.WithoutGrants(_roles), _permissions, _tenantContext, []),
             new LastAdminGuard(_userRoles),
             new TenantAccessRevoker(_store, _cache, NullLogger<TenantAccessRevoker>.Instance, _eventBus),
             NullLogger<UserRoleService>.Instance);
